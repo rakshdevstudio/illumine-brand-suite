@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers } from "lucide-react";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 import { NavLink } from "@/components/NavLink";
 import {
   SidebarProvider,
@@ -30,11 +31,11 @@ function AdminSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       <SidebarContent>
-        <div className="p-6">
-          {!collapsed && (
-            <span className="text-sm tracking-[0.3em] font-light uppercase">
-              Illume
-            </span>
+        <div className="p-4">
+          {!collapsed ? (
+            <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
+          ) : (
+            <img src={illumeLogo} alt="Illume" className="h-6 w-auto" />
           )}
         </div>
         <SidebarGroup>
