@@ -1,8 +1,8 @@
-/**
- * Maps product categories to curated, high-quality Unsplash image URLs.
- * All images are studio-style, white/clean background, premium feel.
- */
+import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Maps product categories to curated Unsplash image URLs as fallbacks.
+ */
 const categoryImages: Record<string, string[]> = {
   shirt: [
     "https://images.unsplash.com/photo-1598032895397-b9472444bf93?w=600&h=800&fit=crop&q=80",
@@ -25,7 +25,6 @@ const categoryImages: Record<string, string[]> = {
     "https://images.unsplash.com/photo-1590548784585-643d2b9f2925?w=600&h=800&fit=crop&q=80",
   ],
   skirt: [
-    "https://images.unsplash.com/photo-1583496661160-fb5886a0uj9a?w=600&h=800&fit=crop&q=80",
     "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600&h=800&fit=crop&q=80",
     "https://images.unsplash.com/photo-1592301933927-35b597393c0a?w=600&h=800&fit=crop&q=80",
   ],
@@ -38,25 +37,33 @@ const categoryImages: Record<string, string[]> = {
 
 const fallbackImage = "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&h=800&fit=crop&q=80";
 
-/**
- * Get a product image URL based on category.
- * Uses a hash of the product name for consistent but varied selection.
- */
 export function getProductImageUrl(category: string, productName?: string): string {
   const key = category.toLowerCase().trim();
   const images = categoryImages[key];
-  
   if (!images || images.length === 0) return fallbackImage;
-  
-  // Use product name to pick a consistent image variant
   const hash = (productName ?? "").split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return images[hash % images.length];
 }
 
 /**
- * Get the display image for a product, preferring stored image_url.
+ * Get the best display image for a product.
+ * Priority: uploaded primary image > uploaded first image > legacy image_url > category fallback
  */
-export function getDisplayImage(product: { image_url?: string | null; category: string; name: string }): string {
+export function getDisplayImage(product: {
+  image_url?: string | null;
+  category: string;
+  name: string;
+  product_images?: Array<{ image_url: string; is_primary: boolean; sort_order: number }>;
+}): string {
+  // Check uploaded images first
+  if (product.product_images && product.product_images.length > 0) {
+    const primary = product.product_images.find((img) => img.is_primary);
+    if (primary) return primary.image_url;
+    const sorted = [...product.product_images].sort((a, b) => a.sort_order - b.sort_order);
+    return sorted[0].image_url;
+  }
+  // Legacy image_url field
   if (product.image_url) return product.image_url;
+  // Category fallback
   return getProductImageUrl(product.category, product.name);
 }

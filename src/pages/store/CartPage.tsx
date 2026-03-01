@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import { Minus, Plus, X } from "lucide-react";
-import { getProductImageUrl } from "@/lib/product-images";
 
 const CartPage = () => {
   const { items, updateQuantity, removeItem, total } = useCart();
@@ -39,12 +38,19 @@ const CartPage = () => {
             className="flex items-center gap-6 py-6 border-b border-border"
           >
             <div className="w-20 h-20 bg-secondary border border-border flex-shrink-0 overflow-hidden">
-              <img
-                src={item.imageUrl || getProductImageUrl("shirt", item.name)}
-                alt={item.name}
-                className="w-full h-full object-contain"
-                onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
-              />
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={item.name}
+                  className="w-full h-full object-contain"
+                  loading="lazy"
+                  onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Uniform</span>
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-light">{item.name}</p>

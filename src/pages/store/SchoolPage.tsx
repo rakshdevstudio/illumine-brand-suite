@@ -26,7 +26,7 @@ const SchoolPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, product_variants(*)")
+        .select("*, product_variants(*), product_images(*)")
         .eq("school_id", school!.id)
         .order("name");
       if (error) throw error;
@@ -78,9 +78,10 @@ const SchoolPage = () => {
               >
                 <div className="aspect-square bg-secondary mb-4 overflow-hidden border border-border">
                   <img
-                    src={getDisplayImage(product)}
+                    src={getDisplayImage(product as any)}
                     alt={product.name}
                     className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
                     onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
                   />
                 </div>

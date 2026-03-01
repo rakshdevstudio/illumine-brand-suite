@@ -11,6 +11,7 @@ import { getDisplayImage } from "@/lib/product-images";
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const addItem = useCart((s) => s.addItem);
 
   const { data: product, isLoading } = useQuery({
@@ -18,7 +19,7 @@ const ProductPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, product_variants(*), schools(*)")
+        .select("*, product_variants(*), schools(*), product_images(*)")
         .eq("id", id!)
         .single();
       if (error) throw error;
@@ -33,6 +34,22 @@ const ProductPage = () => {
     (v: any) => v.size === selectedSize
   );
 
+  // Build image gallery
+  const galleryImages: string[] = [];
+  if (product) {
+    const imgs = (product as any).product_images ?? [];
+    if (imgs.length > 0) {
+      const sorted = [...imgs].sort((a: any, b: any) => {
+        if (a.is_primary && !b.is_primary) return -1;
+        if (!a.is_primary && b.is_primary) return 1;
+        return a.sort_order - b.sort_order;
+      });
+      sorted.forEach((img: any) => galleryImages.push(img.image_url));
+    } else {
+      galleryImages.push(getDisplayImage(product as any));
+    }
+  }
+
   const handleAddToCart = () => {
     if (!selectedVariant || !product) return;
     addItem({
@@ -42,7 +59,7 @@ const ProductPage = () => {
       size: selectedVariant.size,
       price: product.price,
       schoolName: (product as any).schools?.name ?? "",
-      imageUrl: product.image_url,
+      imageUrl: galleryImages[0] || null,
     });
     toast("Added to bag", { icon: <Check className="h-4 w-4" /> });
   };
@@ -74,16 +91,36 @@ const ProductPage = () => {
       </Link>
 
       <div className="grid md:grid-cols-2 gap-16">
-        {/* Image */}
-        <div>
+        {/* Image Gallery */}
+        <div className="space-y-3">
           <div className="aspect-square bg-secondary border border-border overflow-hidden">
             <img
-              src={getDisplayImage(product)}
+              src={galleryImages[activeImageIndex] || "/placeholder.svg"}
               alt={product.name}
               className="w-full h-full object-contain"
               onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
             />
           </div>
+          {galleryImages.length > 1 && (
+            <div className="flex gap-2">
+              {galleryImages.map((url, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveImageIndex(i)}
+                  className={`w-16 h-16 border overflow-hidden bg-secondary transition-all ${
+                    i === activeImageIndex ? "border-foreground" : "border-border hover:border-foreground/50"
+                  }`}
+                >
+                  <img
+                    src={url}
+                    alt=""
+                    className="w-full h-full object-contain"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Details */}
@@ -136,7 +173,6 @@ const ProductPage = () => {
             Add to Bag
           </Button>
 
-          {/* Description */}
           <div className="mt-12 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
               Details

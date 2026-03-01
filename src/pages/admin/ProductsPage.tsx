@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, RefreshCw } from "lucide-react";
-import { getProductImageUrl, getDisplayImage } from "@/lib/product-images";
+import { Plus } from "lucide-react";
+import { getDisplayImage } from "@/lib/product-images";
+import ProductImageUploader from "@/components/admin/ProductImageUploader";
 
 const categories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 
@@ -23,7 +24,7 @@ const ProductsPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, schools(name)")
+        .select("*, schools(name, slug), product_images(*)")
         .order("name");
       if (error) throw error;
       return data;
@@ -33,7 +34,7 @@ const ProductsPage = () => {
   const { data: schools } = useQuery({
     queryKey: ["admin-schools-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("id, name").order("name");
+      const { data, error } = await supabase.from("schools").select("id, name, slug").order("name");
       if (error) throw error;
       return data;
     },
@@ -48,21 +49,15 @@ const ProductsPage = () => {
       return;
     }
     try {
-      const imageUrl = getProductImageUrl(form.category, form.name);
       const payload = {
         name: form.name,
         school_id: form.school_id,
         category: form.category,
         price: parseFloat(form.price),
         description: form.description || null,
-        image_url: imageUrl,
       };
       if (editing) {
-        // Only set image if not already set
-        const updatePayload = editing.image_url
-          ? { ...payload, image_url: editing.image_url }
-          : payload;
-        await supabase.from("products").update(updatePayload).eq("id", editing.id);
+        await supabase.from("products").update(payload).eq("id", editing.id);
         toast.success("Product updated");
       } else {
         await supabase.from("products").insert(payload);
@@ -75,13 +70,6 @@ const ProductsPage = () => {
     } catch {
       toast.error("Failed to save product");
     }
-  };
-
-  const handleRegenerateImage = async (product: any) => {
-    const newUrl = getProductImageUrl(product.category, product.name + Date.now());
-    await supabase.from("products").update({ image_url: newUrl }).eq("id", product.id);
-    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
-    toast.success("Image regenerated");
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
@@ -107,6 +95,14 @@ const ProductsPage = () => {
     setEditing(null);
     setForm({ name: "", school_id: "", category: "", price: "", description: "" });
     setDialogOpen(true);
+  };
+
+  const getSchoolSlug = (schoolId: string) => {
+    return schools?.find((s) => s.id === schoolId)?.slug ?? "general";
+  };
+
+  const refreshImages = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
   };
 
   return (
@@ -146,9 +142,10 @@ const ProductsPage = () => {
                   <TableCell>
                     <div className="w-12 h-12 border border-border overflow-hidden bg-secondary">
                       <img
-                        src={getDisplayImage(product)}
+                        src={getDisplayImage(product as any)}
                         alt={product.name}
                         className="w-full h-full object-contain"
+                        loading="lazy"
                         onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
                       />
                     </div>
@@ -159,24 +156,19 @@ const ProductsPage = () => {
                   <TableCell className="text-sm">{formatPrice(product.price)}</TableCell>
                   <TableCell>
                     <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                      (product as any).status === "inactive"
+                      product.status === "inactive"
                         ? "border-destructive text-destructive"
                         : "border-border text-foreground"
                     }`}>
-                      {(product as any).status || "active"}
+                      {product.status || "active"}
                     </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(product)}>Edit</Button>
                       <Button variant="outline" size="sm" className="text-xs"
-                        onClick={() => handleRegenerateImage(product)}
-                        title="Regenerate Image">
-                        <RefreshCw className="h-3 w-3" />
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-xs"
-                        onClick={() => handleStatusToggle(product.id, (product as any).status || "active")}>
-                        {(product as any).status === "inactive" ? "Enable" : "Disable"}
+                        onClick={() => handleStatusToggle(product.id, product.status || "active")}>
+                        {product.status === "inactive" ? "Enable" : "Disable"}
                       </Button>
                     </div>
                   </TableCell>
@@ -188,24 +180,13 @@ const ProductsPage = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               {editing ? "Edit Product" : "Add Product"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Preview image */}
-            {form.category && (
-              <div className="aspect-square w-32 mx-auto border border-border bg-secondary overflow-hidden">
-                <img
-                  src={getProductImageUrl(form.category, form.name)}
-                  alt="Preview"
-                  className="w-full h-full object-contain"
-                  onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
-                />
-              </div>
-            )}
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product Name</label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" placeholder="DPS Shirt" />
@@ -244,10 +225,25 @@ const ProductsPage = () => {
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Description</label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-10" placeholder="Optional description" />
             </div>
+
+            {/* Image uploader - only for existing products */}
+            {editing && (
+              <ProductImageUploader
+                productId={editing.id}
+                schoolSlug={getSchoolSlug(editing.school_id)}
+                images={(editing as any).product_images ?? []}
+                onImagesChange={refreshImages}
+              />
+            )}
           </div>
           <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
             {editing ? "Update Product" : "Create Product"}
           </Button>
+          {!editing && (
+            <p className="text-[10px] text-muted-foreground text-center">
+              Save product first, then edit to upload images
+            </p>
+          )}
         </DialogContent>
       </Dialog>
     </div>
