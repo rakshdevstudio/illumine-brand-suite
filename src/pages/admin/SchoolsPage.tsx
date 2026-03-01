@@ -27,12 +27,15 @@ const SchoolsPage = () => {
   const generateSlug = (name: string) =>
     name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+  const [saving, setSaving] = useState(false);
+
   const handleSave = async () => {
     if (!form.name || !form.code) {
       toast.error("Name and code are required");
       return;
     }
     const slug = form.slug || generateSlug(form.name);
+    setSaving(true);
 
     try {
       if (editing) {
@@ -49,7 +52,10 @@ const SchoolsPage = () => {
       setEditing(null);
       setForm({ name: "", code: "", slug: "", status: "active" });
     } catch (err: any) {
-      toast.error("Failed to save school", { description: err?.message });
+      console.error("School save error:", err);
+      toast.error("Failed to save school", { description: err?.message || "Network error — please refresh and try again" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -173,8 +179,8 @@ const SchoolsPage = () => {
               </Select>
             </div>
           </div>
-          <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
-            {editing ? "Update School" : "Create School"}
+          <Button onClick={handleSave} disabled={saving} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
+            {saving ? "Saving..." : editing ? "Update School" : "Create School"}
           </Button>
         </DialogContent>
       </Dialog>
