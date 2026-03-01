@@ -158,25 +158,31 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          price_override: number | null
           product_id: string
           size: string
           sku: string | null
+          status: string
           stock: number
         }
         Insert: {
           created_at?: string
           id?: string
+          price_override?: number | null
           product_id: string
           size: string
           sku?: string | null
+          status?: string
           stock?: number
         }
         Update: {
           created_at?: string
           id?: string
+          price_override?: number | null
           product_id?: string
           size?: string
           sku?: string | null
+          status?: string
           stock?: number
         }
         Relationships: [
@@ -199,6 +205,7 @@ export type Database = {
           name: string
           price: number
           school_id: string
+          status: string
         }
         Insert: {
           category: string
@@ -209,6 +216,7 @@ export type Database = {
           name: string
           price: number
           school_id: string
+          status?: string
         }
         Update: {
           category?: string
@@ -219,6 +227,7 @@ export type Database = {
           name?: string
           price?: number
           school_id?: string
+          status?: string
         }
         Relationships: [
           {
@@ -232,25 +241,31 @@ export type Database = {
       }
       schools: {
         Row: {
+          code: string | null
           created_at: string
           id: string
           logo_url: string | null
           name: string
           slug: string
+          status: string
         }
         Insert: {
+          code?: string | null
           created_at?: string
           id?: string
           logo_url?: string | null
           name: string
           slug: string
+          status?: string
         }
         Update: {
+          code?: string | null
           created_at?: string
           id?: string
           logo_url?: string | null
           name?: string
           slug?: string
+          status?: string
         }
         Relationships: []
       }
