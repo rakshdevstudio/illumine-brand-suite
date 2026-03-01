@@ -6,6 +6,7 @@ import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
+import { getDisplayImage } from "@/lib/product-images";
 
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,7 +51,7 @@ const ProductPage = () => {
     return (
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="grid md:grid-cols-2 gap-16">
-          <div className="aspect-[3/4] bg-secondary animate-pulse" />
+          <div className="aspect-square bg-secondary animate-pulse" />
           <div className="space-y-4">
             <div className="h-6 bg-secondary w-3/4" />
             <div className="h-5 bg-secondary w-1/4" />
@@ -75,10 +76,13 @@ const ProductPage = () => {
       <div className="grid md:grid-cols-2 gap-16">
         {/* Image */}
         <div>
-          <div className="aspect-[3/4] bg-secondary border border-border flex items-center justify-center">
-            <span className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-              {product.category}
-            </span>
+          <div className="aspect-square bg-secondary border border-border overflow-hidden">
+            <img
+              src={getDisplayImage(product)}
+              alt={product.name}
+              className="w-full h-full object-contain"
+              onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
+            />
           </div>
         </div>
 

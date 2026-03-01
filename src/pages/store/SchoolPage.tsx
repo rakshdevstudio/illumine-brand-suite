@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft } from "lucide-react";
+import { getDisplayImage } from "@/lib/product-images";
 
 const SchoolPage = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -56,7 +57,7 @@ const SchoolPage = () => {
         <div className="grid md:grid-cols-3 gap-8">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
-              <div className="aspect-[3/4] bg-secondary mb-4" />
+              <div className="aspect-square bg-secondary mb-4" />
               <div className="h-4 bg-secondary w-3/4 mb-2" />
               <div className="h-4 bg-secondary w-1/4" />
             </div>
@@ -75,10 +76,13 @@ const SchoolPage = () => {
                 to={`/store/product/${product.id}`}
                 className="group"
               >
-                <div className="aspect-[3/4] bg-secondary mb-4 overflow-hidden border border-border flex items-center justify-center">
-                  <span className="text-xs tracking-[0.2em] text-muted-foreground uppercase">
-                    {product.category}
-                  </span>
+                <div className="aspect-square bg-secondary mb-4 overflow-hidden border border-border">
+                  <img
+                    src={getDisplayImage(product)}
+                    alt={product.name}
+                    className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
+                  />
                 </div>
                 <h3 className="text-sm font-light tracking-wide mb-1 group-hover:opacity-60 transition-opacity">
                   {product.name}
