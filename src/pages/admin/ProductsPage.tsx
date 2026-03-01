@@ -12,12 +12,13 @@ import { getDisplayImage } from "@/lib/product-images";
 import ProductImageUploader from "@/components/admin/ProductImageUploader";
 
 const categories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
+const genders = ["Male", "Female", "Unisex"];
 
 const ProductsPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", school_id: "", category: "", price: "", description: "" });
+  const [form, setForm] = useState({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-products-list"],
@@ -53,6 +54,7 @@ const ProductsPage = () => {
         name: form.name,
         school_id: form.school_id,
         category: form.category,
+        gender: form.gender,
         price: parseFloat(form.price),
         description: form.description || null,
       };
@@ -66,7 +68,7 @@ const ProductsPage = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
       setDialogOpen(false);
       setEditing(null);
-      setForm({ name: "", school_id: "", category: "", price: "", description: "" });
+      setForm({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
     } catch {
       toast.error("Failed to save product");
     }
@@ -85,6 +87,7 @@ const ProductsPage = () => {
       name: product.name,
       school_id: product.school_id,
       category: product.category,
+      gender: (product as any).gender || "Unisex",
       price: String(product.price),
       description: product.description || "",
     });
@@ -93,7 +96,7 @@ const ProductsPage = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", school_id: "", category: "", price: "", description: "" });
+    setForm({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
     setDialogOpen(true);
   };
 
@@ -122,6 +125,7 @@ const ProductsPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Product Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Gender</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Base Price</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
@@ -130,11 +134,11 @@ const ProductsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : products?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
               </TableRow>
             ) : (
               products?.map((product) => (
@@ -153,6 +157,7 @@ const ProductsPage = () => {
                   <TableCell className="text-sm">{product.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).schools?.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).gender || "Unisex"}</TableCell>
                   <TableCell className="text-sm">{formatPrice(product.price)}</TableCell>
                   <TableCell>
                     <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
@@ -213,6 +218,19 @@ const ProductsPage = () => {
                 <SelectContent>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Gender</label>
+              <Select value={form.gender} onValueChange={(v) => setForm({ ...form, gender: v })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  {genders.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

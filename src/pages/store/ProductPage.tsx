@@ -125,8 +125,11 @@ const ProductPage = () => {
 
         {/* Details */}
         <div className="flex flex-col">
-          <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-2">
+          <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-1">
             {(product as any).schools?.name}
+          </p>
+          <p className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase mb-3">
+            {(product as any).gender || "Unisex"}
           </p>
           <h1 className="text-2xl font-extralight tracking-wide mb-2">
             {product.name}
