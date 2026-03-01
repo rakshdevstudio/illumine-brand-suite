@@ -13,7 +13,7 @@ const SchoolsPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", code: "", slug: "" });
+  const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
 
   const { data: schools, isLoading } = useQuery({
     queryKey: ["admin-schools"],
@@ -36,18 +36,20 @@ const SchoolsPage = () => {
 
     try {
       if (editing) {
-        await supabase.from("schools").update({ name: form.name, code: form.code, slug }).eq("id", editing.id);
+        const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
+        if (error) throw error;
         toast.success("School updated");
       } else {
-        await supabase.from("schools").insert({ name: form.name, code: form.code, slug });
+        const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
+        if (error) throw error;
         toast.success("School created");
       }
       queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
       setDialogOpen(false);
       setEditing(null);
-      setForm({ name: "", code: "", slug: "" });
-    } catch {
-      toast.error("Failed to save school");
+      setForm({ name: "", code: "", slug: "", status: "active" });
+    } catch (err: any) {
+      toast.error("Failed to save school", { description: err?.message });
     }
   };
 
@@ -60,13 +62,13 @@ const SchoolsPage = () => {
 
   const openEdit = (school: any) => {
     setEditing(school);
-    setForm({ name: school.name, code: school.code || "", slug: school.slug });
+    setForm({ name: school.name, code: school.code || "", slug: school.slug, status: school.status || "active" });
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", code: "", slug: "" });
+    setForm({ name: "", code: "", slug: "", status: "active" });
     setDialogOpen(true);
   };
 
@@ -157,6 +159,18 @@ const SchoolsPage = () => {
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Slug (auto-generated)</label>
               <Input value={form.slug || generateSlug(form.name)} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="h-10" placeholder="delhi-public-school" />
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Status</label>
+              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
