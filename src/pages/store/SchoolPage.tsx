@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft } from "lucide-react";
 import { getDisplayImage } from "@/lib/product-images";
 
+const genderFilters = ["All", "Male", "Female", "Unisex"] as const;
+
 const SchoolPage = () => {
   const { slug } = useParams<{ slug: string }>();
+  const [selectedGender, setSelectedGender] = useState<string>("All");
 
   const { data: school } = useQuery({
     queryKey: ["school", slug],
@@ -48,10 +52,27 @@ const SchoolPage = () => {
       </Link>
 
       {school && (
-        <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-12">
+        <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-8">
           {school.name}
         </h1>
       )}
+
+      {/* Gender Filter */}
+      <div className="flex gap-4 mb-12">
+        {genderFilters.map((g) => (
+          <button
+            key={g}
+            onClick={() => setSelectedGender(g)}
+            className={`text-xs tracking-[0.2em] uppercase pb-2 border-b-2 transition-all ${
+              selectedGender === g
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
 
       {isLoading ? (
         <div className="grid md:grid-cols-3 gap-8">
@@ -65,7 +86,7 @@ const SchoolPage = () => {
         </div>
       ) : (
         <div className="grid md:grid-cols-3 gap-8">
-          {products?.map((product) => {
+          {products?.filter((p) => selectedGender === "All" || (p as any).gender === selectedGender).map((product) => {
             const totalStock = product.product_variants?.reduce(
               (s: number, v: any) => s + v.stock, 0
             ) ?? 0;

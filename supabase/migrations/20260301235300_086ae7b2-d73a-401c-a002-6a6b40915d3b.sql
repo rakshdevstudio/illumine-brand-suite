@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN gender text NOT NULL DEFAULT 'Unisex';
