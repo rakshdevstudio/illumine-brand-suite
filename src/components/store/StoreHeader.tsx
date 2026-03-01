@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 
 const StoreHeader = () => {
   const items = useCart((s) => s.items);
@@ -9,8 +10,8 @@ const StoreHeader = () => {
   return (
     <header className="border-b border-border">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/store" className="text-lg tracking-[0.3em] font-light uppercase">
-          Illume
+        <Link to="/store" className="flex items-center gap-2">
+          <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
         </Link>
         <Link to="/store/cart" className="relative group">
           <ShoppingBag className="h-5 w-5 transition-opacity group-hover:opacity-60" strokeWidth={1.5} />
