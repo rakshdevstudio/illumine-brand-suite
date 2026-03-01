@@ -15,19 +15,33 @@ const SchoolsPage = () => {
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
 
-  const { data: schools, isLoading } = useQuery({
+  const { data: schools, isLoading, error: fetchError } = useQuery({
     queryKey: ["admin-schools"],
     queryFn: async () => {
       const { data, error } = await supabase.from("schools").select("*").order("name");
       if (error) throw error;
       return data;
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
   const generateSlug = (name: string) =>
     name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
   const [saving, setSaving] = useState(false);
+
+  const retryFetch = async <T,>(fn: () => Promise<T>, retries = 3): Promise<T> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+    throw new Error("Max retries reached");
+  };
 
   const handleSave = async () => {
     if (!form.name || !form.code) {
@@ -38,22 +52,23 @@ const SchoolsPage = () => {
     setSaving(true);
 
     try {
-      if (editing) {
-        const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
-        if (error) throw error;
-        toast.success("School updated");
-      } else {
-        const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
-        if (error) throw error;
-        toast.success("School created");
-      }
+      await retryFetch(async () => {
+        if (editing) {
+          const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
+          if (error) throw error;
+        }
+      });
+      toast.success(editing ? "School updated" : "School created");
       queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
       setDialogOpen(false);
       setEditing(null);
       setForm({ name: "", code: "", slug: "", status: "active" });
     } catch (err: any) {
       console.error("School save error:", err);
-      toast.error("Failed to save school", { description: err?.message || "Network error — please refresh and try again" });
+      toast.error("Failed to save school", { description: err?.message || "Network error — please check your internet connection and try again" });
     } finally {
       setSaving(false);
     }
@@ -102,6 +117,15 @@ const SchoolsPage = () => {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+              </TableRow>
+            ) : fetchError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-8 text-sm text-destructive">
+                  Failed to load schools. Please check your internet connection and refresh.
+                  <Button variant="outline" size="sm" className="ml-2 text-xs" onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-schools"] })}>
+                    Retry
+                  </Button>
+                </TableCell>
               </TableRow>
             ) : schools?.length === 0 ? (
               <TableRow>
