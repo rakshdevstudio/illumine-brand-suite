@@ -16,7 +16,7 @@ const OrdersPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("*")
+        .select("*, order_items(*, products(name, schools(name)), product_variants(size))")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -64,6 +64,8 @@ const OrdersPage = () => {
             <TableRow>
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Items</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Amount</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Date</TableHead>
@@ -73,54 +75,66 @@ const OrdersPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : orders?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
                   No orders yet
                 </TableCell>
               </TableRow>
             ) : (
-              orders?.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell className="text-xs font-mono">
-                    {order.id.slice(0, 8).toUpperCase()}
-                  </TableCell>
-                  <TableCell className="text-sm">{order.customer_name}</TableCell>
-                  <TableCell className="text-sm">{formatPrice(order.total_amount)}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={order.status}
-                      onValueChange={(v) => handleStatusChange(order.id, v)}
-                    >
-                      <SelectTrigger className="w-32 h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="delivered">Delivered</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setSelectedOrder(order.id)}
-                    >
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              orders?.map((order: any) => {
+                const items = order.order_items || [];
+                const schools = [...new Set(items.map((i: any) => i.products?.schools?.name).filter(Boolean))];
+                const itemSummary = items.map((i: any) => 
+                  `${i.products?.name || "Item"} (${i.product_variants?.size || "—"}) ×${i.quantity}`
+                ).join(", ");
+
+                return (
+                  <TableRow key={order.id}>
+                    <TableCell className="text-xs font-mono">
+                      {order.id.slice(0, 8).toUpperCase()}
+                    </TableCell>
+                    <TableCell className="text-sm">{order.customer_name}</TableCell>
+                    <TableCell className="text-sm">{schools.join(", ") || "—"}</TableCell>
+                    <TableCell className="text-sm max-w-[200px] truncate" title={itemSummary}>
+                      {itemSummary || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm">{formatPrice(order.total_amount)}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={order.status}
+                        onValueChange={(v) => handleStatusChange(order.id, v)}
+                      >
+                        <SelectTrigger className="w-32 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="confirmed">Confirmed</SelectItem>
+                          <SelectItem value="delivered">Delivered</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => setSelectedOrder(order.id)}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
