@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowRight } from "lucide-react";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/illume-logo.png";
 
 const StorePage = () => {
   const { data: schools, isLoading } = useQuery({
@@ -18,7 +18,7 @@ const StorePage = () => {
     <div>
       {/* Hero */}
       <section className="py-24 md:py-40 text-center px-6">
-        <img src={illumeLogo} alt="Illume" className="h-20 md:h-28 w-auto mx-auto mb-8" />
+        <img src={illumeLogo} alt="Illume" className="h-28 md:h-40 w-auto mx-auto mb-8" style={{ filter: "brightness(0)" }} />
         <p className="text-sm tracking-[0.2em] text-muted-foreground uppercase max-w-md mx-auto">
           Premium school uniforms crafted with care
         </p>
