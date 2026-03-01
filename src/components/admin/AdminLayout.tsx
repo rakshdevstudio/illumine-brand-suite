@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers } from "lucide-react";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/illume-logo.png";
 import { NavLink } from "@/components/NavLink";
 import {
   SidebarProvider,
@@ -33,9 +33,9 @@ function AdminSidebar() {
       <SidebarContent>
         <div className="p-4">
           {!collapsed ? (
-            <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
+            <img src={illumeLogo} alt="Illume" className="h-10 w-auto" style={{ filter: "brightness(0)" }} />
           ) : (
-            <img src={illumeLogo} alt="Illume" className="h-6 w-auto" />
+            <img src={illumeLogo} alt="Illume" className="h-8 w-auto" style={{ filter: "brightness(0)" }} />
           )}
         </div>
         <SidebarGroup>
