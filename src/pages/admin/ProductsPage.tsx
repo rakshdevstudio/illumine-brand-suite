@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
+import { getProductImageUrl, getDisplayImage } from "@/lib/product-images";
 
 const categories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 
@@ -47,15 +48,21 @@ const ProductsPage = () => {
       return;
     }
     try {
+      const imageUrl = getProductImageUrl(form.category, form.name);
       const payload = {
         name: form.name,
         school_id: form.school_id,
         category: form.category,
         price: parseFloat(form.price),
         description: form.description || null,
+        image_url: imageUrl,
       };
       if (editing) {
-        await supabase.from("products").update(payload).eq("id", editing.id);
+        // Only set image if not already set
+        const updatePayload = editing.image_url
+          ? { ...payload, image_url: editing.image_url }
+          : payload;
+        await supabase.from("products").update(updatePayload).eq("id", editing.id);
         toast.success("Product updated");
       } else {
         await supabase.from("products").insert(payload);
@@ -68,6 +75,13 @@ const ProductsPage = () => {
     } catch {
       toast.error("Failed to save product");
     }
+  };
+
+  const handleRegenerateImage = async (product: any) => {
+    const newUrl = getProductImageUrl(product.category, product.name + Date.now());
+    await supabase.from("products").update({ image_url: newUrl }).eq("id", product.id);
+    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
+    toast.success("Image regenerated");
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
@@ -108,6 +122,7 @@ const ProductsPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="text-xs tracking-wider uppercase w-16">Image</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
@@ -119,15 +134,25 @@ const ProductsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : products?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
               </TableRow>
             ) : (
               products?.map((product) => (
                 <TableRow key={product.id}>
+                  <TableCell>
+                    <div className="w-12 h-12 border border-border overflow-hidden bg-secondary">
+                      <img
+                        src={getDisplayImage(product)}
+                        alt={product.name}
+                        className="w-full h-full object-contain"
+                        onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
+                      />
+                    </div>
+                  </TableCell>
                   <TableCell className="text-sm">{product.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).schools?.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
@@ -144,6 +169,11 @@ const ProductsPage = () => {
                   <TableCell>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(product)}>Edit</Button>
+                      <Button variant="outline" size="sm" className="text-xs"
+                        onClick={() => handleRegenerateImage(product)}
+                        title="Regenerate Image">
+                        <RefreshCw className="h-3 w-3" />
+                      </Button>
                       <Button variant="outline" size="sm" className="text-xs"
                         onClick={() => handleStatusToggle(product.id, (product as any).status || "active")}>
                         {(product as any).status === "inactive" ? "Enable" : "Disable"}
@@ -165,6 +195,17 @@ const ProductsPage = () => {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Preview image */}
+            {form.category && (
+              <div className="aspect-square w-32 mx-auto border border-border bg-secondary overflow-hidden">
+                <img
+                  src={getProductImageUrl(form.category, form.name)}
+                  alt="Preview"
+                  className="w-full h-full object-contain"
+                  onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product Name</label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" placeholder="DPS Shirt" />
