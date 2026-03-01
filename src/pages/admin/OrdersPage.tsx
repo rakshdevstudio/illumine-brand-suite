@@ -29,7 +29,7 @@ const OrdersPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("order_items")
-        .select("*, products(name), product_variants(size)")
+        .select("*, products(name, schools(name)), product_variants(size)")
         .eq("order_id", selectedOrder!);
       if (error) throw error;
       return data;
@@ -155,9 +155,12 @@ const OrdersPage = () => {
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Items</p>
                 {orderItems?.map((item: any) => (
                   <div key={item.id} className="flex justify-between text-sm py-2 border-b border-border last:border-0">
-                    <span>
-                      {item.products?.name} (Size {item.product_variants?.size}) × {item.quantity}
-                    </span>
+                    <div>
+                      <span>{item.products?.name} (Size {item.product_variants?.size}) × {item.quantity}</span>
+                      {item.products?.schools?.name && (
+                        <p className="text-xs text-muted-foreground">{item.products.schools.name}</p>
+                      )}
+                    </div>
                     <span>{formatPrice(item.price * item.quantity)}</span>
                   </div>
                 ))}
