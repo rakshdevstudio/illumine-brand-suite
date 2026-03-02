@@ -10,6 +10,7 @@ const genderFilters = ["All", "Male", "Female", "Unisex"] as const;
 const SchoolPage = () => {
   const { slug } = useParams<{ slug: string }>();
   const [selectedGender, setSelectedGender] = useState<string>("All");
+  const [selectedClass, setSelectedClass] = useState<string>("All");
 
   const { data: school } = useQuery({
     queryKey: ["school", slug],
@@ -24,13 +25,28 @@ const SchoolPage = () => {
     },
   });
 
+  const { data: classes } = useQuery({
+    queryKey: ["school-classes", school?.id],
+    enabled: !!school?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("*")
+        .eq("school_id", school!.id)
+        .eq("status", "active")
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const { data: products, isLoading } = useQuery({
     queryKey: ["products", school?.id],
     enabled: !!school?.id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, product_variants(*), product_images(*)")
+        .select("*, product_variants(*), product_images(*), classes(name)")
         .eq("school_id", school!.id)
         .order("name");
       if (error) throw error;
@@ -40,6 +56,12 @@ const SchoolPage = () => {
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
+
+  const filteredProducts = products?.filter((p) => {
+    const genderMatch = selectedGender === "All" || (p as any).gender === selectedGender;
+    const classMatch = selectedClass === "All" || (p as any).class_id === selectedClass;
+    return genderMatch && classMatch;
+  });
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
@@ -55,6 +77,35 @@ const SchoolPage = () => {
         <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-8">
           {school.name}
         </h1>
+      )}
+
+      {/* Class Filter */}
+      {classes && classes.length > 0 && (
+        <div className="flex gap-3 mb-6 flex-wrap">
+          <button
+            onClick={() => setSelectedClass("All")}
+            className={`text-xs tracking-[0.15em] uppercase px-4 py-2 border rounded-full transition-all ${
+              selectedClass === "All"
+                ? "border-foreground bg-primary text-primary-foreground"
+                : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+            }`}
+          >
+            All Classes
+          </button>
+          {classes.map((cls: any) => (
+            <button
+              key={cls.id}
+              onClick={() => setSelectedClass(cls.id)}
+              className={`text-xs tracking-[0.15em] uppercase px-4 py-2 border rounded-full transition-all ${
+                selectedClass === cls.id
+                  ? "border-foreground bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+              }`}
+            >
+              {cls.name}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Gender Filter */}
@@ -86,7 +137,7 @@ const SchoolPage = () => {
         </div>
       ) : (
         <div className="grid md:grid-cols-3 gap-8">
-          {products?.filter((p) => selectedGender === "All" || (p as any).gender === selectedGender).map((product) => {
+          {filteredProducts?.map((product) => {
             const totalStock = product.product_variants?.reduce(
               (s: number, v: any) => s + v.stock, 0
             ) ?? 0;
@@ -109,6 +160,7 @@ const SchoolPage = () => {
                 <h3 className="text-sm font-light tracking-wide mb-1 group-hover:opacity-60 transition-opacity">
                   {product.name}
                 </h3>
+                <p className="text-xs text-muted-foreground mb-0.5">{(product as any).classes?.name}</p>
                 <p className="text-sm text-muted-foreground">{formatPrice(product.price)}</p>
                 {totalStock <= 10 && totalStock > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">Low stock</p>
