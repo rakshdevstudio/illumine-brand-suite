@@ -16,6 +16,7 @@ import ConfirmationPage from "./pages/store/ConfirmationPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
+import AdminLoginPage from "./pages/admin/AdminLoginPage";
 import DashboardPage from "./pages/admin/DashboardPage";
 import SchoolsPage from "./pages/admin/SchoolsPage";
 import ClassesPage from "./pages/admin/ClassesPage";
@@ -46,6 +47,7 @@ const App = () => (
           </Route>
 
           {/* Admin Routes */}
+          <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
