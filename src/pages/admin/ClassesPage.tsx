@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,6 +14,7 @@ const ClassesPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: "", school_id: "", code: "", sort_order: "0" });
+  const [schoolFilter, setSchoolFilter] = useState("all");
 
   const { data: classes, isLoading } = useQuery({
     queryKey: ["admin-classes"],
@@ -35,6 +36,24 @@ const ClassesPage = () => {
       return data;
     },
   });
+
+  // Filter + group by school
+  const filteredClasses = useMemo(() => {
+    if (!classes) return [];
+    if (schoolFilter === "all") return classes;
+    return classes.filter((c: any) => c.school_id === schoolFilter);
+  }, [classes, schoolFilter]);
+
+  const groupedBySchool = useMemo(() => {
+    const groups: Record<string, { schoolName: string; items: any[] }> = {};
+    filteredClasses.forEach((cls: any) => {
+      const schoolName = cls.schools?.name || "Unknown";
+      const schoolId = cls.school_id;
+      if (!groups[schoolId]) groups[schoolId] = { schoolName, items: [] };
+      groups[schoolId].items.push(cls);
+    });
+    return Object.entries(groups).sort(([, a], [, b]) => a.schoolName.localeCompare(b.schoolName));
+  }, [filteredClasses]);
 
   const handleSave = async () => {
     if (!form.name || !form.school_id || !form.code) {
@@ -94,11 +113,27 @@ const ClassesPage = () => {
         </Button>
       </div>
 
+      {/* School Filter */}
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-xs text-muted-foreground uppercase tracking-wider">Filter by School</span>
+        <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+          <SelectTrigger className="w-56 h-9 text-xs">
+            <SelectValue placeholder="All Schools" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Schools</SelectItem>
+            {schools?.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Grouped Table */}
       <div className="border border-border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Class Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Code</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Sort Order</TableHead>
@@ -109,38 +144,49 @@ const ClassesPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
-            ) : classes?.length === 0 ? (
+            ) : groupedBySchool.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">No classes</TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">No classes</TableCell>
               </TableRow>
             ) : (
-              classes?.map((cls: any) => (
-                <TableRow key={cls.id}>
-                  <TableCell className="text-sm text-muted-foreground">{cls.schools?.name}</TableCell>
-                  <TableCell className="text-sm">{cls.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{cls.code}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{cls.sort_order}</TableCell>
-                  <TableCell>
-                    <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                      cls.status === "inactive"
-                        ? "border-destructive text-destructive"
-                        : "border-border text-foreground"
-                    }`}>
-                      {cls.status}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(cls)}>Edit</Button>
-                      <Button variant="outline" size="sm" className="text-xs"
-                        onClick={() => handleStatusToggle(cls.id, cls.status)}>
-                        {cls.status === "inactive" ? "Enable" : "Disable"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+              groupedBySchool.map(([schoolId, { schoolName, items }]) => (
+                <>
+                  <TableRow key={`school-${schoolId}`}>
+                    <TableCell
+                      colSpan={5}
+                      className="bg-muted/30 text-xs font-medium tracking-[0.15em] uppercase py-3 border-b border-border"
+                    >
+                      {schoolName} — {items.length} class{items.length !== 1 ? "es" : ""}
+                    </TableCell>
+                  </TableRow>
+                  {items.map((cls: any) => (
+                    <TableRow key={cls.id}>
+                      <TableCell className="text-sm pl-6">{cls.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{cls.code}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{cls.sort_order}</TableCell>
+                      <TableCell>
+                        <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
+                          cls.status === "inactive"
+                            ? "border-destructive text-destructive"
+                            : "border-border text-foreground"
+                        }`}>
+                          {cls.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(cls)}>Edit</Button>
+                          <Button variant="outline" size="sm" className="text-xs"
+                            onClick={() => handleStatusToggle(cls.id, cls.status)}>
+                            {cls.status === "inactive" ? "Enable" : "Disable"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </>
               ))
             )}
           </TableBody>

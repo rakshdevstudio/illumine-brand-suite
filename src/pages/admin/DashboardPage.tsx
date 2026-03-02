@@ -2,9 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Package, ShoppingCart, AlertTriangle } from "lucide-react";
+import { Package, ShoppingCart, AlertTriangle, GraduationCap } from "lucide-react";
 
 const DashboardPage = () => {
+  const { data: schools } = useQuery({
+    queryKey: ["admin-schools-count"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("schools").select("id");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const { data: products } = useQuery({
     queryKey: ["admin-products"],
     queryFn: async () => {
@@ -52,7 +61,18 @@ const DashboardPage = () => {
       <h1 className="text-xl font-light tracking-[0.1em] uppercase mb-8">Dashboard</h1>
 
       {/* KPIs */}
-      <div className="grid md:grid-cols-3 gap-6 mb-12">
+      <div className="grid md:grid-cols-4 gap-6 mb-12">
+        <Card className="border-border shadow-none">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-xs tracking-[0.2em] uppercase text-muted-foreground font-normal">
+              Total Schools
+            </CardTitle>
+            <GraduationCap className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-extralight">{schools?.length ?? 0}</p>
+          </CardContent>
+        </Card>
         <Card className="border-border shadow-none">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs tracking-[0.2em] uppercase text-muted-foreground font-normal">
