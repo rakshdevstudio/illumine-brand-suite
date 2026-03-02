@@ -15,31 +15,52 @@ export function useAuth() {
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (!mounted) return;
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         if (currentUser) {
-          const r = await checkRole(currentUser.id);
-          setRole(r);
+          try {
+            const r = await checkRole(currentUser.id);
+            if (mounted) setRole(r);
+          } catch {
+            if (mounted) setRole(null);
+          }
         } else {
           setRole(null);
         }
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     );
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        const r = await checkRole(currentUser.id);
-        setRole(r);
+        try {
+          const r = await checkRole(currentUser.id);
+          if (mounted) setRole(r);
+        } catch {
+          if (mounted) setRole(null);
+        }
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Safety timeout — never stay loading forever
+    const timeout = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const isAdmin = role === "super_admin" || role === "admin";
