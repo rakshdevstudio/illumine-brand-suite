@@ -6,8 +6,8 @@ import { getDisplayImage } from "@/lib/product-images";
 const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
 
-  const genderLabel = gender === "boys" ? "Boys" : "Girls";
-  const genderDb = gender === "boys" ? "Male" : "Female";
+  const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
+  const genderDb = gender === "boys" ? "Male" : gender === "girls" ? "Female" : "Unisex";
 
   const { data: school } = useQuery({
     queryKey: ["school", slug],

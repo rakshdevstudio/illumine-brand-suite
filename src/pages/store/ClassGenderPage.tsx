@@ -34,8 +34,9 @@ const ClassGenderPage = () => {
   });
 
   const genders = [
-    { label: "Boys", value: "boys", dbValue: "Male" },
-    { label: "Girls", value: "girls", dbValue: "Female" },
+    { label: "Boys", value: "boys" },
+    { label: "Girls", value: "girls" },
+    { label: "Unisex", value: "unisex" },
   ];
 
   return (
@@ -54,7 +55,7 @@ const ClassGenderPage = () => {
       </h1>
       <p className="text-sm text-muted-foreground mb-12">Select gender</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl">
         {genders.map((g) => (
           <Link
             key={g.value}
