@@ -1,5 +1,5 @@
 import { Outlet, Navigate } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,6 +25,7 @@ const navItems = [
   { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
   { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
   { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
+  { title: "Testing", url: "/admin/testing/product-segregation", icon: FlaskConical, minRole: "staff" as const },
 ];
 
 const roleLabels: Record<string, string> = {

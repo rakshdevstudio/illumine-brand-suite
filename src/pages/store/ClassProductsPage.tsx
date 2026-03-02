@@ -1,10 +1,12 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
 
 const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
+  const [searchParams] = useSearchParams();
+  const debugMode = searchParams.get("debug") === "true";
 
   const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
   const genderDb = gender === "boys" ? "Male" : gender === "girls" ? "Female" : "Unisex";
@@ -65,6 +67,16 @@ const ClassProductsPage = () => {
         <span>/</span>
         <span className="text-foreground">{genderLabel}</span>
       </nav>
+
+      {debugMode && (
+        <div className="mb-8 border border-border p-4 bg-secondary/30 text-xs space-y-1">
+          <p className="text-[10px] tracking-[0.15em] uppercase font-medium text-muted-foreground mb-2">Debug Panel</p>
+          <p><span className="text-muted-foreground">School:</span> {school?.name ?? "…"}</p>
+          <p><span className="text-muted-foreground">Class:</span> {cls?.name ?? "…"}</p>
+          <p><span className="text-muted-foreground">Gender:</span> {genderLabel}</p>
+          <p><span className="text-muted-foreground">Products Found:</span> {products?.length ?? 0}</p>
+        </div>
+      )}
 
       <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-2">
         {cls?.name ?? "…"} — {genderLabel}
