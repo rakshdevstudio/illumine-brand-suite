@@ -1,10 +1,24 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowRight } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
+import { useStudentProfile, StudentProfile } from "@/lib/student-profile";
 
 const StorePage = () => {
+  const profile = useStudentProfile((s) => s.profile);
+  const openModal = useStudentProfile((s) => s.openModal);
+
+  // Show modal on first visit if no profile
+  const [checkedFirst, setCheckedFirst] = useState(false);
+  useEffect(() => {
+    if (!checkedFirst) {
+      setCheckedFirst(true);
+      if (!profile) openModal();
+    }
+  }, [checkedFirst, profile, openModal]);
+
   const { data: schools, isLoading } = useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
