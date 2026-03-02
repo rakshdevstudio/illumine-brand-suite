@@ -9,6 +9,8 @@ import NotFound from "./pages/NotFound";
 import StoreLayout from "./components/store/StoreLayout";
 import StorePage from "./pages/store/StorePage";
 import SchoolPage from "./pages/store/SchoolPage";
+import ClassGenderPage from "./pages/store/ClassGenderPage";
+import ClassProductsPage from "./pages/store/ClassProductsPage";
 import ProductPage from "./pages/store/ProductPage";
 import CartPage from "./pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
@@ -41,6 +43,8 @@ const App = () => (
           <Route path="/store" element={<StoreLayout />}>
             <Route index element={<StorePage />} />
             <Route path="school/:slug" element={<SchoolPage />} />
+            <Route path="school/:slug/class/:classSlug" element={<ClassGenderPage />} />
+            <Route path="school/:slug/class/:classSlug/gender/:gender" element={<ClassProductsPage />} />
             <Route path="product/:id" element={<ProductPage />} />
             <Route path="cart" element={<CartPage />} />
             <Route path="checkout" element={<CheckoutPage />} />

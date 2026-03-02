@@ -42,11 +42,13 @@ const ClassesPage = () => {
       return;
     }
     try {
+      const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const payload = {
         name: form.name,
         school_id: form.school_id,
         code: form.code,
         sort_order: parseInt(form.sort_order) || 0,
+        slug,
       };
       if (editing) {
         await supabase.from("classes").update(payload).eq("id", editing.id);

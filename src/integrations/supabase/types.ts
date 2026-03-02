@@ -21,6 +21,7 @@ export type Database = {
           id: string
           name: string
           school_id: string
+          slug: string
           sort_order: number
           status: string
         }
@@ -30,6 +31,7 @@ export type Database = {
           id?: string
           name: string
           school_id: string
+          slug: string
           sort_order?: number
           status?: string
         }
@@ -39,6 +41,7 @@ export type Database = {
           id?: string
           name?: string
           school_id?: string
+          slug?: string
           sort_order?: number
           status?: string
         }
