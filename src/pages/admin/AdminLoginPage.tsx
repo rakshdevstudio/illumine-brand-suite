@@ -24,15 +24,21 @@ const AdminLoginPage = () => {
       return;
     }
 
-    // Check admin role
-    const { data: hasAdmin } = await supabase.rpc("has_role", {
-      _user_id: data.user.id,
-      _role: "admin",
-    });
+    // Check user has any admin role
+    const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: data.user.id });
 
-    if (!hasAdmin) {
+    if (!userRole || !["super_admin", "admin", "staff"].includes(userRole)) {
       await supabase.auth.signOut();
       toast.error("Access denied. Admin privileges required.");
+      setLoading(false);
+      return;
+    }
+
+    // Check profile status
+    const { data: profile } = await supabase.from("profiles").select("status").eq("id", data.user.id).single();
+    if (profile?.status === "disabled") {
+      await supabase.auth.signOut();
+      toast.error("Your account has been disabled.");
       setLoading(false);
       return;
     }
