@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -18,6 +18,7 @@ import {
 const navItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { title: "Schools", url: "/admin/schools", icon: GraduationCap },
+  { title: "Classes", url: "/admin/classes", icon: BookOpen },
   { title: "Products", url: "/admin/products", icon: Box },
   { title: "Variants", url: "/admin/product-variants", icon: Layers },
   { title: "Inventory", url: "/admin/inventory", icon: Package },

@@ -19,7 +19,7 @@ const ProductPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, product_variants(*), schools(*), product_images(*)")
+        .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
         .eq("id", id!)
         .single();
       if (error) throw error;
@@ -128,6 +128,11 @@ const ProductPage = () => {
           <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-1">
             {(product as any).schools?.name}
           </p>
+          {(product as any).classes?.name && (
+            <p className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase mb-1">
+              {(product as any).classes.name}
+            </p>
+          )}
           <p className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase mb-3">
             {(product as any).gender || "Unisex"}
           </p>

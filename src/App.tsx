@@ -18,6 +18,7 @@ import ConfirmationPage from "./pages/store/ConfirmationPage";
 import AdminLayout from "./components/admin/AdminLayout";
 import DashboardPage from "./pages/admin/DashboardPage";
 import SchoolsPage from "./pages/admin/SchoolsPage";
+import ClassesPage from "./pages/admin/ClassesPage";
 import ProductsPage from "./pages/admin/ProductsPage";
 import ProductVariantsPage from "./pages/admin/ProductVariantsPage";
 import InventoryPage from "./pages/admin/InventoryPage";
@@ -49,6 +50,7 @@ const App = () => (
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="schools" element={<SchoolsPage />} />
+            <Route path="classes" element={<ClassesPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="product-variants" element={<ProductVariantsPage />} />
             <Route path="inventory" element={<InventoryPage />} />

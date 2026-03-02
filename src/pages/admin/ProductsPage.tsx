@@ -18,14 +18,14 @@ const ProductsPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
+  const [form, setForm] = useState({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "" });
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-products-list"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, schools(name, slug), product_images(*)")
+        .select("*, schools(name, slug), product_images(*), classes(name)")
         .order("name");
       if (error) throw error;
       return data;
@@ -41,6 +41,17 @@ const ProductsPage = () => {
     },
   });
 
+  const { data: classes } = useQuery({
+    queryKey: ["admin-classes-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const filteredClasses = classes?.filter((c: any) => c.school_id === form.school_id) ?? [];
+
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
@@ -50,9 +61,10 @@ const ProductsPage = () => {
       return;
     }
     try {
-      const payload = {
+      const payload: any = {
         name: form.name,
         school_id: form.school_id,
+        class_id: form.class_id || null,
         category: form.category,
         gender: form.gender,
         price: parseFloat(form.price),
@@ -68,7 +80,7 @@ const ProductsPage = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
       setDialogOpen(false);
       setEditing(null);
-      setForm({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
+      setForm({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "" });
     } catch {
       toast.error("Failed to save product");
     }
@@ -86,6 +98,7 @@ const ProductsPage = () => {
     setForm({
       name: product.name,
       school_id: product.school_id,
+      class_id: (product as any).class_id || "",
       category: product.category,
       gender: (product as any).gender || "Unisex",
       price: String(product.price),
@@ -96,7 +109,7 @@ const ProductsPage = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", school_id: "", category: "", gender: "Unisex", price: "", description: "" });
+    setForm({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "" });
     setDialogOpen(true);
   };
 
@@ -124,6 +137,7 @@ const ProductsPage = () => {
               <TableHead className="text-xs tracking-wider uppercase w-16">Image</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Gender</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Base Price</TableHead>
@@ -134,11 +148,11 @@ const ProductsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : products?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
               </TableRow>
             ) : (
               products?.map((product) => (
@@ -156,6 +170,7 @@ const ProductsPage = () => {
                   </TableCell>
                   <TableCell className="text-sm">{product.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).schools?.name}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).classes?.name || "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).gender || "Unisex"}</TableCell>
                   <TableCell className="text-sm">{formatPrice(product.price)}</TableCell>
@@ -205,6 +220,19 @@ const ProductsPage = () => {
                 <SelectContent>
                   {schools?.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Class</label>
+              <Select value={form.class_id} onValueChange={(v) => setForm({ ...form, class_id: v })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder={filteredClasses.length === 0 ? "Select school first" : "Select class"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredClasses.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

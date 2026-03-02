@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      classes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          school_id: string
+          sort_order: number
+          status: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          school_id: string
+          sort_order?: number
+          status?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          school_id?: string
+          sort_order?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classes_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_logs: {
         Row: {
           change_type: string
@@ -236,6 +274,7 @@ export type Database = {
       products: {
         Row: {
           category: string
+          class_id: string | null
           created_at: string
           description: string | null
           gender: string
@@ -248,6 +287,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          class_id?: string | null
           created_at?: string
           description?: string | null
           gender?: string
@@ -260,6 +300,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          class_id?: string | null
           created_at?: string
           description?: string | null
           gender?: string
@@ -271,6 +312,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "products_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_school_id_fkey"
             columns: ["school_id"]
