@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,13 +17,36 @@ const ProductVariantsPage = () => {
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [form, setForm] = useState({ product_id: "", size: "", stock: "0", price_override: "" });
 
+  // Filters
+  const [schoolFilter, setSchoolFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all");
+  const [productFilter, setProductFilter] = useState("all");
+
   const { data: variants, isLoading } = useQuery({
     queryKey: ["admin-variants"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("product_variants")
-        .select("*, products(name, price, school_id, schools(name))")
+        .select("*, products(name, price, school_id, class_id, schools(name), classes(name))")
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: schools } = useQuery({
+    queryKey: ["admin-schools-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("schools").select("id, name").order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: classes } = useQuery({
+    queryKey: ["admin-classes-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -32,11 +55,35 @@ const ProductVariantsPage = () => {
   const { data: products } = useQuery({
     queryKey: ["admin-products-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, name, schools(name)").order("name");
+      const { data, error } = await supabase.from("products").select("id, name, school_id, class_id, schools(name)").order("name");
       if (error) throw error;
       return data;
     },
   });
+
+  // Cascading filter logic
+  const filteredClassesForFilter = useMemo(() => {
+    if (!classes) return [];
+    if (schoolFilter === "all") return classes;
+    return classes.filter((c: any) => c.school_id === schoolFilter);
+  }, [classes, schoolFilter]);
+
+  const filteredProductsForFilter = useMemo(() => {
+    if (!products) return [];
+    let filtered = products as any[];
+    if (schoolFilter !== "all") filtered = filtered.filter((p) => p.school_id === schoolFilter);
+    if (classFilter !== "all") filtered = filtered.filter((p) => p.class_id === classFilter);
+    return filtered;
+  }, [products, schoolFilter, classFilter]);
+
+  const filteredVariants = useMemo(() => {
+    if (!variants) return [];
+    let filtered = variants as any[];
+    if (schoolFilter !== "all") filtered = filtered.filter((v) => v.products?.school_id === schoolFilter);
+    if (classFilter !== "all") filtered = filtered.filter((v) => v.products?.class_id === classFilter);
+    if (productFilter !== "all") filtered = filtered.filter((v) => v.product_id === productFilter);
+    return filtered;
+  }, [variants, schoolFilter, classFilter, productFilter]);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -125,12 +172,59 @@ const ProductVariantsPage = () => {
         </Button>
       </div>
 
+      {/* Cascading Filters */}
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
+          <Select value={schoolFilter} onValueChange={(v) => { setSchoolFilter(v); setClassFilter("all"); setProductFilter("all"); }}>
+            <SelectTrigger className="w-48 h-9 text-xs">
+              <SelectValue placeholder="All Schools" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Schools</SelectItem>
+              {schools?.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Class</span>
+          <Select value={classFilter} onValueChange={(v) => { setClassFilter(v); setProductFilter("all"); }}>
+            <SelectTrigger className="w-48 h-9 text-xs">
+              <SelectValue placeholder="All Classes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Classes</SelectItem>
+              {filteredClassesForFilter.map((c: any) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Product</span>
+          <Select value={productFilter} onValueChange={setProductFilter}>
+            <SelectTrigger className="w-48 h-9 text-xs">
+              <SelectValue placeholder="All Products" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Products</SelectItem>
+              {filteredProductsForFilter.map((p: any) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <div className="border border-border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Stock</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Price</TableHead>
@@ -141,19 +235,20 @@ const ProductVariantsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
-            ) : variants?.length === 0 ? (
+            ) : filteredVariants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
+                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
               </TableRow>
             ) : (
-              variants?.map((v: any) => {
+              filteredVariants.map((v: any) => {
                 const effectivePrice = v.price_override ?? v.products?.price;
                 return (
                   <TableRow key={v.id}>
                     <TableCell className="text-sm">{v.products?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{v.size}</TableCell>
                     <TableCell className="text-sm font-medium">{v.stock}</TableCell>
                     <TableCell className="text-sm">
