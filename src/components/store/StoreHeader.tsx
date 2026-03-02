@@ -17,7 +17,7 @@ const StoreHeader = () => {
           <img
             src={illumeLogo}
             alt="Illume"
-            className="h-8 w-auto invert"
+            className="h-8 w-auto" style={{ filter: "brightness(0) invert(1)" }}
           />
         </Link>
 

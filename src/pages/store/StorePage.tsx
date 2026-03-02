@@ -34,7 +34,7 @@ const StorePage = () => {
         <img
           src={illumeLogo}
           alt="Illume"
-          className="h-24 md:h-36 w-auto mx-auto mb-8 invert"
+          className="h-24 md:h-36 w-auto mx-auto mb-8" style={{ filter: "brightness(0) invert(1)" }}
         />
         <p className="text-sm tracking-[0.3em] text-surface-dark-muted uppercase max-w-lg mx-auto font-light">
           Premium school uniforms crafted with care

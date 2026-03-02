@@ -49,9 +49,9 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
       <SidebarContent>
         <div className="p-4 pb-6">
           {!collapsed ? (
-            <img src={illumeLogo} alt="Illume" className="h-8 w-auto invert" />
+            <img src={illumeLogo} alt="Illume" className="h-8 w-auto" style={{ filter: "brightness(0) invert(1)" }} />
           ) : (
-            <img src={illumeLogo} alt="Illume" className="h-6 w-auto invert" />
+            <img src={illumeLogo} alt="Illume" className="h-6 w-auto" style={{ filter: "brightness(0) invert(1)" }} />
           )}
         </div>
         <SidebarGroup>
