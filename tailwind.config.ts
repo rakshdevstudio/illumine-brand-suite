@@ -60,6 +60,12 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        surface: {
+          elevated: "hsl(var(--surface-elevated))",
+          dark: "hsl(var(--surface-dark))",
+          "dark-foreground": "hsl(var(--surface-dark-foreground))",
+          "dark-muted": "hsl(var(--surface-dark-muted))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

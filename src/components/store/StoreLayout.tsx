@@ -14,16 +14,18 @@ const StoreLayout = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background">
       <StoreHeader />
       <StudentProfileModal open={showModal} onOpenChange={(o) => o ? openModal() : closeModal()} onProfileSet={handleProfileSet} />
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="border-t border-border py-8">
-        <p className="text-center text-xs tracking-[0.2em] text-muted-foreground uppercase">
-          © 2026 Illume. All rights reserved.
-        </p>
+      <footer className="bg-surface-dark py-12">
+        <div className="max-w-7xl mx-auto px-6">
+          <p className="text-center text-xs tracking-[0.3em] text-surface-dark-muted uppercase">
+            © 2026 Illume. All rights reserved.
+          </p>
+        </div>
       </footer>
     </div>
   );
