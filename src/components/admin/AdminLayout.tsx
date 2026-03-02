@@ -1,5 +1,5 @@
 import { Outlet, Navigate } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/use-auth";
@@ -17,18 +17,31 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Schools", url: "/admin/schools", icon: GraduationCap },
-  { title: "Classes", url: "/admin/classes", icon: BookOpen },
-  { title: "Products", url: "/admin/products", icon: Box },
-  { title: "Variants", url: "/admin/product-variants", icon: Layers },
-  { title: "Inventory", url: "/admin/inventory", icon: Package },
-  { title: "Orders", url: "/admin/orders", icon: ShoppingCart },
+  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, minRole: "staff" as const },
+  { title: "Schools", url: "/admin/schools", icon: GraduationCap, minRole: "staff" as const },
+  { title: "Classes", url: "/admin/classes", icon: BookOpen, minRole: "staff" as const },
+  { title: "Products", url: "/admin/products", icon: Box, minRole: "staff" as const },
+  { title: "Variants", url: "/admin/product-variants", icon: Layers, minRole: "staff" as const },
+  { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
+  { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
+  { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
 ];
 
-function AdminSidebar({ onSignOut }: { onSignOut: () => void }) {
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  staff: "Staff",
+};
+
+function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string | null }) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+
+  const visibleItems = navItems.filter((item) => {
+    if (item.minRole === "staff") return true;
+    if (item.minRole === "admin") return role === "super_admin" || role === "admin";
+    return false;
+  });
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
@@ -43,7 +56,7 @@ function AdminSidebar({ onSignOut }: { onSignOut: () => void }) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink
@@ -90,7 +103,7 @@ function AdminSidebar({ onSignOut }: { onSignOut: () => void }) {
 }
 
 const AdminLayout = () => {
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const { user, role, hasAccess, loading, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -100,20 +113,25 @@ const AdminLayout = () => {
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!user || !hasAccess) {
     return <Navigate to="/admin/login" replace />;
   }
 
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
-        <AdminSidebar onSignOut={signOut} />
+        <AdminSidebar onSignOut={signOut} role={role} />
         <div className="flex-1 flex flex-col">
           <header className="h-14 flex items-center justify-between border-b border-border px-4">
             <SidebarTrigger />
-            <span className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
-              {user.email}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] tracking-[0.15em] text-muted-foreground uppercase border border-border px-2 py-1">
+                {roleLabels[role || ""] || role}
+              </span>
+              <span className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                {user.email}
+              </span>
+            </div>
           </header>
           <main className="flex-1 p-6 md:p-8">
             <Outlet />
