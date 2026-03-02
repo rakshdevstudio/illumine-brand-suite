@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +11,7 @@ const CheckoutPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", address: "" });
+  const hasItemsRef = useRef(items.length > 0);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -25,7 +26,6 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // Create order
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .insert({
@@ -40,7 +40,6 @@ const CheckoutPage = () => {
 
       if (orderErr) throw orderErr;
 
-      // Create order items
       const orderItems = items.map((item) => ({
         order_id: order.id,
         product_id: item.productId,
@@ -52,7 +51,6 @@ const CheckoutPage = () => {
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
-      // Update stock & create inventory logs
       for (const item of items) {
         const { data: variant } = await supabase
           .from("product_variants")
@@ -80,7 +78,7 @@ const CheckoutPage = () => {
       }
 
       clearCart();
-      navigate(`/store/confirmation?order=${order.id}`);
+      navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
       console.error(err);
       toast.error("Failed to place order. Please try again.");
@@ -89,8 +87,9 @@ const CheckoutPage = () => {
     }
   };
 
-  if (items.length === 0) {
-    navigate("/store/cart");
+  // Only redirect if user arrived with empty cart (not after successful order)
+  if (!hasItemsRef.current) {
+    navigate("/store/cart", { replace: true });
     return null;
   }
 
