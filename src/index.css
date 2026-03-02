@@ -22,7 +22,7 @@
     --secondary-foreground: 0 0% 33%;
 
     --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 33%;
+    --muted-foreground: 0 0% 45%;
 
     --accent: 0 0% 96%;
     --accent-foreground: 0 0% 0%;
@@ -36,14 +36,21 @@
 
     --radius: 0px;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 0 0% 0%;
-    --sidebar-primary: 0 0% 0%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 0%;
-    --sidebar-border: 0 0% 91.8%;
-    --sidebar-ring: 0 0% 0%;
+    /* Sidebar — black editorial */
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 0 0% 100%;
+
+    /* Custom luxury tokens */
+    --surface-elevated: 0 0% 98%;
+    --surface-dark: 0 0% 0%;
+    --surface-dark-foreground: 0 0% 100%;
+    --surface-dark-muted: 0 0% 65%;
   }
 }
 

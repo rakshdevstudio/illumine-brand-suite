@@ -11,17 +11,21 @@ const StoreHeader = () => {
   const openModal = useStudentProfile((s) => s.openModal);
 
   return (
-    <header className="border-b border-border">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+    <header className="bg-surface-dark border-b border-surface-dark">
+      <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link to="/store" className="flex items-center gap-2">
-          <img src={illumeLogo} alt="Illume" className="h-10 w-auto" style={{ filter: "brightness(0)" }} />
+          <img
+            src={illumeLogo}
+            alt="Illume"
+            className="h-8 w-auto invert"
+          />
         </Link>
 
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-6">
           {profile && (
             <button
               onClick={openModal}
-              className="flex items-center gap-2 text-xs tracking-wide text-muted-foreground hover:text-foreground transition-colors group"
+              className="flex items-center gap-2 text-xs tracking-wide text-surface-dark-muted hover:text-surface-dark-foreground transition-colors group"
             >
               <User className="h-4 w-4" strokeWidth={1.5} />
               <span className="hidden sm:inline">
@@ -34,9 +38,9 @@ const StoreHeader = () => {
           )}
 
           <Link to="/store/cart" className="relative group">
-            <ShoppingBag className="h-5 w-5 transition-opacity group-hover:opacity-60" strokeWidth={1.5} />
+            <ShoppingBag className="h-5 w-5 text-surface-dark-foreground transition-opacity group-hover:opacity-60" strokeWidth={1.5} />
             {count > 0 && (
-              <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] w-4 h-4 flex items-center justify-center">
+              <span className="absolute -top-2 -right-2 bg-surface-dark-foreground text-surface-dark text-[10px] w-4 h-4 flex items-center justify-center">
                 {count}
               </span>
             )}

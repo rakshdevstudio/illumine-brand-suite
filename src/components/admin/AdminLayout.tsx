@@ -45,13 +45,13 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
   });
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarContent>
-        <div className="p-4">
+        <div className="p-4 pb-6">
           {!collapsed ? (
-            <img src={illumeLogo} alt="Illume" className="h-10 w-auto" style={{ filter: "brightness(0)" }} />
+            <img src={illumeLogo} alt="Illume" className="h-8 w-auto invert" />
           ) : (
-            <img src={illumeLogo} alt="Illume" className="h-8 w-auto" style={{ filter: "brightness(0)" }} />
+            <img src={illumeLogo} alt="Illume" className="h-6 w-auto invert" />
           )}
         </div>
         <SidebarGroup>
@@ -62,8 +62,8 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
-                      className="hover:bg-accent"
-                      activeClassName="bg-accent font-medium"
+                      className="text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                      activeClassName="bg-sidebar-accent text-sidebar-foreground font-medium"
                     >
                       <item.icon className="mr-2 h-4 w-4" strokeWidth={1.5} />
                       {!collapsed && <span className="text-sm">{item.title}</span>}
@@ -77,7 +77,7 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
                     href="/store"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:bg-accent flex items-center"
+                    className="text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent flex items-center transition-colors"
                   >
                     <ExternalLink className="mr-2 h-4 w-4" strokeWidth={1.5} />
                     {!collapsed && <span className="text-sm">Store</span>}
@@ -88,7 +88,7 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
                 <SidebarMenuButton asChild>
                   <button
                     onClick={onSignOut}
-                    className="hover:bg-accent flex items-center w-full text-muted-foreground hover:text-foreground"
+                    className="text-sidebar-foreground/40 hover:text-sidebar-foreground hover:bg-sidebar-accent flex items-center w-full transition-colors"
                   >
                     <LogOut className="mr-2 h-4 w-4" strokeWidth={1.5} />
                     {!collapsed && <span className="text-sm">Sign Out</span>}
@@ -108,7 +108,7 @@ const AdminLayout = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-surface-elevated">
         <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase animate-pulse">Loading...</p>
       </div>
     );
@@ -122,8 +122,8 @@ const AdminLayout = () => {
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AdminSidebar onSignOut={signOut} role={role} />
-        <div className="flex-1 flex flex-col">
-          <header className="h-14 flex items-center justify-between border-b border-border px-4">
+        <div className="flex-1 flex flex-col bg-surface-elevated">
+          <header className="h-14 flex items-center justify-between border-b border-border bg-background px-4">
             <SidebarTrigger />
             <div className="flex items-center gap-3">
               <span className="text-[10px] tracking-[0.15em] text-muted-foreground uppercase border border-border px-2 py-1">
