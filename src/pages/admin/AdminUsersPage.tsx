@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Shield, ShieldCheck, User, Trash2 } from "lucide-react";
@@ -219,10 +219,11 @@ const AdminUsersPage = () => {
 
       {/* Create User Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">Add Admin User</DialogTitle>
           </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
           <div className="space-y-4 py-4">
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Full Name</label>
@@ -234,7 +235,7 @@ const AdminUsersPage = () => {
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Password</label>
-              <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="h-10" placeholder="Minimum 6 characters" />
+              <Input type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="h-10" placeholder="Minimum 6 characters" />
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Role</label>
@@ -250,15 +251,16 @@ const AdminUsersPage = () => {
               </Select>
             </div>
           </div>
-          <Button onClick={handleCreate} disabled={saving} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
+          <Button type="submit" disabled={saving} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
             {saving ? "Creating..." : "Create User"}
           </Button>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* Edit Role Dialog */}
       <Dialog open={!!editingRole} onOpenChange={(open) => !open && setEditingRole(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">Change Role</DialogTitle>
           </DialogHeader>

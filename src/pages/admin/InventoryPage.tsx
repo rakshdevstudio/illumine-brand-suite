@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 
@@ -143,7 +143,7 @@ const InventoryPage = () => {
                           Adjust
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-sm">
+                      <DialogContent className="max-w-sm" aria-describedby={undefined}>
                         <DialogHeader>
                           <DialogTitle className="text-sm font-light tracking-wide">
                             Adjust Stock — {row.productName} (Size {row.size})

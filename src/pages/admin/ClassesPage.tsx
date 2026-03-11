@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
@@ -152,8 +152,8 @@ const ClassesPage = () => {
               </TableRow>
             ) : (
               groupedBySchool.map(([schoolId, { schoolName, items }]) => (
-                <>
-                  <TableRow key={`school-${schoolId}`}>
+                <React.Fragment key={schoolId}>
+                  <TableRow>
                     <TableCell
                       colSpan={5}
                       className="bg-muted/30 text-xs font-medium tracking-[0.15em] uppercase py-3 border-b border-border"
@@ -186,7 +186,7 @@ const ClassesPage = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                </>
+                </React.Fragment>
               ))
             )}
           </TableBody>
@@ -194,7 +194,7 @@ const ClassesPage = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               {editing ? "Edit Class" : "Add Class"}
