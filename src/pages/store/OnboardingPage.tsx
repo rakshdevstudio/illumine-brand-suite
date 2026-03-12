@@ -43,33 +43,16 @@ const OnboardingPage = () => {
     }
   }, [loading, user, navigate]);
 
-  // Pre-fill from existing customer data
+  // Pre-fill from existing customer data; skip to step 2 if name already set
   useEffect(() => {
     if (customer) {
-      if (customer.name) setName(customer.name);
+      if (customer.name)  setName(customer.name);
       if (customer.phone) setPhone(customer.phone);
       if (customer.child_school_id) setSchoolId(customer.child_school_id);
       if (customer.child_class_id)  setClassId(customer.child_class_id);
       if (customer.child_gender)    setGender(customer.child_gender as "boys" | "girls");
-    }
-  }, [customer]);
-
-  // Fetch all schools
-  const { data: schools = [] } = useQuery({
-    queryKey: ["schools-onboarding"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("schools")
-        .select("id, name, slug")
-        .eq("status", "active")
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Fetch classes when a school is selected
-  const { data: classes = [] } = useQuery({
+      // Already has a name → jump straight to school selection
+      if (customer.name) setStep(2);
     queryKey: ["classes-onboarding", schoolId],
     enabled: !!schoolId,
     queryFn: async () => {
