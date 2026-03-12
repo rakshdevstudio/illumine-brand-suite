@@ -7,13 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Shield, ShieldCheck, User, Trash2 } from "lucide-react";
+import { Plus, Shield, ShieldCheck, User, Trash2, Monitor, Store, GraduationCap } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const roleLabels: Record<string, { label: string; icon: typeof Shield }> = {
-  super_admin: { label: "Super Admin", icon: ShieldCheck },
-  admin: { label: "Admin", icon: Shield },
-  staff: { label: "Staff", icon: User },
+  super_admin:  { label: "Super Admin",  icon: ShieldCheck },
+  admin:        { label: "Admin",        icon: Shield },
+  staff:        { label: "Staff",        icon: User },
+  branch_staff: { label: "Branch Staff", icon: Monitor },
+  vendor:       { label: "Vendor",       icon: Store },
+  school_user:  { label: "School User",  icon: GraduationCap },
 };
 
 const AdminUsersPage = () => {
@@ -247,6 +250,9 @@ const AdminUsersPage = () => {
                   {currentUserRole === "super_admin" && <SelectItem value="super_admin">Super Admin</SelectItem>}
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="branch_staff">Branch Staff</SelectItem>
+                  <SelectItem value="vendor">Vendor</SelectItem>
+                  <SelectItem value="school_user">School User</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -265,7 +271,10 @@ const AdminUsersPage = () => {
             <DialogTitle className="text-sm font-light tracking-wide uppercase">Change Role</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            {(currentUserRole === "super_admin" ? ["super_admin", "admin", "staff"] : ["admin", "staff"]).map((role) => (
+            {(currentUserRole === "super_admin"
+              ? ["super_admin", "admin", "staff", "branch_staff", "vendor", "school_user"]
+              : ["admin", "staff", "branch_staff", "vendor", "school_user"]
+            ).map((role) => (
               <button
                 key={role}
                 onClick={() => editingRole && handleUpdateRole(editingRole.userId, role)}
