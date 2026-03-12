@@ -44,7 +44,7 @@ const StoreHeader = () => {
           {/* Account / Login */}
           {user ? (
             <Link
-              to="/account"
+              to="/store/account"
               className="flex items-center gap-1.5 text-xs tracking-wide text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
               title="My Account"
             >

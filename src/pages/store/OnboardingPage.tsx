@@ -328,7 +328,7 @@ const OnboardingPage = () => {
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           You can update this anytime from{" "}
-          <Link to="/account" className="underline underline-offset-2 hover:text-foreground">
+          <Link to="/store/account" className="underline underline-offset-2 hover:text-foreground">
             your account
           </Link>
           .

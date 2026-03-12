@@ -172,7 +172,7 @@ const AccountPage = () => {
   // Redirect if not logged in
   useEffect(() => {
     if (!loading && !user) {
-      navigate("/login?next=/account", { replace: true });
+      navigate("/login?next=/store/account", { replace: true });
     }
   }, [loading, user, navigate]);
 
