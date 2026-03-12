@@ -29,6 +29,18 @@ import OrdersPage from "./pages/admin/OrdersPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 
+// Vendor Portal
+import VendorLoginPage from "./pages/vendor/VendorLoginPage";
+import VendorDashboard from "./pages/vendor/VendorDashboard";
+
+// School Portal
+import SchoolLoginPage from "./pages/school/SchoolLoginPage";
+import SchoolDashboard from "./pages/school/SchoolDashboard";
+
+// POS
+import PosLoginPage from "./pages/pos/PosLoginPage";
+import PosDashboard from "./pages/pos/PosDashboard";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -66,6 +78,18 @@ const App = () => (
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="testing/product-segregation" element={<ProductSegregationPage />} />
           </Route>
+
+          {/* Vendor Portal */}
+          <Route path="/vendor/login" element={<VendorLoginPage />} />
+          <Route path="/vendor/dashboard" element={<VendorDashboard />} />
+
+          {/* School Portal */}
+          <Route path="/school/login" element={<SchoolLoginPage />} />
+          <Route path="/school/dashboard" element={<SchoolDashboard />} />
+
+          {/* POS */}
+          <Route path="/pos/login" element={<PosLoginPage />} />
+          <Route path="/pos" element={<PosDashboard />} />
 
           <Route path="*" element={<NotFound />} />
         </Routes>

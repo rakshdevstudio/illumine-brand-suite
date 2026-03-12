@@ -2,7 +2,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-type AppRole = "super_admin" | "admin" | "staff" | null;
+export type AppRole = "super_admin" | "admin" | "staff" | "branch_staff" | "vendor" | "school_user" | null;
+
+/** Returns the default destination path for a given role after successful login. */
+export function getRoleRedirectPath(role: AppRole): string {
+  switch (role) {
+    case "super_admin":
+    case "admin":
+    case "staff":       return "/admin/dashboard";
+    case "branch_staff": return "/pos";
+    case "vendor":       return "/vendor/dashboard";
+    case "school_user":  return "/school/dashboard";
+    default:             return "/admin/dashboard";
+  }
+}
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -51,7 +64,6 @@ export function useAuth() {
       if (mounted) setLoading(false);
     });
 
-    // Safety timeout — never stay loading forever
     const timeout = setTimeout(() => {
       if (mounted) setLoading(false);
     }, 5000);
@@ -65,7 +77,9 @@ export function useAuth() {
 
   const isAdmin = role === "super_admin" || role === "admin";
   const isSuperAdmin = role === "super_admin";
-  const isStaff = role === "staff";
+  const isStaff = role === "staff" || role === "branch_staff";
+  const isVendor = role === "vendor";
+  const isSchoolUser = role === "school_user";
   const hasAccess = role !== null;
 
   const signOut = async () => {
@@ -74,5 +88,5 @@ export function useAuth() {
     setRole(null);
   };
 
-  return { user, role, isAdmin, isSuperAdmin, isStaff, hasAccess, loading, signOut };
+  return { user, role, isAdmin, isSuperAdmin, isStaff, isVendor, isSchoolUser, hasAccess, loading, signOut };
 }

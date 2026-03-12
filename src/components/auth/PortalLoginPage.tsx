@@ -7,7 +7,16 @@ import { toast } from "sonner";
 import illumeLogo from "@/assets/illume-logo.png";
 import { getRoleRedirectPath, type AppRole } from "@/hooks/use-auth";
 
-const AdminLoginPage = () => {
+interface PortalLoginPageProps {
+  /** Human-readable portal name shown on the page, e.g. "Vendor Portal" */
+  portalLabel: string;
+  /** Roles that are allowed to log in via this portal */
+  allowedRoles: AppRole[];
+  /** Fallback redirect if role is not matched (optional — getRoleRedirectPath is used by default) */
+  fallbackPath?: string;
+}
+
+const PortalLoginPage = ({ portalLabel, allowedRoles, fallbackPath }: PortalLoginPageProps) => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,18 +34,21 @@ const AdminLoginPage = () => {
       return;
     }
 
-    // Check user has any admin role
     const { data: userRole } = await supabase.rpc("get_user_role", { _user_id: data.user.id });
 
-    if (!userRole || !["super_admin", "admin", "staff"].includes(userRole)) {
+    if (!userRole || !allowedRoles.includes(userRole as AppRole)) {
       await supabase.auth.signOut();
-      toast.error("Access denied. Admin privileges required.");
+      toast.error("Access denied. You do not have permission to use this portal.");
       setLoading(false);
       return;
     }
 
-    // Check profile status
-    const { data: profile } = await supabase.from("profiles").select("status").eq("id", data.user.id).single();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("status")
+      .eq("id", data.user.id)
+      .single();
+
     if (profile?.status === "disabled") {
       await supabase.auth.signOut();
       toast.error("Your account has been disabled.");
@@ -45,7 +57,7 @@ const AdminLoginPage = () => {
     }
 
     toast.success("Welcome back");
-    navigate(getRoleRedirectPath(userRole as AppRole));
+    navigate(fallbackPath ?? getRoleRedirectPath(userRole as AppRole));
   };
 
   return (
@@ -60,9 +72,12 @@ const AdminLoginPage = () => {
           />
         </div>
 
-        <h1 className="text-sm font-light tracking-[0.2em] uppercase text-center mb-8">
-          Admin Login
+        <h1 className="text-sm font-light tracking-[0.2em] uppercase text-center mb-1">
+          {portalLabel}
         </h1>
+        <p className="text-[10px] text-muted-foreground text-center tracking-wider mb-8">
+          Sign in to continue
+        </p>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -75,7 +90,7 @@ const AdminLoginPage = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-11"
-              placeholder="admin@illume.com"
+              placeholder="you@illume.com"
               required
             />
           </div>
@@ -103,11 +118,11 @@ const AdminLoginPage = () => {
         </form>
 
         <p className="text-[10px] text-muted-foreground text-center mt-8 tracking-wider">
-          Access restricted to authorized administrators
+          Access restricted to authorised users
         </p>
       </div>
     </div>
   );
 };
 
-export default AdminLoginPage;
+export default PortalLoginPage;

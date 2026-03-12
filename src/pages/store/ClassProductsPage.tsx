@@ -39,12 +39,14 @@ const ClassProductsPage = () => {
     queryKey: ["class-products", school?.id, cls?.id, genderDb],
     enabled: !!school?.id && !!cls?.id,
     queryFn: async () => {
+      const genderFilter = `(${genderDb},Unisex)`;
       const { data, error } = await supabase
         .from("products")
         .select("*, product_variants(*), product_images(*)")
-        .eq("school_id", school!.id)
-        .eq("class_id", cls!.id)
-        .in("gender", [genderDb, "Unisex"])
+        .or(
+          `and(school_id.eq.${school!.id},class_id.eq.${cls!.id},gender.in.${genderFilter}),` +
+          `and(is_universal.eq.true,gender.in.${genderFilter})`
+        )
         .eq("status", "active")
         .order("name");
       if (error) throw error;
