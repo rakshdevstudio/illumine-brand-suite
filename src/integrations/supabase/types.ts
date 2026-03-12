@@ -55,6 +55,30 @@ export type Database = {
           },
         ]
       }
+      customers: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string | null
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          name?: string | null
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string | null
+          phone?: string
+        }
+        Relationships: []
+      }
       inventory_logs: {
         Row: {
           change_type: string
@@ -169,31 +193,55 @@ export type Database = {
         Row: {
           address: string
           created_at: string
+          customer_id: string | null
           customer_name: string
           id: string
           phone: string
+          school_id: string | null
           status: string
           total_amount: number
+          updated_at: string
         }
         Insert: {
           address: string
           created_at?: string
+          customer_id?: string | null
           customer_name: string
           id?: string
           phone: string
+          school_id?: string | null
           status?: string
           total_amount?: number
+          updated_at?: string
         }
         Update: {
           address?: string
           created_at?: string
+          customer_id?: string | null
           customer_name?: string
           id?: string
           phone?: string
+          school_id?: string | null
           status?: string
           total_amount?: number
+          updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_images: {
         Row: {
@@ -283,9 +331,10 @@ export type Database = {
           gender: string
           id: string
           image_url: string | null
+          is_universal: boolean
           name: string
           price: number
-          school_id: string
+          school_id: string | null
           status: string
         }
         Insert: {
@@ -296,9 +345,10 @@ export type Database = {
           gender?: string
           id?: string
           image_url?: string | null
+          is_universal?: boolean
           name: string
           price: number
-          school_id: string
+          school_id?: string | null
           status?: string
         }
         Update: {
@@ -309,9 +359,10 @@ export type Database = {
           gender?: string
           id?: string
           image_url?: string | null
+          is_universal?: boolean
           name?: string
           price?: number
-          school_id?: string
+          school_id?: string | null
           status?: string
         }
         Relationships: [
@@ -425,7 +476,13 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "user" | "super_admin" | "staff"
+      app_role:
+        | "super_admin"
+        | "admin"
+        | "branch_staff"
+        | "vendor"
+        | "school_user"
+        | "staff"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -553,7 +610,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "user", "super_admin", "staff"],
+      app_role: [
+        "super_admin",
+        "admin",
+        "branch_staff",
+        "vendor",
+        "school_user",
+        "staff",
+      ],
     },
   },
 } as const
