@@ -192,11 +192,13 @@ export type Database = {
       orders: {
         Row: {
           address: string
+          city: string | null
           created_at: string
           customer_id: string | null
           customer_name: string
           id: string
           phone: string
+          pincode: string | null
           school_id: string | null
           status: string
           total_amount: number
@@ -204,11 +206,13 @@ export type Database = {
         }
         Insert: {
           address: string
+          city?: string | null
           created_at?: string
           customer_id?: string | null
           customer_name: string
           id?: string
           phone: string
+          pincode?: string | null
           school_id?: string | null
           status?: string
           total_amount?: number
@@ -216,11 +220,13 @@ export type Database = {
         }
         Update: {
           address?: string
+          city?: string | null
           created_at?: string
           customer_id?: string | null
           customer_name?: string
           id?: string
           phone?: string
+          pincode?: string | null
           school_id?: string | null
           status?: string
           total_amount?: number

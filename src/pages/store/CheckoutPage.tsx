@@ -1,33 +1,38 @@
-import { useState, useRef, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { useCustomerAuth } from "@/hooks/use-customer-auth";
+
+type CheckoutForm = {
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  pincode: string;
+};
+
+const EMPTY_FORM: CheckoutForm = { name: "", phone: "", address: "", city: "", pincode: "" };
 
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
-  const customer = useCustomerAuth((s) => s.customer);
-  const customerLoading = useCustomerAuth((s) => s.loading);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", address: "" });
+  const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const hasItemsRef = useRef(items.length > 0);
 
-  // Pre-fill name from customer profile
-  useEffect(() => {
-    if (customer?.name) setForm((f) => ({ ...f, name: customer.name! }));
-  }, [customer]);
+  const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.address) {
-      toast.error("Please fill all fields");
+    if (!form.name || !form.phone || !form.address || !form.city || !form.pincode) {
+      toast.error("Please fill all required fields");
       return;
     }
     if (items.length === 0) return;
@@ -38,24 +43,17 @@ const CheckoutPage = () => {
         .from("orders")
         .insert({
           customer_name: form.name,
-          phone: customer!.phone,
+          phone: form.phone,
           address: form.address,
+          city: form.city,
+          pincode: form.pincode,
           total_amount: total(),
           status: "pending",
-          customer_id: customer!.id,
         })
         .select()
         .single();
 
       if (orderErr) throw orderErr;
-
-      // Update customer name if changed
-      if (form.name !== customer?.name) {
-        await supabase
-          .from("customers")
-          .update({ name: form.name })
-          .eq("id", customer!.id);
-      }
 
       const orderItems = items.map((item) => ({
         order_id: order.id,
@@ -104,38 +102,9 @@ const CheckoutPage = () => {
     }
   };
 
-  // Only redirect if user arrived with empty cart (not after successful order)
   if (!hasItemsRef.current) {
     navigate("/store/cart", { replace: true });
     return null;
-  }
-
-  // Wait for customer auth to resolve before gating
-  if (customerLoading) {
-    return (
-      <div className="max-w-lg mx-auto px-6 py-24 text-center">
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
-    );
-  }
-
-  // Must be logged in to checkout
-  if (!customer) {
-    return (
-      <div className="max-w-lg mx-auto px-6 py-24 text-center">
-        <h1 className="text-2xl font-extralight tracking-[0.1em] uppercase mb-4">
-          Sign In to Checkout
-        </h1>
-        <p className="text-sm text-muted-foreground mb-8">
-          Please sign in with your phone number to place an order.
-        </p>
-        <Link to="/auth/login?redirect=/store/checkout">
-          <Button className="h-12 px-8 text-xs tracking-[0.2em] uppercase">
-            Sign In
-          </Button>
-        </Link>
-      </div>
-    );
   }
 
   return (
@@ -145,36 +114,77 @@ const CheckoutPage = () => {
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Full Name */}
         <div>
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
-            Full Name
+            Full Name <span className="text-destructive">*</span>
           </label>
           <Input
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onChange={set("name")}
             className="h-12 border-border"
             placeholder="Enter your full name"
+            autoComplete="name"
           />
         </div>
+
+        {/* Phone */}
         <div>
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
-            Phone Number
+            Phone Number <span className="text-destructive">*</span>
           </label>
-          <div className="h-12 border border-border bg-secondary flex items-center px-3 text-sm text-muted-foreground select-none">
-            {customer.phone}
-            <span className="ml-auto text-[10px] tracking-[0.15em] uppercase">Verified</span>
-          </div>
+          <Input
+            type="tel"
+            value={form.phone}
+            onChange={set("phone")}
+            className="h-12 border-border"
+            placeholder="+91 98765 43210"
+            autoComplete="tel"
+          />
         </div>
+
+        {/* Address */}
         <div>
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
-            Delivery Address
+            Delivery Address <span className="text-destructive">*</span>
           </label>
           <textarea
             value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-            className="w-full min-h-[100px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-            placeholder="Full delivery address"
+            onChange={set("address")}
+            className="w-full min-h-[80px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            placeholder="House / flat / street"
+            autoComplete="street-address"
           />
+        </div>
+
+        {/* City + Pincode side by side */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+              City <span className="text-destructive">*</span>
+            </label>
+            <Input
+              value={form.city}
+              onChange={set("city")}
+              className="h-12 border-border"
+              placeholder="City"
+              autoComplete="address-level2"
+            />
+          </div>
+          <div>
+            <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+              Pincode <span className="text-destructive">*</span>
+            </label>
+            <Input
+              value={form.pincode}
+              onChange={set("pincode")}
+              className="h-12 border-border"
+              placeholder="6-digit pincode"
+              inputMode="numeric"
+              maxLength={6}
+              autoComplete="postal-code"
+            />
+          </div>
         </div>
 
         <div className="pt-6 border-t border-border">
