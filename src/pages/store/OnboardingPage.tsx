@@ -53,6 +53,25 @@ const OnboardingPage = () => {
       if (customer.child_gender)    setGender(customer.child_gender as "boys" | "girls");
       // Already has a name → jump straight to school selection
       if (customer.name) setStep(2);
+    }
+  }, [customer]);
+
+  // Fetch all schools
+  const { data: schools = [] } = useQuery({
+    queryKey: ["schools-onboarding"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("schools")
+        .select("id, name, slug")
+        .eq("status", "active")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch classes when a school is selected
+  const { data: classes = [] } = useQuery({
     queryKey: ["classes-onboarding", schoolId],
     enabled: !!schoolId,
     queryFn: async () => {
