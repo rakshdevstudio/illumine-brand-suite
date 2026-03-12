@@ -27,7 +27,13 @@ const LoginPage = () => {
       (event, session) => {
         if (event === "SIGNED_IN" && session) {
           useCustomerAuth.getState().refreshCustomer().then(() => {
-            navigate(next, { replace: true });
+            const state = useCustomerAuth.getState();
+            // First-time user (no name + no school) → go to onboarding
+            if (state.isNewUser()) {
+              navigate(`/onboarding${next !== "/store" ? `?next=${encodeURIComponent(next)}` : ""}`, { replace: true });
+            } else {
+              navigate(next, { replace: true });
+            }
           });
         }
       }

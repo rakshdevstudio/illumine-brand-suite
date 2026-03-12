@@ -57,6 +57,9 @@ export type Database = {
       }
       customers: {
         Row: {
+          child_class_id: string | null
+          child_gender: string | null
+          child_school_id: string | null
           created_at: string
           email: string
           id: string
@@ -64,6 +67,9 @@ export type Database = {
           phone: string | null
         }
         Insert: {
+          child_class_id?: string | null
+          child_gender?: string | null
+          child_school_id?: string | null
           created_at?: string
           email: string
           id: string
@@ -71,13 +77,31 @@ export type Database = {
           phone?: string | null
         }
         Update: {
+          child_class_id?: string | null
+          child_gender?: string | null
+          child_school_id?: string | null
           created_at?: string
           email?: string
           id?: string
           name?: string | null
           phone?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_child_class_id_fkey"
+            columns: ["child_class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_child_school_id_fkey"
+            columns: ["child_school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_logs: {
         Row: {

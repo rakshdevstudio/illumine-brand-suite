@@ -1,3 +1,4 @@
+/// <reference lib="deno" />
 // send-order-email
 // Called after an order is placed or its status is updated.
 // Expects JSON body: { type, order, customerEmail, customerName, items? }

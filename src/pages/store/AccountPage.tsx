@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { LogOut, User, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { LogOut, User, Package, ChevronDown, ChevronUp, GraduationCap, Pencil } from "lucide-react";
 
 type OrderItem = {
   quantity: number;
@@ -141,6 +141,34 @@ const AccountPage = () => {
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Fetch school name
+  const { data: childSchool } = useQuery({
+    queryKey: ["account-school", customer?.child_school_id],
+    enabled: !!customer?.child_school_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("schools")
+        .select("name, slug")
+        .eq("id", customer!.child_school_id!)
+        .single();
+      return data;
+    },
+  });
+
+  // Fetch class name
+  const { data: childClass } = useQuery({
+    queryKey: ["account-class", customer?.child_class_id],
+    enabled: !!customer?.child_class_id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("classes")
+        .select("name, slug")
+        .eq("id", customer!.child_class_id!)
+        .single();
+      return data;
+    },
+  });
+
   // Redirect if not logged in
   useEffect(() => {
     if (!loading && !user) {
@@ -267,6 +295,63 @@ const AccountPage = () => {
                 </Button>
               </div>
             </form>
+          )}
+        </div>
+      </section>
+
+      {/* Child's School */}
+      <section className="mb-12">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+            <GraduationCap className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+          </div>
+          <h2 className="text-xs tracking-[0.25em] uppercase text-muted-foreground">Child's School</h2>
+        </div>
+
+        <div className="border border-border rounded-sm p-5">
+          {customer?.child_school_id ? (
+            <>
+              <div className="grid grid-cols-3 gap-4 mb-5">
+                <div>
+                  <p className="text-xs text-muted-foreground tracking-wide mb-1">School</p>
+                  <p className="text-sm">{childSchool?.name ?? "…"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground tracking-wide mb-1">Class</p>
+                  <p className="text-sm">{childClass?.name ?? "…"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground tracking-wide mb-1">Section</p>
+                  <p className="text-sm capitalize">{customer.child_gender ?? "—"}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Link to="/onboarding">
+                  <Button variant="outline" size="sm" className="text-xs tracking-[0.15em] uppercase flex items-center gap-1.5">
+                    <Pencil className="h-3 w-3" />
+                    Change School
+                  </Button>
+                </Link>
+                {childSchool && childClass && customer.child_gender && (
+                  <Link to={`/store/school/${childSchool.slug}/class/${childClass.slug}/gender/${customer.child_gender}`}>
+                    <Button size="sm" className="text-xs tracking-[0.15em] uppercase">
+                      Shop Uniforms
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mb-5">
+                Add your child's school to see the right uniforms instantly.
+              </p>
+              <Link to="/onboarding">
+                <Button size="sm" className="text-xs tracking-[0.15em] uppercase">
+                  Add School
+                </Button>
+              </Link>
+            </>
           )}
         </div>
       </section>
