@@ -1,13 +1,20 @@
+import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import StoreHeader from "./StoreHeader";
 import StudentProfileModal from "./StudentProfileModal";
 import { useStudentProfile, StudentProfile } from "@/lib/student-profile";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 
 const StoreLayout = () => {
   const navigate = useNavigate();
   const showModal = useStudentProfile((s) => s.showModal);
   const openModal = useStudentProfile((s) => s.openModal);
   const closeModal = useStudentProfile((s) => s.closeModal);
+  const initCustomerAuth = useCustomerAuth((s) => s.init);
+
+  useEffect(() => {
+    initCustomerAuth();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleProfileSet = (p: StudentProfile) => {
     navigate(`/store/school/${p.schoolSlug}/class/${p.classSlug}/gender/${p.gender}`);

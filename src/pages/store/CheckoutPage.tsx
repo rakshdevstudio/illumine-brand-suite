@@ -1,24 +1,32 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
+  const customer = useCustomerAuth((s) => s.customer);
+  const customerLoading = useCustomerAuth((s) => s.loading);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", address: "" });
+  const [form, setForm] = useState({ name: "", address: "" });
   const hasItemsRef = useRef(items.length > 0);
+
+  // Pre-fill name from customer profile
+  useEffect(() => {
+    if (customer?.name) setForm((f) => ({ ...f, name: customer.name! }));
+  }, [customer]);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.phone || !form.address) {
+    if (!form.name || !form.address) {
       toast.error("Please fill all fields");
       return;
     }
@@ -30,15 +38,24 @@ const CheckoutPage = () => {
         .from("orders")
         .insert({
           customer_name: form.name,
-          phone: form.phone,
+          phone: customer!.phone,
           address: form.address,
           total_amount: total(),
           status: "pending",
+          customer_id: customer!.id,
         })
         .select()
         .single();
 
       if (orderErr) throw orderErr;
+
+      // Update customer name if changed
+      if (form.name !== customer?.name) {
+        await supabase
+          .from("customers")
+          .update({ name: form.name })
+          .eq("id", customer!.id);
+      }
 
       const orderItems = items.map((item) => ({
         order_id: order.id,
@@ -93,6 +110,34 @@ const CheckoutPage = () => {
     return null;
   }
 
+  // Wait for customer auth to resolve before gating
+  if (customerLoading) {
+    return (
+      <div className="max-w-lg mx-auto px-6 py-24 text-center">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  // Must be logged in to checkout
+  if (!customer) {
+    return (
+      <div className="max-w-lg mx-auto px-6 py-24 text-center">
+        <h1 className="text-2xl font-extralight tracking-[0.1em] uppercase mb-4">
+          Sign In to Checkout
+        </h1>
+        <p className="text-sm text-muted-foreground mb-8">
+          Please sign in with your phone number to place an order.
+        </p>
+        <Link to="/auth/login?redirect=/store/checkout">
+          <Button className="h-12 px-8 text-xs tracking-[0.2em] uppercase">
+            Sign In
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-lg mx-auto px-6 py-12">
       <h1 className="text-2xl font-extralight tracking-[0.1em] uppercase mb-12">
@@ -115,12 +160,10 @@ const CheckoutPage = () => {
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
             Phone Number
           </label>
-          <Input
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            className="h-12 border-border"
-            placeholder="+91"
-          />
+          <div className="h-12 border border-border bg-secondary flex items-center px-3 text-sm text-muted-foreground select-none">
+            {customer.phone}
+            <span className="ml-auto text-[10px] tracking-[0.15em] uppercase">Verified</span>
+          </div>
         </div>
         <div>
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">

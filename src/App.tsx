@@ -29,6 +29,9 @@ import OrdersPage from "./pages/admin/OrdersPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 
+// Parent Auth
+import PhoneLoginPage from "./pages/auth/PhoneLoginPage";
+
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
 import VendorDashboard from "./pages/vendor/VendorDashboard";
@@ -63,6 +66,9 @@ const App = () => (
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="confirmation" element={<ConfirmationPage />} />
           </Route>
+
+          {/* Parent Auth */}
+          <Route path="/auth/login" element={<PhoneLoginPage />} />
 
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLoginPage />} />

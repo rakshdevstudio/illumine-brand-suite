@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { ShoppingBag, User } from "lucide-react";
+import { ShoppingBag, User, LogOut } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import illumeLogo from "@/assets/illume-logo.png";
 
 const StoreHeader = () => {
@@ -9,6 +10,8 @@ const StoreHeader = () => {
   const count = items.reduce((s, i) => s + i.quantity, 0);
   const profile = useStudentProfile((s) => s.profile);
   const openModal = useStudentProfile((s) => s.openModal);
+  const customer = useCustomerAuth((s) => s.customer);
+  const logout = useCustomerAuth((s) => s.logout);
 
   return (
     <header className="bg-surface-dark border-b border-surface-dark">
@@ -35,6 +38,28 @@ const StoreHeader = () => {
                 Change
               </span>
             </button>
+          )}
+
+          {customer ? (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-surface-dark-muted tracking-wide hidden sm:inline">
+                {customer.name || customer.phone}
+              </span>
+              <button
+                onClick={logout}
+                title="Sign out"
+                className="text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/auth/login"
+              className="text-xs tracking-[0.15em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+            >
+              Login
+            </Link>
           )}
 
           <Link to="/store/cart" className="relative group">
