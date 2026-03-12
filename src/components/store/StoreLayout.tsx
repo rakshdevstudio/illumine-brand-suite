@@ -1,13 +1,19 @@
 import { Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import StoreHeader from "./StoreHeader";
 import StudentProfileModal from "./StudentProfileModal";
 import { useStudentProfile, StudentProfile } from "@/lib/student-profile";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 
 const StoreLayout = () => {
   const navigate = useNavigate();
   const showModal = useStudentProfile((s) => s.showModal);
   const openModal = useStudentProfile((s) => s.openModal);
   const closeModal = useStudentProfile((s) => s.closeModal);
+
+  // Initialise customer auth once when the store mounts
+  const init = useCustomerAuth((s) => s.init);
+  useEffect(() => { init(); }, [init]);
 
   const handleProfileSet = (p: StudentProfile) => {
     navigate(`/store/school/${p.schoolSlug}/class/${p.classSlug}/gender/${p.gender}`);

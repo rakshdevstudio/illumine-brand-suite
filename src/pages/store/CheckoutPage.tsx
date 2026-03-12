@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -19,9 +20,28 @@ const EMPTY_FORM: CheckoutForm = { name: "", phone: "", address: "", city: "", p
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
+  const { user, customer, loading: authLoading } = useCustomerAuth();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const hasItemsRef = useRef(items.length > 0);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/login?next=/store/checkout", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
+
+  // Pre-fill form from customer profile
+  useEffect(() => {
+    if (customer) {
+      setForm((f) => ({
+        ...f,
+        name: f.name || customer.name || "",
+        phone: f.phone || customer.phone || "",
+      }));
+    }
+  }, [customer]);
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -42,6 +62,7 @@ const CheckoutPage = () => {
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .insert({
+          customer_id: user?.id ?? null,
           customer_name: form.name,
           phone: form.phone,
           address: form.address,
@@ -93,6 +114,27 @@ const CheckoutPage = () => {
       }
 
       clearCart();
+
+      // Fire-and-forget email notification
+      if (user?.email) {
+        supabase.functions
+          .invoke("send-order-email", {
+            body: {
+              type: "order_placed",
+              order,
+              customerEmail: user.email,
+              customerName: form.name,
+              items: items.map((item) => ({
+                name: item.name,
+                size: item.size,
+                quantity: item.quantity,
+                price: item.price,
+              })),
+            },
+          })
+          .catch(console.error);
+      }
+
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
       console.error(err);
@@ -101,6 +143,10 @@ const CheckoutPage = () => {
       setLoading(false);
     }
   };
+
+  // Show nothing while auth is initialising
+  if (authLoading) return null;
+  if (!user) return null;
 
   if (!hasItemsRef.current) {
     navigate("/store/cart", { replace: true });
