@@ -231,7 +231,7 @@ const AdminUsersPage = () => {
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Email</label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-10" placeholder="admin@illume.com" />
+              <Input type="email" autoComplete="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-10" placeholder="admin@illume.com" />
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Password</label>
