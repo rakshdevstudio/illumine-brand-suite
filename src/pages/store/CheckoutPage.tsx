@@ -64,6 +64,7 @@ const CheckoutPage = () => {
         .insert({
           customer_id: user?.id ?? null,
           customer_name: form.name,
+          email: user?.email ?? null,
           phone: form.phone,
           address: form.address,
           city: form.city,
@@ -115,24 +116,24 @@ const CheckoutPage = () => {
 
       clearCart();
 
-      // Fire-and-forget email notification
+      // Fire-and-forget order confirmation email
       if (user?.email) {
         supabase.functions
-          .invoke("send-order-email", {
+          .invoke("send-order-confirmation", {
             body: {
-              type: "order_placed",
-              order,
-              customerEmail: user.email,
-              customerName: form.name,
+              email: user.email,
+              name: form.name,
+              orderId: order.id,
               items: items.map((item) => ({
                 name: item.name,
                 size: item.size,
                 quantity: item.quantity,
                 price: item.price,
               })),
+              total: order.total_amount,
             },
           })
-          .catch(console.error);
+          .catch((err: unknown) => console.error("Order confirmation email failed:", err));
       }
 
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
