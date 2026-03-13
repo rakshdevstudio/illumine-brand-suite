@@ -17,6 +17,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Use Resend's pre-verified shared sender as fallback so email works without a
 // custom verified domain. Set RESEND_FROM secret to override once your domain
@@ -160,10 +165,7 @@ serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
+      headers: corsHeaders,
     });
   }
 
@@ -172,7 +174,7 @@ serve(async (req: Request) => {
       console.error("RESEND_API_KEY is not set");
       return new Response(JSON.stringify({ error: "Email service not configured" }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -180,9 +182,9 @@ serve(async (req: Request) => {
     const { email, name, orderId, items, total } = payload;
 
     if (!email || !orderId) {
-      return new Response(JSON.stringify({ error: "email and orderId are required" }), {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -204,24 +206,26 @@ serve(async (req: Request) => {
 
     if (!resendResponse.ok) {
       const errorBody = await resendResponse.text();
-      console.error("Resend API error | status:", resendResponse.status, "| body:", errorBody);
+      console.error("Email sending failed", {
+        status: resendResponse.status,
+        body: errorBody,
+      });
       return new Response(JSON.stringify({ error: "Failed to send email", status: resendResponse.status, detail: errorBody }), {
         status: 502,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const result = await resendResponse.json();
-    console.log("Email sent successfully | id:", result.id, "| to:", email);
-    return new Response(JSON.stringify({ success: true, id: result.id }), {
-      status: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    console.log("Email sent successfully", result);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("Unexpected error in send-order-confirmation:", err);
+    console.error("Email sending failed", err);
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
