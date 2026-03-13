@@ -39,18 +39,28 @@ const ClassProductsPage = () => {
     queryKey: ["class-products", school?.id, cls?.id, genderDb],
     enabled: !!school?.id && !!cls?.id,
     queryFn: async () => {
-      const genderFilter = `(${genderDb},Unisex)`;
       const { data, error } = await supabase
-        .from("products")
-        .select("*, product_variants(*), product_images(*)")
-        .or(
-          `and(school_id.eq.${school!.id},class_id.eq.${cls!.id},gender.in.${genderFilter}),` +
-          `and(is_universal.eq.true,gender.in.${genderFilter})`
-        )
-        .eq("status", "active")
-        .order("name");
+        .from("product_assignments")
+        .select(`
+          id,
+          display_order,
+          is_required,
+          gender,
+          products!inner(*, product_variants(*), product_images(*))
+        `)
+        .eq("school_id", school!.id)
+        .eq("class_id", cls!.id)
+        .in("gender", [genderDb, "Unisex"])
+        .eq("products.status", "active")
+        .order("display_order", { ascending: true });
       if (error) throw error;
-      return data;
+      return (data ?? []).map((assignment: any) => ({
+        ...(assignment.products ?? {}),
+        assignment_id: assignment.id,
+        assignment_gender: assignment.gender,
+        is_required: assignment.is_required,
+        display_order: assignment.display_order,
+      }));
     },
   });
 
@@ -86,7 +96,7 @@ const ClassProductsPage = () => {
       <p className="text-sm text-muted-foreground mb-12">{school?.name ?? ""}</p>
 
       {isLoading ? (
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-square bg-secondary mb-4" />
@@ -100,15 +110,15 @@ const ClassProductsPage = () => {
           <p className="text-sm text-muted-foreground">No products available for this selection</p>
         </div>
       ) : (
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-12">
           {products.map((product) => {
             const totalStock = product.product_variants?.reduce(
               (s: number, v: any) => s + v.stock, 0
             ) ?? 0;
 
             return (
-              <Link key={product.id} to={`/store/product/${product.id}`} className="group">
-                <div className="aspect-square bg-secondary mb-4 overflow-hidden border border-border">
+              <Link key={product.id} to={`/store/product/${product.id}`} className="group block">
+                <div className="aspect-square bg-secondary mb-5 overflow-hidden border border-border transition-all duration-300 group-hover:border-foreground group-hover:-translate-y-0.5">
                   <img
                     src={getDisplayImage(product as any)}
                     alt={product.name}
@@ -117,10 +127,10 @@ const ClassProductsPage = () => {
                     onError={(e) => { e.currentTarget.src = "/placeholder.svg"; }}
                   />
                 </div>
-                <h3 className="text-sm font-light tracking-wide mb-1 group-hover:opacity-60 transition-opacity">
+                <h3 className="text-sm font-light tracking-wide mb-1 group-hover:opacity-70 transition-opacity">
                   {product.name}
                 </h3>
-                <p className="text-sm text-muted-foreground">{formatPrice(product.price)}</p>
+                <p className="text-base font-light">{formatPrice((product as any).base_price ?? product.price)}</p>
                 {totalStock <= 10 && totalStock > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">Low stock</p>
                 )}

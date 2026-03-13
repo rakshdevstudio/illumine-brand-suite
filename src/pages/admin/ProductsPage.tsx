@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Plus, Globe } from "lucide-react";
 import { getDisplayImage } from "@/lib/product-images";
@@ -20,14 +18,22 @@ const ProductsPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "", is_universal: false });
+  const [form, setForm] = useState({
+    name: "",
+    category: "",
+    price: "",
+    description: "",
+    school_id: "",
+    class_id: "",
+    gender: "Unisex",
+  });
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-products-list"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, schools(name, slug), product_images(*), classes(name)")
+        .select("*, schools(name, slug), classes(name), product_images(*)")
         .order("name");
       if (error) throw error;
       return data;
@@ -62,32 +68,58 @@ const ProductsPage = () => {
       toast.error("Please fill all required fields");
       return;
     }
-    if (!form.is_universal && !form.school_id) {
-      toast.error("Please select a school, or mark the product as Universal");
-      return;
-    }
     try {
       const payload: any = {
         name: form.name,
-        school_id: form.is_universal ? null : form.school_id,
-        class_id: form.is_universal ? null : (form.class_id || null),
+        school_id: form.school_id || null,
+        class_id: form.class_id || null,
         category: form.category,
         gender: form.gender,
         price: parseFloat(form.price),
         description: form.description || null,
-        is_universal: form.is_universal,
+        is_universal: true,
       };
+      let savedProductId: string | null = editing?.id ?? null;
+
       if (editing) {
-        await supabase.from("products").update(payload).eq("id", editing.id);
+        const { error } = await supabase.from("products").update(payload).eq("id", editing.id);
+        if (error) throw error;
         toast.success("Product updated");
       } else {
-        await supabase.from("products").insert(payload);
+        const { data: created, error } = await supabase
+          .from("products")
+          .insert(payload)
+          .select("id")
+          .single();
+        if (error) throw error;
+        savedProductId = created?.id ?? null;
         toast.success("Product created");
       }
+
+      if (savedProductId && form.school_id && form.class_id) {
+        const { error: assignErr } = await supabase
+          .from("product_assignments")
+          .upsert(
+            {
+              product_id: savedProductId,
+              school_id: form.school_id,
+              class_id: form.class_id,
+              gender: form.gender,
+              is_required: false,
+              display_order: 0,
+            },
+            { onConflict: "product_id,school_id,class_id,gender" }
+          );
+
+        if (!assignErr) {
+          toast.success("Initial assignment added");
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
       setDialogOpen(false);
       setEditing(null);
-      setForm({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "", is_universal: false });
+      setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
     } catch {
       toast.error("Failed to save product");
     }
@@ -104,24 +136,24 @@ const ProductsPage = () => {
     setEditing(product);
     setForm({
       name: product.name,
-      school_id: product.school_id ?? "",
-      class_id: (product as any).class_id || "",
       category: product.category,
-      gender: (product as any).gender || "Unisex",
-      price: String(product.price),
+      price: String((product as any).base_price ?? product.price),
       description: product.description || "",
-      is_universal: !!(product as any).is_universal,
+      school_id: product.school_id ?? "",
+      class_id: product.class_id ?? "",
+      gender: product.gender ?? "Unisex",
     });
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", school_id: "", class_id: "", category: "", gender: "Unisex", price: "", description: "", is_universal: false });
+    setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
     setDialogOpen(true);
   };
 
-  const getSchoolSlug = (schoolId: string) => {
+  const getSchoolSlug = (schoolId: string | null) => {
+    if (!schoolId) return "general";
     return schools?.find((s) => s.id === schoolId)?.slug ?? "general";
   };
 
@@ -146,8 +178,8 @@ const ProductsPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Product Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Gender</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Base Price</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
@@ -156,11 +188,11 @@ const ProductsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : products?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
               </TableRow>
             ) : (
               products?.map((product) => (
@@ -177,15 +209,11 @@ const ProductsPage = () => {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">{product.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {(product as any).is_universal
-                      ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Globe className="h-3 w-3" /> Universal</span>
-                      : (product as any).schools?.name}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{(product as any).classes?.name || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).schools?.name ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).classes?.name ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).gender ?? "Unisex"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{(product as any).gender || "Unisex"}</TableCell>
-                  <TableCell className="text-sm">{formatPrice(product.price)}</TableCell>
+                  <TableCell className="text-sm">{formatPrice((product as any).base_price ?? product.price)}</TableCell>
                   <TableCell>
                     <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
                       product.status === "inactive"
@@ -217,51 +245,14 @@ const ProductsPage = () => {
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               {editing ? "Edit Product" : "Add Product"}
             </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground tracking-wide">
+              Select school/class/gender for initial mapping. Product remains a single catalog item.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Universal Product Toggle */}
-            <div className="flex items-center justify-between border border-border rounded-none px-4 py-3">
-              <div>
-                <Label className="text-xs tracking-[0.2em] uppercase">Universal Product</Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Visible across all schools</p>
-              </div>
-              <Switch
-                checked={form.is_universal}
-                onCheckedChange={(checked) =>
-                  setForm({ ...form, is_universal: checked, school_id: checked ? "" : form.school_id, class_id: checked ? "" : form.class_id })
-                }
-              />
-            </div>
-
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product Name</label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" placeholder="DPS Shirt" />
-            </div>
-            <div className={form.is_universal ? "opacity-40 pointer-events-none" : ""}>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School {form.is_universal && "(disabled for universal)"}</label>
-              <Select value={form.school_id} onValueChange={(v) => setForm({ ...form, school_id: v })} disabled={form.is_universal}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder={form.is_universal ? "N/A — Universal Product" : "Select school"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {schools?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className={form.is_universal ? "opacity-40 pointer-events-none" : ""}>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Class {form.is_universal && "(disabled for universal)"}</label>
-              <Select value={form.class_id} onValueChange={(v) => setForm({ ...form, class_id: v })} disabled={form.is_universal}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder={form.is_universal ? "N/A" : (filteredClasses.length === 0 ? "Select school first" : "Select class")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredClasses.map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Category</label>
@@ -272,6 +263,32 @@ const ProductsPage = () => {
                 <SelectContent>
                   {categories.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School</label>
+              <Select value={form.school_id} onValueChange={(v) => setForm({ ...form, school_id: v, class_id: "" })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select school" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schools?.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Class</label>
+              <Select value={form.class_id} onValueChange={(v) => setForm({ ...form, class_id: v })}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder={form.school_id ? "Select class" : "Select school first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredClasses.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

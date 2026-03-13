@@ -35,7 +35,7 @@ const CartPage = () => {
         {items.map((item) => (
           <div
             key={item.variantId}
-            className="flex items-center gap-6 py-6 border-b border-border"
+            className="grid grid-cols-[80px_1fr_auto] gap-4 sm:gap-6 py-6 border-b border-border"
           >
             <div className="w-20 h-20 bg-secondary border border-border flex-shrink-0 overflow-hidden">
               {item.imageUrl ? (
@@ -55,31 +55,40 @@ const CartPage = () => {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-light">{item.name}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {item.schoolName} · Size {item.size}
+                {item.schoolName}
+                {item.className ? ` · ${item.className}` : ""}
+                {item.gender ? ` · ${item.gender}` : ""}
               </p>
-              <p className="text-sm mt-1">{formatPrice(item.price)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Size {item.size}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Unit {formatPrice(item.price)}</p>
+              <p className="text-sm mt-1">Line Total {formatPrice(item.price * item.quantity)}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-end gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
+                  className="w-8 h-8 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+                >
+                  <Minus className="h-3 w-3" strokeWidth={1.5} />
+                </button>
+                <span className="text-sm w-6 text-center">{item.quantity}</span>
+                <button
+                  onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                  className="w-8 h-8 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+                >
+                  <Plus className="h-3 w-3" strokeWidth={1.5} />
+                </button>
+              </div>
               <button
-                onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
-                className="w-8 h-8 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+                onClick={() => removeItem(item.variantId)}
+                className="p-1 hover:opacity-60 transition-opacity"
+                aria-label={`Remove ${item.name}`}
               >
-                <Minus className="h-3 w-3" strokeWidth={1.5} />
-              </button>
-              <span className="text-sm w-6 text-center">{item.quantity}</span>
-              <button
-                onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
-                className="w-8 h-8 border border-border flex items-center justify-center hover:border-foreground transition-colors"
-              >
-                <Plus className="h-3 w-3" strokeWidth={1.5} />
+                <X className="h-4 w-4" strokeWidth={1.5} />
               </button>
             </div>
-            <button
-              onClick={() => removeItem(item.variantId)}
-              className="p-1 hover:opacity-60 transition-opacity"
-            >
-              <X className="h-4 w-4" strokeWidth={1.5} />
-            </button>
           </div>
         ))}
       </div>

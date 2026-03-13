@@ -25,7 +25,7 @@ const navItems = [
   { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
   { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
   { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
-  { title: "Testing", url: "/admin/testing/product-segregation", icon: FlaskConical, minRole: "staff" as const },
+  { title: "Assignments", url: "/admin/product-assignments", icon: FlaskConical, minRole: "staff" as const },
 ];
 
 const roleLabels: Record<string, string> = {

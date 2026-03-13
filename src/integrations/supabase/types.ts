@@ -311,6 +311,61 @@ export type Database = {
           },
         ]
       }
+      product_assignments: {
+        Row: {
+          class_id: string
+          created_at: string
+          display_order: number
+          gender: string
+          id: string
+          is_required: boolean
+          product_id: string
+          school_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          display_order?: number
+          gender: string
+          id?: string
+          is_required?: boolean
+          product_id: string
+          school_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          display_order?: number
+          gender?: string
+          id?: string
+          is_required?: boolean
+          product_id?: string
+          school_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_assignments_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_assignments_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_assignments_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_variants: {
         Row: {
           created_at: string
@@ -354,6 +409,7 @@ export type Database = {
       }
       products: {
         Row: {
+          base_price: number
           category: string
           class_id: string | null
           created_at: string
@@ -368,6 +424,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          base_price?: number
           category: string
           class_id?: string | null
           created_at?: string
@@ -382,6 +439,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          base_price?: number
           category?: string
           class_id?: string | null
           created_at?: string

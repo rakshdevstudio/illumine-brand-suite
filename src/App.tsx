@@ -78,7 +78,7 @@ const App = () => (
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="users" element={<AdminUsersPage />} />
-            <Route path="testing/product-segregation" element={<ProductSegregationPage />} />
+            <Route path="product-assignments" element={<ProductSegregationPage />} />
           </Route>
 
           {/* Vendor Portal */}

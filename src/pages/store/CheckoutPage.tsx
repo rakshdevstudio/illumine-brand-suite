@@ -43,6 +43,24 @@ const CheckoutPage = () => {
       toast.error("Please fill all required fields");
       return;
     }
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+    if (!emailValid) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    const phoneDigits = form.phone.replace(/\D/g, "");
+    if (!/^\d{10}$/.test(phoneDigits)) {
+      toast.error("Phone number must be 10 digits");
+      return;
+    }
+
+    const pincodeDigits = form.pincode.replace(/\D/g, "");
+    if (!/^\d{6}$/.test(pincodeDigits)) {
+      toast.error("Pincode must be 6 digits");
+      return;
+    }
+
     if (items.length === 0) return;
 
     setLoading(true);

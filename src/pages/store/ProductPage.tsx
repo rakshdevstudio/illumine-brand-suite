@@ -11,6 +11,7 @@ import { getDisplayImage } from "@/lib/product-images";
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const addItem = useCart((s) => s.addItem);
 
@@ -33,6 +34,8 @@ const ProductPage = () => {
   const selectedVariant = product?.product_variants?.find(
     (v: any) => v.size === selectedSize
   );
+  const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariant.stock)) : 1;
+  const basePrice = (product as any)?.base_price ?? product?.price ?? 0;
 
   // Build image gallery
   const galleryImages: string[] = [];
@@ -51,15 +54,18 @@ const ProductPage = () => {
   }
 
   const handleAddToCart = () => {
-    if (!selectedVariant || !product) return;
+    if (!selectedVariant || !product || quantity < 1) return;
     addItem({
       productId: product.id,
       variantId: selectedVariant.id,
       name: product.name,
       size: selectedVariant.size,
-      price: product.price,
+      price: basePrice,
       schoolName: (product as any).schools?.name ?? "",
+      className: (product as any).classes?.name ?? "",
+      gender: (product as any).gender ?? "Unisex",
       imageUrl: galleryImages[0] || null,
+      quantity,
     });
     toast("Added to bag", { icon: <Check className="h-4 w-4" /> });
   };
@@ -81,7 +87,7 @@ const ProductPage = () => {
   if (!product) return null;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
+    <div className="max-w-6xl mx-auto px-6 py-12 pb-28 md:pb-12">
       <Link
         to={`/store/school/${(product as any).schools?.slug ?? ""}`}
         className="inline-flex items-center gap-2 text-xs tracking-[0.2em] text-muted-foreground uppercase mb-12 hover:text-foreground transition-colors"
@@ -139,7 +145,7 @@ const ProductPage = () => {
           <h1 className="text-2xl font-extralight tracking-wide mb-2">
             {product.name}
           </h1>
-          <p className="text-lg font-light mb-8">{formatPrice(product.price)}</p>
+          <p className="text-lg font-light mb-8">{formatPrice(basePrice)}</p>
 
           {/* Size selector */}
           <div className="mb-8">
@@ -152,7 +158,10 @@ const ProductPage = () => {
                 .map((v: any) => (
                   <button
                     key={v.id}
-                    onClick={() => setSelectedSize(v.size)}
+                    onClick={() => {
+                      setSelectedSize(v.size);
+                      setQuantity(1);
+                    }}
                     disabled={v.stock === 0}
                     className={`w-12 h-12 border text-sm transition-all duration-200 ${
                       selectedSize === v.size
@@ -166,39 +175,86 @@ const ProductPage = () => {
                   </button>
                 ))}
             </div>
-            {selectedVariant && selectedVariant.stock <= 10 && (
+            {selectedVariant && selectedVariant.stock > 0 && selectedVariant.stock <= 10 && (
               <p className="text-xs text-muted-foreground mt-2">
-                Only {selectedVariant.stock} left
+                Only {selectedVariant.stock} left in stock
               </p>
             )}
+            {selectedVariant?.stock === 0 && (
+              <p className="text-xs text-muted-foreground mt-2">Out of stock</p>
+            )}
+          </div>
+
+          <div className="mb-8">
+            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
+              Quantity
+            </p>
+            <div className="inline-flex items-center border border-border">
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={!selectedVariant || quantity <= 1}
+                className="w-12 h-12 flex items-center justify-center text-sm hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                -
+              </button>
+              <span className="w-12 text-center text-sm">{quantity}</span>
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+                disabled={!selectedVariant || quantity >= maxQty}
+                className="w-12 h-12 flex items-center justify-center text-sm hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                +
+              </button>
+            </div>
           </div>
 
           <Button
             onClick={handleAddToCart}
             disabled={!selectedVariant || selectedVariant.stock === 0}
-            className="w-full h-12 text-xs tracking-[0.2em] uppercase"
+            className="w-full h-12 text-xs tracking-[0.2em] uppercase hidden md:inline-flex"
           >
             Add to Bag
           </Button>
 
           <div className="mt-12 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
-              Details
+              Fabric
             </p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {product.description}
+              {product.description || "Premium breathable uniform fabric with soft hand feel for all-day comfort and easy care."}
             </p>
           </div>
 
           <div className="mt-8 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
-              Shipping
+              Size Guide
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Select your regular school uniform size. If between two sizes, choose the larger size for a comfortable fit.
+            </p>
+          </div>
+
+          <div className="mt-8 pt-8 border-t border-border">
+            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
+              Shipping Information
             </p>
             <p className="text-sm text-muted-foreground">
               Free delivery within 5–7 business days. Express delivery available at checkout.
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background px-4 py-3 z-30">
+        <Button
+          onClick={handleAddToCart}
+          disabled={!selectedVariant || selectedVariant.stock === 0}
+          className="w-full h-12 text-xs tracking-[0.2em] uppercase"
+        >
+          Add to Bag
+        </Button>
       </div>
     </div>
   );
