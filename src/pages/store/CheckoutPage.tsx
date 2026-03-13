@@ -59,23 +59,49 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      const { data: order, error: orderErr } = await supabase
+      const orderPayload = {
+        customer_id: user?.id ?? null,
+        customer_name: form.name,
+        phone: form.phone,
+        address: form.address,
+        city: form.city,
+        pincode: form.pincode,
+        total_amount: total(),
+        status: "pending",
+      };
+
+      const withEmailResult = await supabase
         .from("orders")
         .insert({
-          customer_id: user?.id ?? null,
-          customer_name: form.name,
+          ...orderPayload,
           email: user?.email ?? null,
-          phone: form.phone,
-          address: form.address,
-          city: form.city,
-          pincode: form.pincode,
-          total_amount: total(),
-          status: "pending",
         })
         .select()
         .single();
 
-      if (orderErr) throw orderErr;
+      let order = withEmailResult.data;
+
+      if (withEmailResult.error) {
+        const missingEmailColumn =
+          withEmailResult.error.code === "PGRST204" &&
+          typeof withEmailResult.error.message === "string" &&
+          withEmailResult.error.message.toLowerCase().includes("email");
+
+        if (!missingEmailColumn) throw withEmailResult.error;
+
+        console.warn("orders.email not found in DB yet; retrying order insert without email column");
+
+        const fallbackResult = await supabase
+          .from("orders")
+          .insert(orderPayload)
+          .select()
+          .single();
+
+        if (fallbackResult.error) throw fallbackResult.error;
+        order = fallbackResult.data;
+      }
+
+      if (!order) throw new Error("Order was not created");
 
       const orderItems = items.map((item) => ({
         order_id: order.id,
