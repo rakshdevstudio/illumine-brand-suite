@@ -15,6 +15,7 @@ import ProductPage from "./pages/store/ProductPage";
 import CartPage from "./pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
+import OrderDetailsPage from "./pages/store/OrderDetailsPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="cart" element={<CartPage />} />
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="confirmation" element={<ConfirmationPage />} />
+            <Route path="order/:orderId" element={<OrderDetailsPage />} />
           </Route>
 
           {/* Admin Routes */}

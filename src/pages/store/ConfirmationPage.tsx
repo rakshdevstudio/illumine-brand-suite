@@ -24,11 +24,20 @@ const ConfirmationPage = () => {
         </p>
       )}
 
-      <Link to="/store">
-        <Button variant="outline" className="text-xs tracking-[0.2em] uppercase h-12 px-8">
-          Continue Shopping
-        </Button>
-      </Link>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        {orderId && (
+          <Link to={`/store/order/${orderId}`}>
+            <Button className="text-xs tracking-[0.2em] uppercase h-12 px-8">
+              View Order Details
+            </Button>
+          </Link>
+        )}
+        <Link to="/store">
+          <Button variant="outline" className="text-xs tracking-[0.2em] uppercase h-12 px-8">
+            Continue Shopping
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 };
