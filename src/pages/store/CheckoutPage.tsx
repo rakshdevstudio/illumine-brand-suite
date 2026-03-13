@@ -47,6 +47,33 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
+      // ── Step 1: validate stock for every cart item ────────────────────────
+      const variantIds = items.map((i) => i.variantId);
+      const { data: currentVariants, error: stockCheckErr } = await supabase
+        .from("product_variants")
+        .select("id, size, stock")
+        .in("id", variantIds);
+
+      if (stockCheckErr) throw stockCheckErr;
+
+      const stockMap = new Map(
+        (currentVariants ?? []).map((v) => [v.id, v])
+      );
+
+      const insufficientItems = items.filter((item) => {
+        const variant = stockMap.get(item.variantId);
+        return !variant || variant.stock < item.quantity;
+      });
+
+      if (insufficientItems.length > 0) {
+        const names = insufficientItems
+          .map((i) => `${i.name} (Size ${i.size})`)
+          .join(", ");
+        toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
+        return;
+      }
+
+      // ── Step 2: create order ──────────────────────────────────────────────
       const orderPayload = {
         customer_name: form.customer_name,
         email: form.email,
@@ -67,6 +94,7 @@ const CheckoutPage = () => {
       if (orderErr) throw orderErr;
       if (!order) throw new Error("Order was not created");
 
+      // ── Step 3: insert order items ────────────────────────────────────────
       const orderItems = items.map((item) => ({
         order_id: order.id,
         product_id: item.productId,
@@ -78,30 +106,29 @@ const CheckoutPage = () => {
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
+      // ── Step 4: deduct stock atomically (conditional update guards race conditions)
       for (const item of items) {
-        const { data: variant } = await supabase
+        const snapshot = stockMap.get(item.variantId)!;
+        const newStock = snapshot.stock - item.quantity;
+
+        // .gte("stock", item.quantity) acts as an atomic WHERE guard —
+        // the row only updates if stock hasn't been reduced by a concurrent order
+        const { data: updated } = await supabase
           .from("product_variants")
-          .select("stock")
+          .update({ stock: newStock })
           .eq("id", item.variantId)
-          .single();
+          .gte("stock", item.quantity)
+          .select("stock");
 
-        if (variant) {
-          const newStock = Math.max(0, variant.stock - item.quantity);
-          await supabase
-            .from("product_variants")
-            .update({ stock: newStock })
-            .eq("id", item.variantId);
-
-          await supabase.from("inventory_logs").insert({
-            product_id: item.productId,
-            variant_id: item.variantId,
-            change_type: "order",
-            quantity_change: -item.quantity,
-            previous_stock: variant.stock,
-            new_stock: newStock,
-            order_id: order.id,
-          });
-        }
+        await supabase.from("inventory_logs").insert({
+          product_id: item.productId,
+          variant_id: item.variantId,
+          change_type: "order",
+          quantity_change: -item.quantity,
+          previous_stock: snapshot.stock,
+          new_stock: updated?.[0]?.stock ?? newStock,
+          order_id: order.id,
+        });
       }
 
       clearCart();
