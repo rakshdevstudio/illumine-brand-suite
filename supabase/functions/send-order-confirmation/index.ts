@@ -18,7 +18,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const RESEND_FROM    = Deno.env.get("RESEND_FROM") ?? "Illume <no-reply@illumine.co.in>";
+// Use Resend's pre-verified shared sender as fallback so email works without a
+// custom verified domain. Set RESEND_FROM secret to override once your domain
+// is verified in Resend: e.g. "Illume <orders@illumine.co.in>"
+const RESEND_FROM    = Deno.env.get("RESEND_FROM") ?? "Illume <onboarding@resend.dev>";
 
 interface OrderItem {
   name: string;
@@ -201,14 +204,15 @@ serve(async (req: Request) => {
 
     if (!resendResponse.ok) {
       const errorBody = await resendResponse.text();
-      console.error("Resend error:", errorBody);
-      return new Response(JSON.stringify({ error: "Failed to send email", detail: errorBody }), {
+      console.error("Resend API error | status:", resendResponse.status, "| body:", errorBody);
+      return new Response(JSON.stringify({ error: "Failed to send email", status: resendResponse.status, detail: errorBody }), {
         status: 502,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     const result = await resendResponse.json();
+    console.log("Email sent successfully | id:", result.id, "| to:", email);
     return new Response(JSON.stringify({ success: true, id: result.id }), {
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
