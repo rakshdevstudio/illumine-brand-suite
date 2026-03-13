@@ -152,8 +152,10 @@ const OrdersPage = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
+              <SelectItem value="packed">Packed</SelectItem>
+              <SelectItem value="shipped">Shipped</SelectItem>
               <SelectItem value="delivered">Delivered</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
         </TableCell>
@@ -297,9 +299,19 @@ const OrdersPage = () => {
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
                   <p>{selected.phone}</p>
                 </div>
+                {(selected as any).email && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Email</p>
+                    <p>{(selected as any).email}</p>
+                  </div>
+                )}
                 <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Address</p>
-                  <p>{selected.address}</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Delivery Address</p>
+                  <p>
+                    {[selected.address, selected.city, selected.pincode]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
                 </div>
               </div>
 
