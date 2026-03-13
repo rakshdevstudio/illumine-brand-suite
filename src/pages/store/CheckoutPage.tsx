@@ -1,47 +1,35 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
-import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 type CheckoutForm = {
-  name: string;
+  customer_name: string;
+  email: string;
   phone: string;
   address: string;
   city: string;
   pincode: string;
 };
 
-const EMPTY_FORM: CheckoutForm = { name: "", phone: "", address: "", city: "", pincode: "" };
+const EMPTY_FORM: CheckoutForm = {
+  customer_name: "",
+  email: "",
+  phone: "",
+  address: "",
+  city: "",
+  pincode: "",
+};
 
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
-  const { user, customer, loading: authLoading } = useCustomerAuth();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const hasItemsRef = useRef(items.length > 0);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login?next=/store/checkout", { replace: true });
-    }
-  }, [authLoading, user, navigate]);
-
-  // Pre-fill form from customer profile
-  useEffect(() => {
-    if (customer) {
-      setForm((f) => ({
-        ...f,
-        name: f.name || customer.name || "",
-        phone: f.phone || customer.phone || "",
-      }));
-    }
-  }, [customer]);
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -51,7 +39,7 @@ const CheckoutPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.phone || !form.address || !form.city || !form.pincode) {
+    if (!form.customer_name || !form.email || !form.phone || !form.address || !form.city || !form.pincode) {
       toast.error("Please fill all required fields");
       return;
     }
@@ -60,8 +48,8 @@ const CheckoutPage = () => {
     setLoading(true);
     try {
       const orderPayload = {
-        customer_id: user?.id ?? null,
-        customer_name: form.name,
+        customer_name: form.customer_name,
+        email: form.email,
         phone: form.phone,
         address: form.address,
         city: form.city,
@@ -72,10 +60,7 @@ const CheckoutPage = () => {
 
       const withEmailResult = await supabase
         .from("orders")
-        .insert({
-          ...orderPayload,
-          email: user?.email ?? null,
-        })
+        .insert(orderPayload)
         .select()
         .single();
 
@@ -143,24 +128,22 @@ const CheckoutPage = () => {
       clearCart();
 
       // Fire-and-forget order confirmation email
-      if (user?.email) {
-        supabase.functions
-          .invoke("send-order-confirmation", {
-            body: {
-              email: user.email,
-              name: form.name,
-              orderId: order.id,
-              items: items.map((item) => ({
-                name: item.name,
-                size: item.size,
-                quantity: item.quantity,
-                price: item.price,
-              })),
-              total: order.total_amount,
-            },
-          })
-          .catch((err: unknown) => console.error("Order confirmation email failed:", err));
-      }
+      supabase.functions
+        .invoke("send-order-confirmation", {
+          body: {
+            email: form.email,
+            name: form.customer_name,
+            orderId: order.id,
+            items: items.map((item) => ({
+              name: item.name,
+              size: item.size,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            total: order.total_amount,
+          },
+        })
+        .catch((err: unknown) => console.error("Order confirmation email failed:", err));
 
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
@@ -170,10 +153,6 @@ const CheckoutPage = () => {
       setLoading(false);
     }
   };
-
-  // Show nothing while auth is initialising
-  if (authLoading) return null;
-  if (!user) return null;
 
   if (!hasItemsRef.current) {
     navigate("/store/cart", { replace: true });
@@ -193,11 +172,26 @@ const CheckoutPage = () => {
             Full Name <span className="text-destructive">*</span>
           </label>
           <Input
-            value={form.name}
-            onChange={set("name")}
+            value={form.customer_name}
+            onChange={set("customer_name")}
             className="h-12 border-border"
             placeholder="Enter your full name"
             autoComplete="name"
+          />
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+            Email <span className="text-destructive">*</span>
+          </label>
+          <Input
+            type="email"
+            value={form.email}
+            onChange={set("email")}
+            className="h-12 border-border"
+            placeholder="you@example.com"
+            autoComplete="email"
           />
         </div>
 

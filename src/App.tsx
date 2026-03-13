@@ -15,9 +15,6 @@ import ProductPage from "./pages/store/ProductPage";
 import CartPage from "./pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
-import LoginPage from "./pages/store/LoginPage";
-import AccountPage from "./pages/store/AccountPage";
-import OnboardingPage from "./pages/store/OnboardingPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
@@ -65,12 +62,7 @@ const App = () => (
             <Route path="cart" element={<CartPage />} />
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="confirmation" element={<ConfirmationPage />} />
-            <Route path="account" element={<AccountPage />} />
           </Route>
-
-          {/* Customer auth — standalone pages (no store header) */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
 
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLoginPage />} />
