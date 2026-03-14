@@ -370,6 +370,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          low_stock_threshold: number
           price_override: number | null
           product_id: string
           size: string
@@ -380,6 +381,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          low_stock_threshold?: number
           price_override?: number | null
           product_id: string
           size: string
@@ -390,6 +392,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          low_stock_threshold?: number
           price_override?: number | null
           product_id?: string
           size?: string

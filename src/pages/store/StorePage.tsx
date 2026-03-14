@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ArrowRight } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
 import { useStudentProfile } from "@/lib/student-profile";
+import ThreadsBackground from "@/components/store/ThreadsBackground";
 
 const StorePage = () => {
   const profile = useStudentProfile((s) => s.profile);
@@ -56,28 +57,28 @@ const StorePage = () => {
   return (
     <div className="bg-background">
       <section className="relative overflow-hidden bg-surface-dark text-center px-6 py-32 md:py-44">
-        <div className="absolute inset-0 illume-hero-bg" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-black/40" />
+        <ThreadsBackground amplitude={1} distance={0} enableMouseInteraction />
+        <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/22 via-black/10 to-black/34 pointer-events-none" />
 
-        <div className="relative z-10 max-w-3xl mx-auto">
+        <div className="relative z-[2] max-w-3xl mx-auto flex flex-col items-center pointer-events-none">
           <img
             src={illumeLogo}
             alt="Illume"
-            className="h-16 md:h-20 w-auto mx-auto mb-8"
+            className="h-24 md:h-28 w-auto mx-auto mb-8 pointer-events-auto"
             style={{ filter: "brightness(0) invert(1)" }}
           />
-          <p className="text-[11px] md:text-xs tracking-[0.5em] text-surface-dark-muted uppercase mb-4 font-light">
+          <p className="text-[11px] md:text-xs tracking-[0.5em] text-surface-dark-muted uppercase mb-4 font-light pointer-events-auto">
             Illume
           </p>
-          <h1 className="text-4xl md:text-6xl font-extralight tracking-[0.28em] text-surface-dark-foreground uppercase leading-[1.1] mb-5">
+          <h1 className="text-4xl md:text-6xl font-extralight tracking-[0.28em] text-surface-dark-foreground uppercase leading-[1.1] mb-5 pointer-events-auto">
             Be The Change
           </h1>
-          <p className="text-[11px] md:text-xs tracking-[0.38em] text-surface-dark-muted uppercase max-w-xl mx-auto font-light leading-relaxed">
+          <p className="text-[11px] md:text-xs tracking-[0.38em] text-surface-dark-muted uppercase max-w-xl mx-auto font-light leading-relaxed pointer-events-auto">
             Premium School Uniforms Crafted With Care
           </p>
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-surface-dark-muted">
+        <div className="absolute z-[2] bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-surface-dark-muted pointer-events-none">
           <span className="text-[9px] tracking-[0.35em] uppercase">Scroll</span>
           <span className="illume-scroll-indicator" />
         </div>

@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { isLowStock } from "@/lib/inventory";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 
@@ -111,17 +113,13 @@ const InventoryPage = () => {
                   <TableCell className="text-sm font-medium">{row.stock}</TableCell>
                   <TableCell className="text-sm">{formatPrice(row.price)}</TableCell>
                   <TableCell>
-                    <span
-                      className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                        row.stock === 0
-                          ? "border-destructive text-destructive"
-                          : row.stock <= 10
-                          ? "border-border text-muted-foreground"
-                          : "border-border text-foreground"
-                      }`}
-                    >
-                      {row.stock === 0 ? "Out of Stock" : row.stock <= 10 ? "Low Stock" : "In Stock"}
-                    </span>
+                    {row.stock === 0 ? (
+                      <Badge className="bg-red-600 text-white border-transparent">Out of Stock</Badge>
+                    ) : isLowStock(row.stock, row.low_stock_threshold) ? (
+                      <Badge className="bg-red-200 text-red-900 border-transparent">Low Stock</Badge>
+                    ) : (
+                      <Badge className="border-border bg-background text-foreground">In Stock</Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Dialog

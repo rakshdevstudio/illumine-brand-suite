@@ -12,12 +12,12 @@ const StoreHeader = () => {
 
   return (
     <header className="bg-surface-dark border-b border-surface-dark">
-      <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link to="/store" className="flex items-center gap-2">
           <img
             src={illumeLogo}
             alt="Illume"
-            className="h-8 w-auto" style={{ filter: "brightness(0) invert(1)" }}
+            className="h-9 w-auto" style={{ filter: "brightness(0) invert(1)" }}
           />
         </Link>
 

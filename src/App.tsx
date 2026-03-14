@@ -26,6 +26,7 @@ import ClassesPage from "./pages/admin/ClassesPage";
 import ProductsPage from "./pages/admin/ProductsPage";
 import ProductVariantsPage from "./pages/admin/ProductVariantsPage";
 import InventoryPage from "./pages/admin/InventoryPage";
+import InventoryAlertsPage from "./pages/admin/InventoryAlertsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
@@ -76,6 +77,7 @@ const App = () => (
             <Route path="products" element={<ProductsPage />} />
             <Route path="product-variants" element={<ProductVariantsPage />} />
             <Route path="inventory" element={<InventoryPage />} />
+            <Route path="inventory-alerts" element={<InventoryAlertsPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />

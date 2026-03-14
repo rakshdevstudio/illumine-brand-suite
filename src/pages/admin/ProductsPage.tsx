@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,7 +11,7 @@ import { Plus, Globe } from "lucide-react";
 import { getDisplayImage } from "@/lib/product-images";
 import ProductImageUploader from "@/components/admin/ProductImageUploader";
 
-const categories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
+const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
 
 const ProductsPage = () => {
@@ -63,20 +63,34 @@ const ProductsPage = () => {
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
+  const categoryOptions = useMemo(() => {
+    const fromProducts = (products ?? [])
+      .map((p: any) => p.category)
+      .filter(Boolean);
+    return Array.from(new Set([...defaultCategories, ...fromProducts])).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
   const handleSave = async () => {
     if (!form.name || !form.category || !form.price) {
       toast.error("Please fill all required fields");
       return;
     }
+    const parsedPrice = parseFloat(form.price);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      toast.error("Please enter a valid base price");
+      return;
+    }
+
     try {
       const payload: any = {
-        name: form.name,
+        name: form.name.trim(),
         school_id: form.school_id || null,
         class_id: form.class_id || null,
-        category: form.category,
+        category: form.category.trim(),
         gender: form.gender,
-        price: parseFloat(form.price),
-        description: form.description || null,
+        price: parsedPrice,
+        base_price: parsedPrice,
+        description: form.description.trim() || null,
         is_universal: true,
       };
       let savedProductId: string | null = editing?.id ?? null;
@@ -93,6 +107,18 @@ const ProductsPage = () => {
           .single();
         if (error) throw error;
         savedProductId = created?.id ?? null;
+
+        if (savedProductId) {
+          const { error: variantError } = await supabase.from("product_variants").insert({
+            product_id: savedProductId,
+            size: "default",
+            stock: 0,
+            price_override: null,
+          });
+
+          if (variantError) throw variantError;
+        }
+
         toast.success("Product created");
       }
 
@@ -117,11 +143,16 @@ const ProductsPage = () => {
       }
 
       queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-low-stock-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-variants"] });
       setDialogOpen(false);
       setEditing(null);
       setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
-    } catch {
-      toast.error("Failed to save product");
+    } catch (err: any) {
+      console.error("Failed to save product:", err);
+      toast.error(err?.message || "Failed to save product");
     }
   };
 
@@ -256,16 +287,18 @@ const ProductsPage = () => {
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Category</label>
-              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="h-10"
+                placeholder="Select or type category"
+                list="product-category-options"
+              />
+              <datalist id="product-category-options">
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School</label>
@@ -312,7 +345,12 @@ const ProductsPage = () => {
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Description</label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-10" placeholder="Optional description" />
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                className="w-full min-h-[96px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-vertical"
+                placeholder="Optional description"
+              />
             </div>
 
             {/* Image uploader - only for existing products */}

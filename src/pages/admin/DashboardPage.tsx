@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { LOW_STOCK_LIMIT, getLowStockThreshold, isLowStock } from "@/lib/inventory";
 import { Package, ShoppingCart, AlertTriangle, GraduationCap } from "lucide-react";
 
 const DashboardPage = () => {
@@ -47,11 +48,22 @@ const DashboardPage = () => {
     },
   });
 
-  const lowStockVariants = products?.flatMap((p) =>
-    (p.product_variants ?? [])
-      .filter((v: any) => v.stock <= 10)
-      .map((v: any) => ({ ...v, productName: p.name, schoolName: (p as any).schools?.name }))
-  ) ?? [];
+  const { data: lowStockVariants } = useQuery({
+    queryKey: ["admin-low-stock-alerts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("product_variants")
+        .select("*, products(name)")
+        .order("stock", { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+      return (data ?? [])
+        .filter((variant: any) => isLowStock(variant.stock, variant.low_stock_threshold))
+        .sort((a: any, b: any) => a.stock - b.stock)
+        .slice(0, 10);
+    },
+  });
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -103,7 +115,7 @@ const DashboardPage = () => {
             <AlertTriangle className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-extralight">{lowStockVariants.length}</p>
+            <p className="text-3xl font-extralight">{lowStockVariants?.length ?? 0}</p>
           </CardContent>
         </Card>
       </div>
@@ -155,38 +167,26 @@ const DashboardPage = () => {
       </div>
 
       {/* Low Stock */}
-      {lowStockVariants.length > 0 && (
+      {(lowStockVariants?.length ?? 0) > 0 && (
         <div>
           <h2 className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-4">
             Low Stock Alerts
           </h2>
-          <div className="border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
-                  <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
-                  <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
-                  <TableHead className="text-xs tracking-wider uppercase">Stock</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lowStockVariants.map((v: any) => (
-                  <TableRow key={v.id}>
-                    <TableCell className="text-sm">{v.productName}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.schoolName}</TableCell>
-                    <TableCell className="text-sm">{v.size}</TableCell>
-                    <TableCell className="text-sm font-medium">
-                      {v.stock === 0 ? (
-                        <span className="text-destructive">Out of stock</span>
-                      ) : (
-                        <span>{v.stock} left</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="border border-red-200 bg-red-50 px-5 py-4">
+            <div className="space-y-3 text-red-600">
+              {lowStockVariants?.map((variant: any) => (
+                <div key={variant.id} className="text-sm">
+                  <span className="font-medium">{variant.products?.name || "Product"}</span>
+                  <span> (Size {variant.size}) — </span>
+                  <span>
+                    {variant.stock} left
+                    {getLowStockThreshold(variant.low_stock_threshold) !== LOW_STOCK_LIMIT
+                      ? ` (alert at ${getLowStockThreshold(variant.low_stock_threshold)})`
+                      : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

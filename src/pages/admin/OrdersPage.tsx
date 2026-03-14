@@ -4,11 +4,42 @@ import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowUpDown, ArrowUp, ArrowDown, LayoutList, Group } from "lucide-react";
 
 type SortDir = "asc" | "desc" | null;
+type OrderStatus = "pending" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
+
+const ORDER_STATUSES: OrderStatus[] = ["pending", "confirmed", "packed", "shipped", "delivered", "cancelled"];
+
+const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
+  pending: "bg-gray-200 text-gray-900 border-transparent",
+  confirmed: "bg-blue-200 text-blue-900 border-transparent",
+  packed: "bg-yellow-200 text-yellow-900 border-transparent",
+  shipped: "bg-purple-200 text-purple-900 border-transparent",
+  delivered: "bg-green-200 text-green-900 border-transparent",
+  cancelled: "bg-red-200 text-red-900 border-transparent",
+};
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  pending: "Pending",
+  confirmed: "Confirmed",
+  packed: "Packed",
+  shipped: "Shipped",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+};
+
+const isOrderStatus = (value: string): value is OrderStatus =>
+  ORDER_STATUSES.includes(value as OrderStatus);
+
+const OrderStatusBadge = ({ status }: { status: string }) => {
+  const normalizedStatus: OrderStatus = isOrderStatus(status) ? status : "pending";
+  return <Badge className={STATUS_BADGE_CLASSES[normalizedStatus]}>{STATUS_LABELS[normalizedStatus]}</Badge>;
+};
 
 const getOrderSchools = (order: any): string[] => {
   const items = order.order_items || [];
@@ -22,10 +53,31 @@ const getItemSummary = (order: any): string => {
     .join(", ");
 };
 
+const matchesDateFilter = (createdAt: string, dateFilter: string) => {
+  if (dateFilter === "all") return true;
+
+  const createdDate = new Date(createdAt);
+  const now = new Date();
+
+  if (dateFilter === "today") {
+    return createdDate.toDateString() === now.toDateString();
+  }
+
+  const days = dateFilter === "7days" ? 7 : dateFilter === "30days" ? 30 : null;
+  if (!days) return true;
+
+  const threshold = new Date(now);
+  threshold.setDate(now.getDate() - days);
+  return createdDate >= threshold;
+};
+
 const OrdersPage = () => {
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [schoolFilter, setSchoolFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<string>("all");
   const [schoolSort, setSchoolSort] = useState<SortDir>(null);
   const [groupBySchool, setGroupBySchool] = useState(false);
 
@@ -67,13 +119,28 @@ const OrdersPage = () => {
   const processedOrders = useMemo(() => {
     if (!orders) return [];
     let filtered = orders as any[];
+    const normalizedSearch = searchQuery.trim().toLowerCase();
 
     if (schoolFilter !== "all") {
       filtered = filtered.filter((order) => {
         const items = order.order_items || [];
-        return items.some((i: any) => i.products?.school_id === schoolFilter);
+        return order.school_id === schoolFilter || items.some((i: any) => i.products?.school_id === schoolFilter);
       });
     }
+
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((order) => order.status === statusFilter);
+    }
+
+    if (normalizedSearch) {
+      filtered = filtered.filter((order) => {
+        const customerName = (order.customer_name || "").toLowerCase();
+        const phone = order.phone || "";
+        return customerName.includes(normalizedSearch) || phone.includes(searchQuery.trim());
+      });
+    }
+
+    filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
 
     if (schoolSort) {
       filtered = [...filtered].sort((a, b) => {
@@ -86,7 +153,7 @@ const OrdersPage = () => {
     }
 
     return filtered;
-  }, [orders, schoolFilter, schoolSort]);
+  }, [orders, schoolFilter, statusFilter, searchQuery, dateFilter, schoolSort]);
 
   // Summary counts
   const summaryCards = useMemo(() => {
@@ -116,12 +183,26 @@ const OrdersPage = () => {
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
-  const handleStatusChange = async (orderId: string, status: string) => {
-    const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    if (!isOrderStatus(status)) {
+      toast.error("Invalid order status");
+      return;
+    }
+
+    let { error } = await supabase
+      .from("orders")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+
+    if (error?.message?.toLowerCase().includes("updated_at")) {
+      const retry = await supabase.from("orders").update({ status }).eq("id", orderId);
+      error = retry.error;
+    }
+
     if (error) {
       toast.error("Failed to update status");
     } else {
-      toast.success("Status updated");
+      toast.success("Order status updated");
       queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
     }
   };
@@ -146,18 +227,24 @@ const OrdersPage = () => {
         </TableCell>
         <TableCell className="text-sm">{formatPrice(order.total_amount)}</TableCell>
         <TableCell>
-          <Select value={order.status} onValueChange={(v) => handleStatusChange(order.id, v)}>
-            <SelectTrigger className="w-32 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="packed">Packed</SelectItem>
-              <SelectItem value="shipped">Shipped</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <OrderStatusBadge status={order.status} />
+            <Select
+              value={isOrderStatus(order.status) ? order.status : "pending"}
+              onValueChange={(value) => updateOrderStatus(order.id, value)}
+            >
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ORDER_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {new Date(order.created_at).toLocaleDateString()}
@@ -192,39 +279,96 @@ const OrdersPage = () => {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
-          <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-            <SelectTrigger className="w-48 h-9 text-xs">
-              <SelectValue placeholder="All Schools" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Schools</SelectItem>
-              {schools?.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
+            <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+              <SelectTrigger className="w-48 h-9 text-xs">
+                <SelectValue placeholder="All Schools" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Schools</SelectItem>
+                {schools?.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Status</span>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40 h-9 text-xs">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {ORDER_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Date</span>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-40 h-9 text-xs">
+                <SelectValue placeholder="All time" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="7days">Last 7 days</SelectItem>
+                <SelectItem value="30days">Last 30 days</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search name or phone"
+            className="h-9 lg:max-w-xs text-sm"
+          />
         </div>
 
-        <div className="ml-auto flex items-center gap-1 border border-border">
-          <Button
-            variant={!groupBySchool ? "default" : "ghost"}
-            size="sm"
-            className="text-xs h-9 rounded-none gap-1"
-            onClick={() => setGroupBySchool(false)}
-          >
-            <LayoutList className="h-3 w-3" /> Flat
-          </Button>
-          <Button
-            variant={groupBySchool ? "default" : "ghost"}
-            size="sm"
-            className="text-xs h-9 rounded-none gap-1"
-            onClick={() => setGroupBySchool(true)}
-          >
-            <Group className="h-3 w-3" /> Group by School
-          </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={toggleSchoolSort}
+            >
+              <span className="flex items-center gap-1">
+                Sort <SortIcon className="h-3 w-3" />
+              </span>
+            </Button>
+          </div>
+
+          <div className="ml-auto flex items-center gap-1 border border-border">
+            <Button
+              variant={!groupBySchool ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-9 rounded-none gap-1"
+              onClick={() => setGroupBySchool(false)}
+            >
+              <LayoutList className="h-3 w-3" /> Flat
+            </Button>
+            <Button
+              variant={groupBySchool ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-9 rounded-none gap-1"
+              onClick={() => setGroupBySchool(true)}
+            >
+              <Group className="h-3 w-3" /> Group by School
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -290,6 +434,11 @@ const OrdersPage = () => {
           </DialogHeader>
           {selected && (
             <div className="space-y-6 py-4">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
+                <OrderStatusBadge status={selected.status} />
+              </div>
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Customer</p>

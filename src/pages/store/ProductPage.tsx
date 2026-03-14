@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart } from "@/lib/cart";
@@ -8,8 +8,11 @@ import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 
+const LOW_STOCK_THRESHOLD = 10;
+
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -86,15 +89,25 @@ const ProductPage = () => {
 
   if (!product) return null;
 
+  const schoolSlug = (product as any).schools?.slug;
+  const handleBack = () => {
+    if (schoolSlug) {
+      navigate(`/store/school/${schoolSlug}`);
+      return;
+    }
+    navigate(-1);
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 pb-28 md:pb-12">
-      <Link
-        to={`/store/school/${(product as any).schools?.slug ?? ""}`}
+      <button
+        type="button"
+        onClick={handleBack}
         className="inline-flex items-center gap-2 text-xs tracking-[0.2em] text-muted-foreground uppercase mb-12 hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-3 w-3" strokeWidth={1.5} />
         Back
-      </Link>
+      </button>
 
       <div className="grid md:grid-cols-2 gap-16">
         {/* Image Gallery */}
@@ -175,13 +188,13 @@ const ProductPage = () => {
                   </button>
                 ))}
             </div>
-            {selectedVariant && selectedVariant.stock > 0 && selectedVariant.stock <= 10 && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Only {selectedVariant.stock} left in stock
+            {selectedVariant && selectedVariant.stock > 0 && selectedVariant.stock <= LOW_STOCK_THRESHOLD && (
+              <p className="text-red-500 text-sm mt-2">
+                ⚠ Only {selectedVariant.stock} left in stock
               </p>
             )}
             {selectedVariant?.stock === 0 && (
-              <p className="text-xs text-muted-foreground mt-2">Out of stock</p>
+              <p className="text-xs text-red-500 mt-2">Out of stock</p>
             )}
           </div>
 
@@ -215,7 +228,7 @@ const ProductPage = () => {
             disabled={!selectedVariant || selectedVariant.stock === 0}
             className="w-full h-12 text-xs tracking-[0.2em] uppercase hidden md:inline-flex"
           >
-            Add to Bag
+            {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
           </Button>
 
           <div className="mt-12 pt-8 border-t border-border">
@@ -253,7 +266,7 @@ const ProductPage = () => {
           disabled={!selectedVariant || selectedVariant.stock === 0}
           className="w-full h-12 text-xs tracking-[0.2em] uppercase"
         >
-          Add to Bag
+          {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
         </Button>
       </div>
     </div>
