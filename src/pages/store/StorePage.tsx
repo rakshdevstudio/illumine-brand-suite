@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, CheckCircle2, Ruler, Shield, Sparkles } from "lucide-react";
+import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Ruler, Shield, Sparkles, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import illumeLogo from "@/assets/illume-logo.png";
 import { useStudentProfile } from "@/lib/student-profile";
@@ -29,6 +29,51 @@ type SchoolWithClasses = {
 
 const DISABLE_AUTO_SCHOOL_REDIRECT = true;
 
+const TESTIMONIALS = [
+  {
+    quote:
+      "So my child studies in GAFL school RR Nagar and I had purchased the uniforms when the uniform vendor had come to the school. However I wanted one more t-shirt and got in touch with the vendor again. He helped me to get the t-shirt within an hour of order, in a simple and easy way. Firstly I checked with the vendor for size availability and once he confirmed, he insisted me to book a porter so that I can get the product right away without waiting for it. It was very kind from the vendor side to share the porter idea to get the product quickly. Thank you sir.",
+    name: "Mangasa Jayaram",
+    label: "Parent",
+  },
+  {
+    quote:
+      "Excellent service. GAFL school uniform quality is really good. Staff and the owner is too cooperative and patient in listening to customers. Overall good experience.",
+    name: "Ramya Karimanne",
+    label: "Parent",
+  },
+  {
+    quote:
+      "I had ordered school uniform for my son from Lotus. Unfortunately the size was not fitting for him and I was trying hard to get it exchanged. At last spoke to Mr Prabhurraj over the phone and he got the uniform home delivered within less than 3 hours of time. I really appreciate the quality of service and timeliness. Uniform quality is also very good. Thank you Mr Prabhu for valuing customer's time.",
+    name: "Sara Baptist",
+    label: "Parent",
+  },
+  {
+    quote:
+      "Very cooperative and friendly staff. Though I couldn't go there, they kindly sent the uniforms by Porter to my address location. This saved lot of time for me. Also they update the availability of uniforms immediately when enquired. Excellent customer service. Thank you.",
+    name: "Lakshmi Rao",
+    label: "Parent",
+  },
+  {
+    quote:
+      "Many thanks to Illume staff for helping to receive my kids uniforms door delivered. All shopping was done over phone and they did a wonderful job in sending the uniforms delivered to my house address on time.",
+    name: "Swarna Latha",
+    label: "Parent",
+  },
+  {
+    quote:
+      "Very good fabric and equally good finishing. Cordial staff and one stop store for uniforms and accessories. I would highly recommend Lotus for your kids uniforms.",
+    name: "Shubha Guruprasad",
+    label: "Parent",
+  },
+  {
+    quote:
+      "Appearance, obedience, personality is all judged by the outfit of uniforms worn by kids. And this is absolutely proved by Lotus Uniforms Rajajinagar. Glad by the purchase of uniforms since 3 years. Excellent quality. Friendly service. Much more best services expected ahead. Thank you.",
+    name: "Mrs Devika Purushotham",
+    label: "Parent",
+  },
+] as const;
+
 const getClassRange = (classes: SchoolWithClasses["classes"]) => {
   const active = classes
     .filter((c) => c.status === "active")
@@ -46,6 +91,8 @@ const StorePage = () => {
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [visibleCards, setVisibleCards] = useState<Record<string, boolean>>({});
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [isTestimonialHovered, setIsTestimonialHovered] = useState(false);
 
   const profileRoute = profile
     ? `/store/school/${profile.schoolSlug}/class/${profile.classSlug}/gender/${profile.gender}`
@@ -104,6 +151,22 @@ const StorePage = () => {
 
     return () => observer.disconnect();
   }, [schools]);
+
+  useEffect(() => {
+    if (isTestimonialHovered) return;
+    const timer = setInterval(() => {
+      setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [isTestimonialHovered]);
+
+  const showPreviousTestimonial = () => {
+    setActiveTestimonial((prev) => (prev - 1 + TESTIMONIALS.length) % TESTIMONIALS.length);
+  };
+
+  const showNextTestimonial = () => {
+    setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
+  };
 
   return (
     <div className="bg-background">
@@ -493,6 +556,92 @@ const StorePage = () => {
           ))}
         </motion.ul>
       </section>
+
+      {/* ── TESTIMONIALS · OUR CUSTOMERS SAY ────────────────────── */}
+      <motion.section
+        initial={{ opacity: 0, y: 40 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="relative overflow-hidden px-6 py-28 md:py-36"
+        style={{ backgroundColor: "#F7F7F7" }}
+        onMouseEnter={() => setIsTestimonialHovered(true)}
+        onMouseLeave={() => setIsTestimonialHovered(false)}
+      >
+        <span className="pointer-events-none absolute left-1/2 top-14 -translate-x-1/2 text-[180px] md:text-[260px] leading-none opacity-[0.08] text-foreground select-none">
+          “ ”
+        </span>
+
+        <div className="relative z-10 max-w-5xl mx-auto text-center">
+          <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.16em] uppercase mb-20">
+            Our Customers Say
+          </h2>
+
+          <div className="relative min-h-[380px] md:min-h-[300px] flex items-center justify-center px-12 md:px-20">
+            <motion.button
+              type="button"
+              aria-label="Previous testimonial"
+              onClick={showPreviousTestimonial}
+              whileHover={{ scale: 1.08, backgroundColor: "#000000" }}
+              whileTap={{ scale: 0.92 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute left-0 md:-left-6 top-1/2 -translate-y-1/2 h-11 w-11 bg-zinc-900 text-white flex items-center justify-center"
+            >
+              <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
+            </motion.button>
+
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.article
+                key={activeTestimonial}
+                initial={{ opacity: 0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -40 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                className="w-full max-w-3xl mx-auto"
+              >
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  className="text-base md:text-lg leading-relaxed text-foreground/90 max-w-[700px] mx-auto mb-10"
+                >
+                  {TESTIMONIALS[activeTestimonial].quote}
+                </motion.p>
+
+                <div className="flex items-center justify-center gap-1.5 mb-7">
+                  {[0, 1, 2, 3, 4].map((index) => (
+                    <motion.span
+                      key={index}
+                      initial={{ opacity: 0, scale: 0.6 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.28, delay: 0.12 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                      className="inline-flex"
+                    >
+                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" strokeWidth={1.6} />
+                    </motion.span>
+                  ))}
+                </div>
+
+                <p className="text-base font-medium tracking-wide mb-1">{TESTIMONIALS[activeTestimonial].name}</p>
+                <p className="text-sm text-muted-foreground tracking-[0.14em] uppercase">{TESTIMONIALS[activeTestimonial].label}</p>
+              </motion.article>
+            </AnimatePresence>
+
+            <motion.button
+              type="button"
+              aria-label="Next testimonial"
+              onClick={showNextTestimonial}
+              whileHover={{ scale: 1.08, backgroundColor: "#000000" }}
+              whileTap={{ scale: 0.92 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute right-0 md:-right-6 top-1/2 -translate-y-1/2 h-11 w-11 bg-zinc-900 text-white flex items-center justify-center"
+            >
+              <ChevronRight className="h-4 w-4" strokeWidth={1.8} />
+            </motion.button>
+          </div>
+        </div>
+
+      </motion.section>
 
       {/* ── SECTION 3 · BRAND SIGNATURE ─────────────────────────── */}
       <section className="px-6 py-24 md:py-32">
