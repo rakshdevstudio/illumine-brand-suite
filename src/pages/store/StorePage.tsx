@@ -1,12 +1,22 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2 } from "lucide-react";
+import { Building2, CheckCircle2, Ruler, Shield, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import illumeLogo from "@/assets/illume-logo.png";
 import { useStudentProfile } from "@/lib/student-profile";
 import ThreadsBackground from "@/components/store/ThreadsBackground";
+
+const REVEAL = {
+  hidden: { opacity: 0, y: 28 },
+  visible: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] as const },
+  }),
+};
 
 type SchoolWithClasses = {
   id: string;
@@ -225,33 +235,157 @@ const StorePage = () => {
         )}
       </section>
 
-      <section className="max-w-6xl mx-auto px-6 pb-28 md:pb-36">
-        <div className="border border-border p-10 md:p-14 mb-12">
-          <p className="text-[10px] tracking-[0.32em] text-muted-foreground uppercase mb-5">Brand Story</p>
-          <h3 className="text-2xl md:text-3xl font-extralight tracking-[0.14em] uppercase mb-6">Crafted With Care</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
-            Every Illume uniform is designed with premium fabrics, clean construction, and lasting comfort for everyday school life.
-            We focus on quality that looks refined, feels soft, and performs through every term.
-          </p>
-        </div>
+      {/* ── SECTION 1 · BRAND STORY ─────────────────────────────── */}
+      <section className="px-6 py-28 md:py-40">
+        <div className="max-w-2xl mx-auto text-center">
+          <motion.p
+            variants={REVEAL}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-6"
+          >
+            Brand Story
+          </motion.p>
 
-        <div className="grid md:grid-cols-3 gap-6 md:gap-8">
-          <div className="border border-border p-8 md:p-10">
-            <p className="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-3">01</p>
-            <h4 className="text-sm tracking-[0.2em] uppercase mb-2">Premium Fabric</h4>
-            <p className="text-sm text-muted-foreground">Soft touch, breathable materials selected for day-long comfort.</p>
-          </div>
-          <div className="border border-border p-8 md:p-10">
-            <p className="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-3">02</p>
-            <h4 className="text-sm tracking-[0.2em] uppercase mb-2">Durable Stitching</h4>
-            <p className="text-sm text-muted-foreground">Reinforced seams and dependable construction made to last.</p>
-          </div>
-          <div className="border border-border p-8 md:p-10">
-            <p className="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-3">03</p>
-            <h4 className="text-sm tracking-[0.2em] uppercase mb-2">Perfect Fit</h4>
-            <p className="text-sm text-muted-foreground">Carefully graded sizing for a clean, confident school-ready fit.</p>
+          <motion.h2
+            variants={REVEAL}
+            custom={1}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-3xl md:text-4xl font-extralight tracking-[0.22em] uppercase mb-10 leading-snug"
+          >
+            Crafted With Care
+          </motion.h2>
+
+          <motion.div
+            variants={REVEAL}
+            custom={2}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="w-8 h-px bg-foreground/20 mx-auto mb-10"
+          />
+
+          <motion.p
+            variants={REVEAL}
+            custom={3}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-sm text-muted-foreground leading-[1.9] mb-6"
+          >
+            Every Illume uniform is designed with premium fabrics, clean construction, and lasting comfort for everyday school life.
+          </motion.p>
+
+          <motion.p
+            variants={REVEAL}
+            custom={4}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-sm text-muted-foreground leading-[1.9]"
+          >
+            We focus on quality that looks refined, feels soft, and performs through every term.
+          </motion.p>
+        </div>
+      </section>
+
+      {/* ── SECTION 2 · QUALITY FEATURES ────────────────────────── */}
+      <section className="bg-secondary/20 border-y border-border px-6 py-20 md:py-28">
+        <div className="max-w-5xl mx-auto">
+          <motion.p
+            variants={REVEAL}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-16"
+          >
+            Our Promise
+          </motion.p>
+
+          <div className="grid md:grid-cols-3 gap-px bg-border">
+            {[
+              {
+                num: "01",
+                icon: <Sparkles className="h-5 w-5" strokeWidth={1.5} />,
+                title: "Premium Fabric",
+                body: "Soft touch, breathable materials selected for day-long comfort.",
+              },
+              {
+                num: "02",
+                icon: <Shield className="h-5 w-5" strokeWidth={1.5} />,
+                title: "Durable Stitching",
+                body: "Reinforced seams and dependable construction made to last.",
+              },
+              {
+                num: "03",
+                icon: <Ruler className="h-5 w-5" strokeWidth={1.5} />,
+                title: "Perfect Fit",
+                body: "Carefully graded sizing for a clean, confident school-ready fit.",
+              },
+            ].map((feat, i) => (
+              <motion.div
+                key={feat.num}
+                variants={REVEAL}
+                custom={i}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.25 }}
+                className="bg-background px-10 py-12 md:py-14 flex flex-col gap-5"
+              >
+                <div className="flex items-center justify-between text-muted-foreground/40">
+                  {feat.icon}
+                  <span className="text-[10px] tracking-[0.3em] uppercase">{feat.num}</span>
+                </div>
+                <div>
+                  <h4 className="text-xs tracking-[0.24em] uppercase mb-3 font-normal">{feat.title}</h4>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{feat.body}</p>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
+      </section>
+
+      {/* ── SECTION 4 · TRUST STRIP ─────────────────────────────── */}
+      <section className="border-b border-border px-6 py-9">
+        <motion.ul
+          variants={REVEAL}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.4 }}
+          className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-10 gap-y-4"
+        >
+          {[
+            "Premium Fabric",
+            "Durable Stitching",
+            "Perfect Fit Guarantee",
+            "Trusted by Schools",
+          ].map((label) => (
+            <li key={label} className="flex items-center gap-2.5 text-xs tracking-[0.18em] uppercase text-muted-foreground">
+              <CheckCircle2 className="h-3.5 w-3.5 text-foreground/50 shrink-0" strokeWidth={1.5} />
+              {label}
+            </li>
+          ))}
+        </motion.ul>
+      </section>
+
+      {/* ── SECTION 3 · BRAND SIGNATURE ─────────────────────────── */}
+      <section className="px-6 py-24 md:py-32">
+        <motion.div
+          variants={REVEAL}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.4 }}
+          className="max-w-xl mx-auto text-center"
+        >
+          <p className="text-2xl md:text-3xl font-extralight tracking-[0.32em] uppercase mb-5">Illume</p>
+          <p className="text-sm text-muted-foreground leading-relaxed tracking-wide">
+            Premium School Uniforms crafted for comfort,<br className="hidden md:block" /> confidence and everyday excellence.
+          </p>
+        </motion.div>
       </section>
 
       <footer className="border-t border-border px-6 py-12 md:py-14">
