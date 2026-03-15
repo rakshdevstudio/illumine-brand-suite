@@ -12,7 +12,7 @@ import SchoolPage from "./pages/store/SchoolPage";
 import ClassGenderPage from "./pages/store/ClassGenderPage";
 import ClassProductsPage from "./pages/store/ClassProductsPage";
 import ProductPage from "./pages/store/ProductPage";
-import CartPage from "./pages/store/CartPage";
+import CartPage from "@/pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
 import OrderDetailsPage from "./pages/store/OrderDetailsPage";
