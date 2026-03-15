@@ -32,6 +32,7 @@ import OrdersPage from "./pages/admin/OrdersPage";
 import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
+import SalesAnalyticsPage from "./pages/admin/SalesAnalyticsPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -78,6 +79,7 @@ const App = () => (
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="sales" element={<SalesAnalyticsPage />} />
             <Route path="schools" element={<SchoolsPage />} />
             <Route path="classes" element={<ClassesPage />} />
             <Route path="products" element={<ProductsPage />} />
@@ -85,6 +87,7 @@ const App = () => (
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="inventory-alerts" element={<InventoryAlertsPage />} />
             <Route path="orders" element={<OrdersPage />} />
+            <Route path="orders/:orderId" element={<OrdersPage />} />
             <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />

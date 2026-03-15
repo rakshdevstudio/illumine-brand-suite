@@ -1,11 +1,14 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
+import { useStudentProfile } from "@/lib/student-profile";
 
 const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
   const [searchParams] = useSearchParams();
+  const setProfile = useStudentProfile((s) => s.setProfile);
   const debugMode = searchParams.get("debug") === "true";
 
   const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
@@ -34,6 +37,23 @@ const ClassProductsPage = () => {
       return data;
     },
   });
+
+  // Persist selection so Smart School Detection can redirect on next visit
+  useEffect(() => {
+    if (!school || !cls || !slug || !classSlug || !gender) return;
+    const g = gender as "boys" | "girls" | "unisex";
+    const gLabel = g === "boys" ? "Boys" : g === "girls" ? "Girls" : "Unisex";
+    setProfile({
+      schoolId: school.id,
+      schoolName: school.name,
+      schoolSlug: school.slug,
+      classId: cls.id,
+      className: cls.name,
+      classSlug: cls.slug,
+      gender: g,
+      genderLabel: gLabel,
+    });
+  }, [school, cls, slug, classSlug, gender, setProfile]);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["class-products", school?.id, cls?.id, genderDb],

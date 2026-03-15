@@ -1,7 +1,8 @@
 import { Outlet, Navigate } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, LineChart } from "lucide-react";
 import illumeLogo from "@/assets/illume-logo.png";
 import { NavLink } from "@/components/NavLink";
+import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
 import { useAuth } from "@/hooks/use-auth";
 import {
   SidebarProvider,
@@ -18,6 +19,7 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, minRole: "staff" as const },
+  { title: "Sales", url: "/admin/sales", icon: LineChart, minRole: "staff" as const },
   { title: "Schools", url: "/admin/schools", icon: GraduationCap, minRole: "staff" as const },
   { title: "Classes", url: "/admin/classes", icon: BookOpen, minRole: "staff" as const },
   { title: "Products", url: "/admin/products", icon: Box, minRole: "staff" as const },
@@ -127,6 +129,7 @@ const AdminLayout = () => {
           <header className="h-14 flex items-center justify-between border-b border-border bg-background px-4">
             <SidebarTrigger />
             <div className="flex items-center gap-3">
+              <AdminCommandPalette />
               <span className="text-[10px] tracking-[0.15em] text-muted-foreground uppercase border border-border px-2 py-1">
                 {roleLabels[role || ""] || role}
               </span>

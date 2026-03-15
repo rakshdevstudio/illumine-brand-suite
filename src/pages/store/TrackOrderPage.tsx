@@ -28,6 +28,11 @@ type TrackedOrder = {
   status: string;
   created_at: string;
   order_items: OrderItem[];
+  order_timeline?: {
+    event_type: string;
+    description: string;
+    created_at: string;
+  }[];
 };
 
 const formatCurrency = (value: number) =>
@@ -43,6 +48,22 @@ const formatDate = (iso: string) =>
     month: "long",
     year: "numeric",
   });
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+const PUBLIC_TIMELINE_STEPS = [
+  { key: "ORDER_PLACED", label: "Order Placed" },
+  { key: "PAYMENT_CONFIRMED", label: "Payment Confirmed" },
+  { key: "PACKED", label: "Packed" },
+  { key: "SHIPPED", label: "Shipped" },
+  { key: "DELIVERED", label: "Delivered" },
+] as const;
 
 const STATUS_STEPS = ["pending", "confirmed", "packed", "shipped", "delivered"] as const;
 
@@ -84,6 +105,16 @@ const TrackOrderPage = () => {
 
   const currentStatusIndex = order ? STATUS_INDEX[order.status] ?? 0 : 0;
 
+  const timelineByEvent = useMemo(() => {
+    const map = new Map<string, { event_type: string; description: string; created_at: string }>();
+    (order?.order_timeline ?? [])
+      .filter((e) => e.event_type !== "NOTE_ADDED")
+      .forEach((event) => {
+        if (!map.has(event.event_type)) map.set(event.event_type, event);
+      });
+    return map;
+  }, [order]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
@@ -100,22 +131,44 @@ const TrackOrderPage = () => {
     setError(null);
     setOrder(null);
 
-    const { data, error: fetchError } = await supabase
-      .from("orders")
-      .select(
-        "id, customer_name, phone, address, city, pincode, total_amount, status, created_at, order_items(quantity, price, product_variants(size, products(name)), products(name))"
-      )
-      .eq("id", trimmedOrderId)
-      .eq("phone", trimmedPhone)
-      .single();
+    const SELECT_FIELDS = "id, customer_name, phone, address, city, pincode, total_amount, status, created_at, order_items(quantity, price, product_variants(size, products(name)), products(name)), order_timeline(event_type, description, created_at)";
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedOrderId);
 
-    if (fetchError || !data) {
-      setError("Order not found");
+    let matched: TrackedOrder | null = null;
+
+    if (isFullUuid) {
+      // Exact full UUID match
+      const { data, error: fetchError } = await supabase
+        .from("orders")
+        .select(SELECT_FIELDS)
+        .eq("id", trimmedOrderId)
+        .eq("phone", trimmedPhone)
+        .single();
+      if (!fetchError && data) matched = data as unknown as TrackedOrder;
+    } else {
+      // Short ID (e.g. ACA2FC89) — fetch by phone then match by UUID prefix client-side
+      // UUID columns can't use ilike in PostgREST, so we filter in JS
+      const { data, error: fetchError } = await supabase
+        .from("orders")
+        .select(SELECT_FIELDS)
+        .eq("phone", trimmedPhone);
+      if (!fetchError && data) {
+        const shortLower = trimmedOrderId.toLowerCase();
+        matched = (data as unknown as TrackedOrder[]).find(
+          (o) => o.id.replace(/-/g, "").startsWith(shortLower) ||
+                 o.id.startsWith(shortLower) ||
+                 o.id.slice(0, 8).toLowerCase() === shortLower
+        ) ?? null;
+      }
+    }
+
+    if (!matched) {
+      setError("Order not found. Please check your Order ID and phone number.");
       setLoading(false);
       return;
     }
 
-    setOrder(data as unknown as TrackedOrder);
+    setOrder(matched);
     setLoading(false);
   };
 
@@ -135,7 +188,7 @@ const TrackOrderPage = () => {
                 id="track-order-id"
                 value={orderId}
                 onChange={(event) => setOrderId(event.target.value)}
-                placeholder="Enter full order ID"
+                placeholder="e.g. ACA2FC89"
                 className="h-11"
               />
             </div>
@@ -182,17 +235,47 @@ const TrackOrderPage = () => {
             </div>
 
             <div className="pt-2">
-              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-4">Order Status</p>
-              <div className="space-y-2">
-                {STATUS_STEPS.map((step, index) => {
-                  const active = index <= currentStatusIndex;
+              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground mb-4">Timeline</p>
+              <div className="space-y-4">
+                {PUBLIC_TIMELINE_STEPS.map((step, index) => {
+                  const event = timelineByEvent.get(step.key);
+                  const active = Boolean(event) || index <= currentStatusIndex;
                   return (
-                    <div key={step} className="flex items-center gap-3 text-sm">
-                      <span className={active ? "text-black" : "text-gray-300"}>{active ? "●" : "○"}</span>
-                      <span className={active ? "text-foreground" : "text-muted-foreground"}>{STATUS_LABELS[step]}</span>
+                    <div key={step.key} className="relative pl-6">
+                      {index < PUBLIC_TIMELINE_STEPS.length - 1 && (
+                        <span className="absolute left-[7px] top-5 h-[calc(100%+8px)] w-px bg-border" />
+                      )}
+                      <span className={`absolute left-0 top-1 h-4 w-4 rounded-full border-2 ${
+                        active ? "bg-green-500 border-green-500" : "bg-gray-300 border-gray-300"
+                      }`} />
+                      <p className={active ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>{step.label}</p>
+                      {event && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(event.created_at)}</p>
+                      )}
+                      {event?.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{event.description}</p>
+                      )}
                     </div>
                   );
                 })}
+
+                {(timelineByEvent.get("CANCELLED") || timelineByEvent.get("REFUNDED")) && (
+                  <div className="pt-2 border-t">
+                    {["CANCELLED", "REFUNDED"].map((eventType) => {
+                      const event = timelineByEvent.get(eventType);
+                      if (!event) return null;
+                      return (
+                        <div key={eventType} className="flex items-start gap-3 text-sm mt-2">
+                          <span className="text-red-500">●</span>
+                          <div>
+                            <p className="text-red-600">{eventType === "CANCELLED" ? "Cancelled" : "Refunded"}</p>
+                            <p className="text-xs text-muted-foreground">{formatDateTime(event.created_at)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 

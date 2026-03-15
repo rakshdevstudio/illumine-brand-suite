@@ -1,32 +1,70 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowRight } from "lucide-react";
+import { Building2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import illumeLogo from "@/assets/illume-logo.png";
 import { useStudentProfile } from "@/lib/student-profile";
 import ThreadsBackground from "@/components/store/ThreadsBackground";
 
+type SchoolWithClasses = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  status: string;
+  classes: { id: string; name: string; sort_order: number; status: string }[];
+};
+
+const getClassRange = (classes: SchoolWithClasses["classes"]) => {
+  const active = classes
+    .filter((c) => c.status === "active")
+    .sort((a, b) => a.sort_order - b.sort_order);
+  if (active.length === 0) return null;
+  if (active.length === 1) return active[0].name;
+  return `${active[0].name} – ${active[active.length - 1].name}`;
+};
+
 const StorePage = () => {
   const profile = useStudentProfile((s) => s.profile);
+  const clearProfile = useStudentProfile((s) => s.clearProfile);
   const openModal = useStudentProfile((s) => s.openModal);
-  const cardRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const navigate = useNavigate();
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [visibleCards, setVisibleCards] = useState<Record<string, boolean>>({});
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const profileRoute = profile
+    ? `/store/school/${profile.schoolSlug}/class/${profile.classSlug}/gender/${profile.gender}`
+    : null;
+
+  // Auto-redirect returning users after a short delay so they see the banner
+  useEffect(() => {
+    if (!profileRoute || bannerDismissed) return;
+    const timer = setTimeout(() => navigate(profileRoute), 2500);
+    return () => clearTimeout(timer);
+  }, [profileRoute, bannerDismissed, navigate]);
 
   const [checkedFirst, setCheckedFirst] = useState(false);
   useEffect(() => {
     if (!checkedFirst) {
       setCheckedFirst(true);
+      // Don't prompt modal if we're about to auto-redirect a returning user
       if (!profile) openModal();
     }
   }, [checkedFirst, profile, openModal]);
 
   const { data: schools, isLoading } = useQuery({
-    queryKey: ["schools"],
+    queryKey: ["schools-with-classes"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("*").order("name");
+      const { data, error } = await supabase
+        .from("schools")
+        .select("id, name, slug, logo_url, status, classes(id, name, sort_order, status)")
+        .eq("status", "active")
+        .order("name");
       if (error) throw error;
-      return data;
+      return data as unknown as SchoolWithClasses[];
     },
   });
 
@@ -43,7 +81,7 @@ const StorePage = () => {
           observer.unobserve(entry.target);
         });
       },
-      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" }
+      { threshold: 0.1, rootMargin: "0px 0px -5% 0px" }
     );
 
     schools.forEach((school) => {
@@ -56,6 +94,34 @@ const StorePage = () => {
 
   return (
     <div className="bg-background">
+      {/* Smart School Detection banner */}
+      {profile && profileRoute && !bannerDismissed && (
+        <div className="border-b border-border bg-background/95 backdrop-blur-sm px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-[9px] tracking-[0.3em] uppercase text-muted-foreground shrink-0">Last visited</span>
+            <span className="text-sm font-medium text-foreground truncate">{profile.schoolName}</span>
+            <span className="hidden sm:inline text-muted-foreground/50">·</span>
+            <span className="hidden sm:inline text-xs text-muted-foreground truncate">
+              {profile.className} &nbsp;·&nbsp; {profile.genderLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => navigate(profileRoute)}
+              className="text-[11px] tracking-[0.15em] uppercase px-4 py-1.5 bg-foreground text-background rounded hover:opacity-80 transition-opacity"
+            >
+              Continue
+            </button>
+            <button
+              onClick={() => { clearProfile(); setBannerDismissed(true); }}
+              className="text-[11px] tracking-[0.15em] uppercase px-4 py-1.5 border border-border rounded hover:border-foreground transition-colors text-muted-foreground hover:text-foreground"
+            >
+              Change School
+            </button>
+          </div>
+        </div>
+      )}
+
       <section className="relative overflow-hidden bg-surface-dark text-center px-6 py-32 md:py-44">
         <ThreadsBackground amplitude={1} distance={0} enableMouseInteraction />
         <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/22 via-black/10 to-black/34 pointer-events-none" />
@@ -85,36 +151,73 @@ const StorePage = () => {
       </section>
 
       <section className="max-w-6xl mx-auto px-6 py-28 md:py-36">
-        <h2 className="text-xs tracking-[0.35em] text-muted-foreground uppercase mb-14 text-center">
-          Select Your School
-        </h2>
+        <div className="text-center mb-14">
+          <p className="text-[10px] tracking-[0.45em] text-muted-foreground uppercase mb-3">Collections</p>
+          <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.18em] uppercase">
+            Select Your School
+          </h2>
+        </div>
+
         {isLoading ? (
-          <div className="grid md:grid-cols-3 gap-8 md:gap-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="border border-border h-56 animate-pulse bg-secondary" />
+              <div key={i} className="rounded-xl border border-border h-72 animate-pulse bg-secondary/60" />
             ))}
           </div>
         ) : (
-          <div className="grid md:grid-cols-3 gap-8 md:gap-10">
-            {schools?.map((school) => (
-              <Link
-                key={school.id}
-                ref={(node) => {
-                  cardRefs.current[school.id] = node;
-                }}
-                data-school-id={school.id}
-                to={`/store/school/${school.slug}`}
-                className={`group border border-border p-12 md:p-14 flex flex-col items-center justify-center h-56 transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_16px_40px_rgba(0,0,0,0.08)] ${
-                  visibleCards[school.id] ? "illume-reveal visible" : "illume-reveal"
-                }`}
-              >
-                <p className="text-[10px] tracking-[0.28em] text-muted-foreground uppercase mb-3">Collection</p>
-                <h3 className="text-sm tracking-[0.22em] font-light uppercase text-center mb-4">
-                  {school.name}
-                </h3>
-                <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300" strokeWidth={1} />
-              </Link>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
+            {schools?.map((school) => {
+              const classRange = getClassRange(school.classes ?? []);
+              return (
+                <div
+                  key={school.id}
+                  ref={(node) => { cardRefs.current[school.id] = node; }}
+                  data-school-id={school.id}
+                  className={`group rounded-xl border border-border bg-white shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-col overflow-hidden ${
+                    visibleCards[school.id] ? "illume-reveal visible" : "illume-reveal"
+                  }`}
+                >
+                  {/* Logo area */}
+                  <div className="flex items-center justify-center h-44 bg-secondary/30 border-b border-border px-8">
+                    {school.logo_url ? (
+                      <img
+                        src={school.logo_url}
+                        alt={school.name}
+                        className="max-h-24 max-w-[160px] w-auto object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
+                        <Building2 className="h-10 w-10" strokeWidth={1} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card body */}
+                  <div className="flex flex-col flex-1 p-6 gap-4">
+                    <div className="flex-1 space-y-1.5">
+                      <h3 className="text-sm font-medium tracking-[0.06em] text-foreground leading-snug">
+                        {school.name}
+                      </h3>
+                      {classRange && (
+                        <p className="text-xs text-muted-foreground tracking-wide">
+                          {classRange}
+                        </p>
+                      )}
+                    </div>
+
+                    <Link to={`/store/school/${school.slug}`} className="block">
+                      <Button
+                        size="sm"
+                        className="w-full text-[11px] tracking-[0.18em] uppercase font-normal group-hover:bg-foreground group-hover:text-background transition-colors duration-300"
+                        variant="outline"
+                      >
+                        Shop Uniforms
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

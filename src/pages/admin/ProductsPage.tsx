@@ -5,6 +5,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Globe } from "lucide-react";
@@ -18,6 +29,11 @@ const ProductsPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkActionLabel, setBulkActionLabel] = useState("");
+  const [bulkMode, setBulkMode] = useState<"activate" | "deactivate" | "price" | null>(null);
+  const [bulkPrice, setBulkPrice] = useState("");
   const [form, setForm] = useState({
     name: "",
     category: "",
@@ -192,6 +208,88 @@ const ProductsPage = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
   };
 
+  const allIds = (products ?? []).map((p) => p.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
+      return;
+    }
+    setSelectedIds([]);
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
+  };
+
+  const openBulkConfirm = (mode: "activate" | "deactivate" | "price", label: string) => {
+    setBulkMode(mode);
+    setBulkActionLabel(label);
+    setBulkConfirmOpen(true);
+  };
+
+  const runBulkAction = async () => {
+    if (selectedIds.length === 0 || !bulkMode) return;
+
+    if (bulkMode === "activate" || bulkMode === "deactivate") {
+      const status = bulkMode === "activate" ? "active" : "inactive";
+      const { error } = await supabase.from("products").update({ status }).in("id", selectedIds);
+      if (error) {
+        toast.error("Bulk update failed");
+        return;
+      }
+      toast.success(`Updated ${selectedIds.length} products`);
+    }
+
+    if (bulkMode === "price") {
+      const parsed = parseFloat(bulkPrice);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Enter a valid price");
+        return;
+      }
+      const { error } = await supabase
+        .from("products")
+        .update({ base_price: parsed, price: parsed })
+        .in("id", selectedIds);
+      if (error) {
+        toast.error("Failed to update price");
+        return;
+      }
+      toast.success(`Updated price for ${selectedIds.length} products`);
+    }
+
+    setBulkConfirmOpen(false);
+    setBulkMode(null);
+    setSelectedIds([]);
+    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
+  };
+
+  const exportSelectedProducts = () => {
+    const selectedProducts = (products ?? []).filter((p) => selectedIds.includes(p.id));
+    const header = ["Product ID", "Name", "School", "Class", "Category", "Price", "Status"];
+    const lines = selectedProducts.map((p: any) =>
+      [
+        p.id,
+        p.name,
+        p.schools?.name ?? "",
+        p.classes?.name ?? "",
+        p.category,
+        (p as any).base_price ?? p.price,
+        p.status ?? "active",
+      ]
+        .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    );
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `products-export-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -205,6 +303,13 @@ const ProductsPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(value) => toggleSelectAll(Boolean(value))}
+                  aria-label="Select all products"
+                />
+              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase w-16">Image</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product Name</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
@@ -219,15 +324,22 @@ const ProductsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : products?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
               </TableRow>
             ) : (
               products?.map((product) => (
                 <TableRow key={product.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onCheckedChange={(value) => toggleSelectOne(product.id, Boolean(value))}
+                      aria-label={`Select product ${product.name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="w-12 h-12 border border-border overflow-hidden bg-secondary">
                       <img
@@ -269,6 +381,38 @@ const ProductsPage = () => {
           </TableBody>
         </Table>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
+          <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openBulkConfirm("activate", "Activate Products")}>Activate</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openBulkConfirm("deactivate", "Deactivate Products")}>Deactivate</Button>
+          <Input
+            placeholder="Price"
+            value={bulkPrice}
+            onChange={(e) => setBulkPrice(e.target.value)}
+            className="h-8 w-24 text-xs bg-white text-black"
+          />
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openBulkConfirm("price", "Update Price")}>Update Price</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={exportSelectedProducts}>Export</Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs text-white hover:text-white" onClick={() => setSelectedIds([])}>Clear</Button>
+        </div>
+      )}
+
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{bulkActionLabel}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to apply this action to {selectedIds.length} selected products?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runBulkAction}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>

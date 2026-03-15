@@ -1,12 +1,24 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowUpDown, ArrowUp, ArrowDown, LayoutList, Group } from "lucide-react";
@@ -32,6 +44,17 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   shipped: "Shipped",
   delivered: "Delivered",
   cancelled: "Cancelled",
+};
+
+const TIMELINE_EVENT_LABELS: Record<string, string> = {
+  ORDER_PLACED: "Order Placed",
+  PAYMENT_CONFIRMED: "Payment Confirmed",
+  PACKED: "Packed",
+  SHIPPED: "Shipped",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+  REFUNDED: "Refunded",
+  NOTE_ADDED: "Note Added",
 };
 
 const isOrderStatus = (value: string): value is OrderStatus =>
@@ -73,7 +96,9 @@ const matchesDateFilter = (createdAt: string, dateFilter: string) => {
 };
 
 const OrdersPage = () => {
+  const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [schoolFilter, setSchoolFilter] = useState("all");
@@ -82,6 +107,13 @@ const OrdersPage = () => {
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [schoolSort, setSchoolSort] = useState<SortDir>(null);
   const [groupBySchool, setGroupBySchool] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<OrderStatus | null>(null);
+  const [bulkActionLabel, setBulkActionLabel] = useState("");
+  const [noteInput, setNoteInput] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
 
   const { data: schools } = useQuery({
     queryKey: ["admin-schools-filter"],
@@ -112,6 +144,33 @@ const OrdersPage = () => {
         .from("order_items")
         .select("*, products(name, schools(name)), product_variants(size)")
         .eq("order_id", selectedOrder!);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    const search = searchParams.get("search");
+    if (search) setSearchQuery(search);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (orderId) setSelectedOrder(orderId);
+  }, [orderId]);
+
+  const { data: orderMeta } = useQuery({
+    queryKey: ["order-meta", selectedOrder],
+    enabled: !!selectedOrder,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id, order_timeline(id, event_type, description, created_at, created_by), order_notes(id, note, created_at, created_by)")
+        .eq("id", selectedOrder!)
+        .order("created_at", { foreignTable: "order_timeline", ascending: false })
+        .order("created_at", { foreignTable: "order_notes", ascending: false })
+        .limit(50, { foreignTable: "order_timeline" })
+        .limit(50, { foreignTable: "order_notes" })
+        .single();
       if (error) throw error;
       return data;
     },
@@ -206,7 +265,132 @@ const OrdersPage = () => {
     } else {
       toast.success("Order status updated");
       queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
     }
+  };
+
+  const allVisibleIds = processedOrders.map((o) => o.id);
+  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...allVisibleIds])));
+      return;
+    }
+    setSelectedIds((prev) => prev.filter((id) => !allVisibleIds.includes(id)));
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
+  };
+
+  const askBulkStatusChange = (status: OrderStatus, label: string) => {
+    setBulkStatusTarget(status);
+    setBulkActionLabel(label);
+    setBulkConfirmOpen(true);
+  };
+
+  const runBulkStatusChange = async () => {
+    if (!bulkStatusTarget || selectedIds.length === 0) return;
+
+    let { error } = await supabase
+      .from("orders")
+      .update({ status: bulkStatusTarget, updated_at: new Date().toISOString() })
+      .in("id", selectedIds);
+
+    if (error?.message?.toLowerCase().includes("updated_at")) {
+      const retry = await supabase.from("orders").update({ status: bulkStatusTarget }).in("id", selectedIds);
+      error = retry.error;
+    }
+
+    if (error) {
+      toast.error("Bulk update failed");
+      return;
+    }
+
+    toast.success(`Updated ${selectedIds.length} orders`);
+    setSelectedIds([]);
+    setBulkConfirmOpen(false);
+    setBulkStatusTarget(null);
+    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
+  };
+
+  const exportSelectedOrders = () => {
+    const selectedOrders = (orders as any[] | undefined)?.filter((o) => selectedIds.includes(o.id)) ?? [];
+    if (selectedOrders.length === 0) return;
+
+    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Date"];
+    const lines = selectedOrders.map((order) => {
+      const row = [
+        order.id,
+        order.customer_name,
+        order.phone,
+        getOrderSchools(order).join(" | "),
+        getItemSummary(order),
+        order.total_amount,
+        order.status,
+        order.created_at,
+      ];
+      return row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
+    });
+
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders-export-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const addNote = async () => {
+    if (!selectedOrder || !noteInput.trim()) return;
+
+    const { error } = await supabase.from("order_notes").insert({
+      order_id: selectedOrder,
+      note: noteInput.trim(),
+    });
+
+    if (error) {
+      toast.error("Failed to add note");
+      return;
+    }
+
+    setNoteInput("");
+    toast.success("Note added");
+    queryClient.invalidateQueries({ queryKey: ["order-meta", selectedOrder] });
+  };
+
+  const saveEditedNote = async () => {
+    if (!editingNoteId || !editingNoteText.trim()) return;
+
+    const { error } = await supabase
+      .from("order_notes")
+      .update({ note: editingNoteText.trim() })
+      .eq("id", editingNoteId);
+
+    if (error) {
+      toast.error("Failed to update note");
+      return;
+    }
+
+    toast.success("Note updated");
+    setEditingNoteId(null);
+    setEditingNoteText("");
+    if (selectedOrder) queryClient.invalidateQueries({ queryKey: ["order-meta", selectedOrder] });
+  };
+
+  const deleteNote = async (noteId: string) => {
+    const { error } = await supabase.from("order_notes").delete().eq("id", noteId);
+
+    if (error) {
+      toast.error("Failed to delete note");
+      return;
+    }
+
+    toast.success("Note deleted");
+    if (selectedOrder) queryClient.invalidateQueries({ queryKey: ["order-meta", selectedOrder] });
   };
 
   const toggleSchoolSort = () => {
@@ -221,6 +405,13 @@ const OrdersPage = () => {
 
     return (
       <TableRow key={order.id}>
+        <TableCell>
+          <Checkbox
+            checked={selectedIds.includes(order.id)}
+            onCheckedChange={(value) => toggleSelectOne(order.id, Boolean(value))}
+            aria-label={`Select order ${order.id}`}
+          />
+        </TableCell>
         <TableCell className="text-xs font-mono">{order.id.slice(0, 8).toUpperCase()}</TableCell>
         <TableCell className="text-sm">{order.customer_name}</TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
@@ -397,6 +588,13 @@ const OrdersPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(value) => toggleSelectAll(Boolean(value))}
+                  aria-label="Select all orders"
+                />
+              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
               <TableHead
@@ -417,18 +615,18 @@ const OrdersPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : processedOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
               </TableRow>
             ) : groupBySchool && groupedOrders ? (
               groupedOrders.map(([schoolName, schoolOrders]) => (
                 <>
                   <TableRow key={`group-${schoolName}`}>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="bg-muted/30 text-xs font-medium tracking-[0.15em] uppercase py-3 border-b border-border"
                     >
                       {schoolName} — {schoolOrders.length} order{schoolOrders.length !== 1 ? "s" : ""}
@@ -444,13 +642,44 @@ const OrdersPage = () => {
         </Table>
       </div>
 
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
+          <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("confirmed", "Mark as Confirmed")}>Mark Confirmed</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("packed", "Mark as Packed")}>Mark Packed</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("shipped", "Mark as Shipped")}>Mark Shipped</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("delivered", "Mark as Delivered")}>Mark Delivered</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("cancelled", "Cancel Orders")}>Cancel Orders</Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={exportSelectedOrders}>Export Selected</Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs text-white hover:text-white" onClick={() => setSelectedIds([])}>Clear</Button>
+        </div>
+      )}
+
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{bulkActionLabel}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to apply this action to {selectedIds.length} selected orders?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runBulkStatusChange}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-lg" aria-describedby={undefined}>
+        <DialogContent className="max-w-5xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               Order {selected?.id.slice(0, 8).toUpperCase()}
             </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Order information, lifecycle timeline, and internal admin notes.
+            </DialogDescription>
           </DialogHeader>
           {selected && (
             <div className="space-y-6 py-4">
@@ -502,6 +731,122 @@ const OrdersPage = () => {
               <div className="flex justify-between items-center pt-2">
                 <span className="text-xs tracking-wider uppercase">Total</span>
                 <span className="text-lg font-light">{formatPrice(selected.total_amount)}</span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+                <div className="rounded-xl border bg-white shadow-sm p-6 space-y-4">
+                  <h3 className="text-lg font-semibold">Order Timeline</h3>
+                  <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+                    {(orderMeta as any)?.order_timeline
+                      ?.slice()
+                      .sort((a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at))
+                      .slice(0, 50)
+                      .map((event: any, index: number, arr: any[]) => (
+                        <div key={event.id} className="relative pl-6">
+                          {index < arr.length - 1 && (
+                            <span className="absolute left-[8px] top-4 h-[calc(100%+8px)] w-px bg-border" />
+                          )}
+                          <span className={`absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 ${
+                            ["ORDER_PLACED", "PAYMENT_CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "NOTE_ADDED"].includes(event.event_type)
+                              ? "bg-green-500 border-green-500"
+                              : "bg-gray-300 border-gray-300"
+                          }`} />
+                          <p className="text-sm font-medium">
+                            {TIMELINE_EVENT_LABELS[event.event_type] ?? event.event_type.replaceAll("_", " ")}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{event.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(event.created_at).toLocaleString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      ))}
+                    {!((orderMeta as any)?.order_timeline?.length > 0) && (
+                      <p className="text-sm text-muted-foreground">No timeline events yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border bg-white shadow-sm p-6 space-y-4">
+                  <h3 className="text-lg font-semibold">Order Notes</h3>
+
+                  <div className="space-y-2">
+                    <Textarea
+                      placeholder="Add internal note..."
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      className="min-h-[88px]"
+                    />
+                    <Button size="sm" onClick={addNote}>Add Note</Button>
+                  </div>
+
+                  <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                    {(orderMeta as any)?.order_notes
+                      ?.slice()
+                      .sort((a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at))
+                      .slice(0, 50)
+                      .map((note: any) => (
+                        <div key={note.id} className="rounded-lg border p-3 space-y-2">
+                          {editingNoteId === note.id ? (
+                            <>
+                              <Textarea
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                className="min-h-[80px]"
+                              />
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" onClick={saveEditedNote}>Save</Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingNoteId(null);
+                                    setEditingNoteText("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm">{note.note}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(note.created_at).toLocaleString("en-IN", {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingNoteId(note.id);
+                                    setEditingNoteText(note.note);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => deleteNote(note.id)}>
+                                  Delete
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    {!((orderMeta as any)?.order_notes?.length > 0) && (
+                      <p className="text-sm text-muted-foreground">No notes yet.</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

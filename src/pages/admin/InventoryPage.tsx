@@ -5,7 +5,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { isLowStock } from "@/lib/inventory";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
@@ -14,6 +25,9 @@ const InventoryPage = () => {
   const queryClient = useQueryClient();
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkAdjust, setBulkAdjust] = useState(0);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-inventory"],
@@ -70,6 +84,74 @@ const InventoryPage = () => {
     }))
   ) ?? [];
 
+  const allIds = rows.map((r: any) => r.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
+      return;
+    }
+    setSelectedIds([]);
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
+  };
+
+  const runBulkAdjust = async () => {
+    if (bulkAdjust === 0 || selectedIds.length === 0) return;
+
+    const selectedRows = rows.filter((r: any) => selectedIds.includes(r.id));
+    const updates = selectedRows.map((row: any) => ({
+      id: row.id,
+      stock: Math.max(0, Number(row.stock || 0) + bulkAdjust),
+    }));
+
+    const { error: updateErr } = await supabase
+      .from("product_variants")
+      .upsert(updates, { onConflict: "id" });
+    if (updateErr) {
+      toast.error("Bulk stock update failed");
+      return;
+    }
+
+    const logs = selectedRows.map((row: any) => ({
+      product_id: row.productId,
+      variant_id: row.id,
+      change_type: bulkAdjust > 0 ? "restock" : "adjustment",
+      quantity_change: bulkAdjust,
+      previous_stock: row.stock,
+      new_stock: Math.max(0, Number(row.stock || 0) + bulkAdjust),
+    }));
+
+    await supabase.from("inventory_logs").insert(logs);
+
+    toast.success(`Adjusted stock for ${selectedIds.length} variants`);
+    setBulkConfirmOpen(false);
+    setSelectedIds([]);
+    setBulkAdjust(0);
+    queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
+  };
+
+  const exportSelectedInventory = () => {
+    const selectedRows = rows.filter((r: any) => selectedIds.includes(r.id));
+    const header = ["Variant ID", "Product", "School", "Category", "Size", "Stock", "Price"];
+    const lines = selectedRows.map((row: any) =>
+      [row.id, row.productName, row.schoolName, row.category, row.size, row.stock, row.price]
+        .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    );
+
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `inventory-export-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -80,6 +162,13 @@ const InventoryPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(value) => toggleSelectAll(Boolean(value))}
+                  aria-label="Select all variants"
+                />
+              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
@@ -93,19 +182,26 @@ const InventoryPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
                   No products
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((row: any) => (
                 <TableRow key={row.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.includes(row.id)}
+                      onCheckedChange={(value) => toggleSelectOne(row.id, Boolean(value))}
+                      aria-label={`Select variant ${row.id}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-sm">{row.productName}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.schoolName}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.category}</TableCell>
@@ -191,6 +287,43 @@ const InventoryPage = () => {
           </TableBody>
         </Table>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
+          <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
+          <Input
+            type="number"
+            value={bulkAdjust}
+            onChange={(e) => setBulkAdjust(parseInt(e.target.value || "0") || 0)}
+            className="h-8 w-24 text-xs bg-white text-black"
+            placeholder="±Stock"
+          />
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setBulkConfirmOpen(true)}>
+            Adjust Stock
+          </Button>
+          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={exportSelectedInventory}>
+            Export
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs text-white hover:text-white" onClick={() => setSelectedIds([])}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Adjust Stock</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to adjust stock by {bulkAdjust} for {selectedIds.length} selected variants?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runBulkAdjust} disabled={bulkAdjust === 0}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
