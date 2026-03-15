@@ -163,6 +163,30 @@ const StorePage = () => {
         </div>
       </section>
 
+      {/* ── STATS BAR ─────────────────────────────────────────────── */}
+      <section className="bg-surface-dark border-b border-white/10 px-6 py-10">
+        <div className="max-w-4xl mx-auto grid grid-cols-3 divide-x divide-white/10">
+          {[
+            { value: "25+", label: "Years of Expertise" },
+            { value: "100+", label: "Institutions Served" },
+            { value: "96%", label: "Client Retention Rate" },
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              variants={REVEAL}
+              custom={i}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.5 }}
+              className="flex flex-col items-center gap-1.5 py-2"
+            >
+              <span className="text-3xl md:text-4xl font-extralight tracking-tight text-surface-dark-foreground">{stat.value}</span>
+              <span className="text-[9px] tracking-[0.36em] uppercase text-surface-dark-muted">{stat.label}</span>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
       <section className="max-w-6xl mx-auto px-6 py-28 md:py-36">
         <div className="text-center mb-14">
           <p className="text-[10px] tracking-[0.45em] text-muted-foreground uppercase mb-3">Collections</p>
@@ -235,6 +259,42 @@ const StorePage = () => {
         )}
       </section>
 
+      {/* ── WHAT WE OFFER ────────────────────────────────────────── */}
+      <section className="border-t border-border px-6 py-16 md:py-20">
+        <div className="max-w-5xl mx-auto">
+          <motion.p
+            variants={REVEAL}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-12"
+          >
+            What We Offer
+          </motion.p>
+          <div className="grid grid-cols-3 gap-px bg-border">
+            {[
+              { num: "01", title: "Uniforms", body: "High-quality garments for schools, institutions, and corporates." },
+              { num: "02", title: "Shoes", body: "Ergonomic school shoes designed for comfort and active lifestyles." },
+              { num: "03", title: "Accessories", body: "A complete range of products that complement your uniform needs." },
+            ].map((item, i) => (
+              <motion.div
+                key={item.num}
+                variants={REVEAL}
+                custom={i}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.25 }}
+                className="bg-background px-8 py-10 flex flex-col items-center gap-3 text-center"
+              >
+                <span className="text-[10px] tracking-[0.36em] uppercase text-muted-foreground/40">{item.num}</span>
+                <h4 className="text-sm tracking-[0.22em] uppercase font-normal">{item.title}</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">{item.body}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── SECTION 1 · BRAND STORY ─────────────────────────────── */}
       <section className="px-6 py-28 md:py-40">
         <div className="max-w-2xl mx-auto text-center">
@@ -288,6 +348,27 @@ const StorePage = () => {
             className="text-sm text-muted-foreground leading-[1.9]"
           >
             We focus on quality that looks refined, feels soft, and performs through every term.
+          </motion.p>
+
+          <motion.div
+            variants={REVEAL}
+            custom={5}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="w-8 h-px bg-foreground/20 mx-auto mt-10 mb-8"
+          />
+
+          <motion.p
+            variants={REVEAL}
+            custom={6}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="text-xs tracking-[0.18em] uppercase text-muted-foreground/70 leading-[2]"
+          >
+            Our mission — to blend functionality, performance, and contemporary design,
+            providing unmatched quality and value to every institution we serve.
           </motion.p>
         </div>
       </section>
@@ -347,6 +428,47 @@ const StorePage = () => {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* ── INSPIRE THE BEST ─────────────────────────────────────── */}
+      <section className="bg-surface-dark px-6 py-24 md:py-36 text-center overflow-hidden">
+        <motion.p
+          variants={REVEAL}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="text-[9px] tracking-[0.46em] uppercase text-surface-dark-muted mb-8"
+        >
+          Lotus Illume
+        </motion.p>
+        <motion.h2
+          variants={REVEAL}
+          custom={1}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="text-5xl md:text-7xl font-extralight tracking-[0.3em] uppercase text-surface-dark-foreground leading-none mb-10"
+        >
+          Inspire<br className="md:hidden" />{" "}The Best
+        </motion.h2>
+        <motion.div
+          variants={REVEAL}
+          custom={2}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="w-8 h-px bg-surface-dark-muted/40 mx-auto mb-8"
+        />
+        <motion.p
+          variants={REVEAL}
+          custom={3}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="text-xs tracking-[0.22em] uppercase text-surface-dark-muted max-w-sm mx-auto leading-[2]"
+        >
+          25 years · 100+ institutions · one unwavering commitment
+        </motion.p>
       </section>
 
       {/* ── SECTION 4 · TRUST STRIP ─────────────────────────────── */}
