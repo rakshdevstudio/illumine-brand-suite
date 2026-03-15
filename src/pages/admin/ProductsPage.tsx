@@ -21,12 +21,26 @@ import { toast } from "sonner";
 import { Plus, Globe } from "lucide-react";
 import { getDisplayImage } from "@/lib/product-images";
 import ProductImageUploader from "@/components/admin/ProductImageUploader";
+import { useAuth } from "@/hooks/use-auth";
+import { logActivity } from "@/lib/activity-log";
 
 const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
 
+const fieldLabels: Record<string, string> = {
+  name: "Name",
+  category: "Category",
+  price: "Price",
+  description: "Description",
+  school_id: "School",
+  class_id: "Class",
+  gender: "Gender",
+  status: "Status",
+};
+
 const ProductsPage = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -86,6 +100,25 @@ const ProductsPage = () => {
     return Array.from(new Set([...defaultCategories, ...fromProducts])).sort((a, b) => a.localeCompare(b));
   }, [products]);
 
+  const getSchoolName = (schoolId: string | null) => {
+    if (!schoolId) return "None";
+    return schools?.find((s) => s.id === schoolId)?.name ?? schoolId;
+  };
+
+  const getClassName = (classId: string | null) => {
+    if (!classId) return "None";
+    return classes?.find((c: any) => c.id === classId)?.name ?? classId;
+  };
+
+  const formatFieldValue = (field: string, value: any) => {
+    if (field === "price") return formatPrice(Number(value || 0));
+    if (field === "school_id") return getSchoolName(value ?? null);
+    if (field === "class_id") return getClassName(value ?? null);
+    if (field === "description") return value || "Empty";
+    if (field === "status") return String(value || "active").toUpperCase();
+    return value ?? "—";
+  };
+
   const handleSave = async () => {
     if (!form.name || !form.category || !form.price) {
       toast.error("Please fill all required fields");
@@ -114,6 +147,32 @@ const ProductsPage = () => {
       if (editing) {
         const { error } = await supabase.from("products").update(payload).eq("id", editing.id);
         if (error) throw error;
+
+        const changes = [
+          { field: "name", oldValue: editing.name, newValue: payload.name },
+          { field: "category", oldValue: editing.category, newValue: payload.category },
+          { field: "price", oldValue: Number((editing as any).base_price ?? editing.price), newValue: payload.base_price },
+          { field: "description", oldValue: editing.description ?? null, newValue: payload.description ?? null },
+          { field: "school_id", oldValue: editing.school_id ?? null, newValue: payload.school_id ?? null },
+          { field: "class_id", oldValue: editing.class_id ?? null, newValue: payload.class_id ?? null },
+          { field: "gender", oldValue: editing.gender ?? "Unisex", newValue: payload.gender },
+        ].filter((change) => String(change.oldValue ?? "") !== String(change.newValue ?? ""));
+
+        await Promise.all(
+          changes.map((change) =>
+            logActivity({
+              actionType: "PRODUCT_EDITED",
+              entityType: "product",
+              entityId: editing.id,
+              description: `${fieldLabels[change.field]} updated for ${payload.name}: ${formatFieldValue(change.field, change.oldValue)} → ${formatFieldValue(change.field, change.newValue)}`,
+              performedBy: user?.id,
+              fieldChanged: change.field,
+              oldValue: String(formatFieldValue(change.field, change.oldValue)),
+              newValue: String(formatFieldValue(change.field, change.newValue)),
+            })
+          )
+        );
+
         toast.success("Product updated");
       } else {
         const { data: created, error } = await supabase
@@ -133,6 +192,16 @@ const ProductsPage = () => {
           });
 
           if (variantError) throw variantError;
+        }
+
+        if (savedProductId) {
+          await logActivity({
+            actionType: "PRODUCT_CREATED",
+            entityType: "product",
+            entityId: savedProductId,
+            description: `Admin created product \"${payload.name}\"`,
+            performedBy: user?.id,
+          });
         }
 
         toast.success("Product created");
@@ -175,6 +244,17 @@ const ProductsPage = () => {
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
     await supabase.from("products").update({ status: newStatus }).eq("id", id);
+    const product = (products ?? []).find((p) => p.id === id);
+    await logActivity({
+      actionType: newStatus === "active" ? "PRODUCT_ENABLED" : "PRODUCT_DISABLED",
+      entityType: "product",
+      entityId: id,
+      description: `Status updated for ${product?.name ?? id}: ${String(currentStatus || "active").toUpperCase()} → ${newStatus.toUpperCase()}`,
+      performedBy: user?.id,
+      fieldChanged: "status",
+      oldValue: String(currentStatus || "active").toUpperCase(),
+      newValue: newStatus.toUpperCase(),
+    });
     queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
     toast.success(`Product ${newStatus === "active" ? "enabled" : "disabled"}`);
   };

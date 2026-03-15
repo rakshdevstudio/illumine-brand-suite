@@ -22,6 +22,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowUpDown, ArrowUp, ArrowDown, LayoutList, Group } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { logActivity } from "@/lib/activity-log";
 
 type SortDir = "asc" | "desc" | null;
 type OrderStatus = "pending" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
@@ -98,6 +100,7 @@ const matchesDateFilter = (createdAt: string, dateFilter: string) => {
 const OrdersPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
@@ -263,6 +266,13 @@ const OrdersPage = () => {
     if (error) {
       toast.error("Failed to update status");
     } else {
+      await logActivity({
+        actionType: status === "cancelled" ? "ORDER_CANCELLED" : "ORDER_STATUS_UPDATED",
+        entityType: "order",
+        entityId: orderId,
+        description: `Order #${orderId.slice(0, 8).toUpperCase()} marked as ${status.toUpperCase()}`,
+        performedBy: user?.id,
+      });
       toast.success("Order status updated");
       queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
@@ -672,17 +682,17 @@ const OrdersPage = () => {
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-5xl" aria-describedby={undefined}>
+        <DialogContent className="w-[min(92vw,1100px)] max-w-4xl max-h-[88vh] overflow-hidden p-0" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle className="text-sm font-light tracking-wide uppercase">
+            <DialogTitle className="text-sm font-light tracking-wide uppercase px-6 pt-6">
               Order {selected?.id.slice(0, 8).toUpperCase()}
             </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
+            <DialogDescription className="text-xs text-muted-foreground px-6 pb-2">
               Order information, lifecycle timeline, and internal admin notes.
             </DialogDescription>
           </DialogHeader>
           {selected && (
-            <div className="space-y-6 py-4">
+            <div className="space-y-6 px-6 pb-6 overflow-y-auto max-h-[calc(88vh-88px)]">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
                 <OrderStatusBadge status={selected.status} />

@@ -3,14 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   CommandDialog,
-  CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { Search } from "lucide-react";
 
 type SearchResult = {
   id: string;
@@ -31,6 +30,7 @@ const AdminCommandPalette = () => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [orders, setOrders] = useState<SearchResult[]>([]);
   const [products, setProducts] = useState<SearchResult[]>([]);
   const [variants, setVariants] = useState<SearchResult[]>([]);
@@ -54,6 +54,7 @@ const AdminCommandPalette = () => {
 
   useEffect(() => {
     if (!open) return;
+
     const search = query.trim();
     if (search.length < 2) {
       setOrders([]);
@@ -62,11 +63,13 @@ const AdminCommandPalette = () => {
       setSchools([]);
       setCustomers([]);
       setLoading(false);
+      setHasSearched(false);
       return;
     }
 
     const timeout = setTimeout(async () => {
       setLoading(true);
+      setHasSearched(false);
 
       const [ordersTextRes, ordersPhoneExactRes, ordersRecentRes, productsRes, variantsRes, schoolsRes, customersRes] = await Promise.all([
         supabase
@@ -183,7 +186,8 @@ const AdminCommandPalette = () => {
       }
 
       setLoading(false);
-    }, 220);
+      setHasSearched(true);
+    }, 300);
 
     return () => clearTimeout(timeout);
   }, [query, open]);
@@ -211,12 +215,26 @@ const AdminCommandPalette = () => {
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search orders, products, schools, customers..." value={query} onValueChange={setQuery} />
+        <div className="flex items-center border-b px-3">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input
+            placeholder="Search orders, products, schools, customers..."
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
+          />
+        </div>
         <CommandList className="max-h-[420px]">
-          <CommandEmpty>{loading ? "Searching..." : "No results found"}</CommandEmpty>
-
           {!hasResults && query.trim().length < 2 && (
             <div className="px-3 py-4 text-xs text-muted-foreground">Type at least 2 characters to search</div>
+          )}
+
+          {loading && (
+            <div className="px-3 py-6 text-sm text-center text-muted-foreground">Searching...</div>
+          )}
+
+          {!loading && hasSearched && !hasResults && query.trim().length >= 2 && (
+            <div className="px-3 py-6 text-sm text-center text-muted-foreground">No results found</div>
           )}
 
           {orders.length > 0 && (

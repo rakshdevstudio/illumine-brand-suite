@@ -33,6 +33,7 @@ import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import SalesAnalyticsPage from "./pages/admin/SalesAnalyticsPage";
+import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -80,6 +81,7 @@ const App = () => (
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="sales" element={<SalesAnalyticsPage />} />
+            <Route path="activity-logs" element={<ActivityLogsPage />} />
             <Route path="schools" element={<SchoolsPage />} />
             <Route path="classes" element={<ClassesPage />} />
             <Route path="products" element={<ProductsPage />} />

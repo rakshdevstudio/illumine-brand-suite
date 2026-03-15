@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { motion, useAnimationControls } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
+import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
 
 const LOW_STOCK_THRESHOLD = 10;
+const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +20,10 @@ const ProductPage = () => {
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const addItem = useCart((s) => s.addItem);
+  const desktopAddButtonRef = useRef<HTMLDivElement | null>(null);
+  const mobileAddButtonRef = useRef<HTMLDivElement | null>(null);
+  const desktopAddControls = useAnimationControls();
+  const mobileAddControls = useAnimationControls();
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
@@ -71,6 +78,29 @@ const ProductPage = () => {
       quantity,
     });
     toast("Added to bag", { icon: <Check className="h-4 w-4" /> });
+  };
+
+  const triggerAddToCartInteraction = (
+    targetRef: React.RefObject<HTMLDivElement>,
+    controls: ReturnType<typeof useAnimationControls>
+  ) => {
+    if (!selectedVariant || !product || quantity < 1) return;
+
+    handleAddToCart();
+
+    void controls.start({
+      scale: [1, 0.95, 1],
+      transition: {
+        duration: 0.28,
+        ease: INTERACTION_EASE,
+        times: [0, 0.45, 1],
+      },
+    });
+
+    emitStoreAddToCart({
+      sourceRect: toAnimationRect(targetRef.current),
+      imageUrl: galleryImages[activeImageIndex] || galleryImages[0] || null,
+    });
   };
 
   if (isLoading) {
@@ -223,13 +253,20 @@ const ProductPage = () => {
             </div>
           </div>
 
-          <Button
-            onClick={handleAddToCart}
-            disabled={!selectedVariant || selectedVariant.stock === 0}
-            className="w-full h-12 text-xs tracking-[0.2em] uppercase hidden md:inline-flex"
+          <motion.div
+            ref={desktopAddButtonRef}
+            animate={desktopAddControls}
+            className="hidden md:block"
+            style={{ willChange: "transform" }}
           >
-            {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
-          </Button>
+            <Button
+              onClick={() => triggerAddToCartInteraction(desktopAddButtonRef, desktopAddControls)}
+              disabled={!selectedVariant || selectedVariant.stock === 0}
+              className="w-full h-12 text-xs tracking-[0.2em] uppercase md:inline-flex"
+            >
+              {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
+            </Button>
+          </motion.div>
 
           <div className="mt-12 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
@@ -261,13 +298,19 @@ const ProductPage = () => {
       </div>
 
       <div className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background px-4 py-3 z-30">
-        <Button
-          onClick={handleAddToCart}
-          disabled={!selectedVariant || selectedVariant.stock === 0}
-          className="w-full h-12 text-xs tracking-[0.2em] uppercase"
+        <motion.div
+          ref={mobileAddButtonRef}
+          animate={mobileAddControls}
+          style={{ willChange: "transform" }}
         >
-          {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
-        </Button>
+          <Button
+            onClick={() => triggerAddToCartInteraction(mobileAddButtonRef, mobileAddControls)}
+            disabled={!selectedVariant || selectedVariant.stock === 0}
+            className="w-full h-12 text-xs tracking-[0.2em] uppercase"
+          >
+            {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
+          </Button>
+        </motion.div>
       </div>
     </div>
   );

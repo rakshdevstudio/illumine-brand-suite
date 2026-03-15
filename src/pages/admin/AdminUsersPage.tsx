@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Shield, ShieldCheck, User, Trash2, Monitor, Store, GraduationCap } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { logActivity } from "@/lib/activity-log";
 
 const roleLabels: Record<string, { label: string; icon: typeof Shield }> = {
   super_admin:  { label: "Super Admin",  icon: ShieldCheck },
@@ -21,7 +22,7 @@ const roleLabels: Record<string, { label: string; icon: typeof Shield }> = {
 
 const AdminUsersPage = () => {
   const queryClient = useQueryClient();
-  const { role: currentUserRole } = useAuth();
+  const { role: currentUserRole, user } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<{ userId: string; currentRole: string } | null>(null);
   const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "staff" });
@@ -63,12 +64,19 @@ const AdminUsersPage = () => {
     }
     setSaving(true);
     try {
-      await callManageFunction({
+      const result = await callManageFunction({
         action: "create",
         email: form.email,
         password: form.password,
         full_name: form.full_name,
         role: form.role,
+      });
+      await logActivity({
+        actionType: "USER_CREATED",
+        entityType: "user",
+        entityId: result?.user_id ?? form.email,
+        description: `Admin created user \"${form.email}\" with role ${form.role}`,
+        performedBy: user?.id,
       });
       toast.success("Admin user created");
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
@@ -83,6 +91,14 @@ const AdminUsersPage = () => {
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
       await callManageFunction({ action: "update_role", user_id: userId, role: newRole });
+      const userProfile = users?.find((u: any) => u.id === userId);
+      await logActivity({
+        actionType: "USER_ROLE_UPDATED",
+        entityType: "user",
+        entityId: userId,
+        description: `Admin updated role for ${userProfile?.email ?? userId} to ${newRole}`,
+        performedBy: user?.id,
+      });
       toast.success("Role updated");
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       setEditingRole(null);

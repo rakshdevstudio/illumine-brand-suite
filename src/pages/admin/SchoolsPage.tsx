@@ -8,9 +8,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { logActivity } from "@/lib/activity-log";
 
 const SchoolsPage = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
@@ -56,9 +59,23 @@ const SchoolsPage = () => {
         if (editing) {
           const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
           if (error) throw error;
+          await logActivity({
+            actionType: "SCHOOL_EDITED",
+            entityType: "school",
+            entityId: editing.id,
+            description: `Admin updated school \"${form.name}\"`,
+            performedBy: user?.id,
+          });
         } else {
-          const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
+          const { data, error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status }).select("id").single();
           if (error) throw error;
+          await logActivity({
+            actionType: "SCHOOL_CREATED",
+            entityType: "school",
+            entityId: data.id,
+            description: `Admin created school \"${form.name}\"`,
+            performedBy: user?.id,
+          });
         }
       });
       toast.success(editing ? "School updated" : "School created");
@@ -77,6 +94,14 @@ const SchoolsPage = () => {
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
     await supabase.from("schools").update({ status: newStatus }).eq("id", id);
+    const school = (schools ?? []).find((s) => s.id === id);
+    await logActivity({
+      actionType: "SCHOOL_EDITED",
+      entityType: "school",
+      entityId: id,
+      description: `Admin ${newStatus === "active" ? "enabled" : "disabled"} school \"${school?.name ?? id}\"`,
+      performedBy: user?.id,
+    });
     queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
     toast.success(`School ${newStatus === "active" ? "enabled" : "disabled"}`);
   };

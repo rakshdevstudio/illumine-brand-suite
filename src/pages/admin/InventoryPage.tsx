@@ -18,11 +18,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isLowStock } from "@/lib/inventory";
+import { logActivity } from "@/lib/activity-log";
+import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 
 const InventoryPage = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -61,6 +64,17 @@ const InventoryPage = () => {
         quantity_change: adjustAmount,
         previous_stock: variant.stock,
         new_stock: newStock,
+      });
+
+      await logActivity({
+        actionType: "INVENTORY_ADJUSTED",
+        entityType: "inventory",
+        entityId: variant.id,
+        description: `Stock adjusted for ${variant.productName ?? "product"} ${variant.size ? variant.size : ""} from ${variant.stock} → ${newStock}`,
+        performedBy: user?.id,
+        fieldChanged: "stock",
+        oldValue: String(variant.stock),
+        newValue: String(newStock),
       });
 
       queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });

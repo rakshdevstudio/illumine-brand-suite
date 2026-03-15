@@ -17,6 +17,8 @@ type SchoolWithClasses = {
   classes: { id: string; name: string; sort_order: number; status: string }[];
 };
 
+const DISABLE_AUTO_SCHOOL_REDIRECT = true;
+
 const getClassRange = (classes: SchoolWithClasses["classes"]) => {
   const active = classes
     .filter((c) => c.status === "active")
@@ -41,7 +43,7 @@ const StorePage = () => {
 
   // Auto-redirect returning users after a short delay so they see the banner
   useEffect(() => {
-    if (!profileRoute || bannerDismissed) return;
+    if (DISABLE_AUTO_SCHOOL_REDIRECT || !profileRoute || bannerDismissed) return;
     const timer = setTimeout(() => navigate(profileRoute), 2500);
     return () => clearTimeout(timer);
   }, [profileRoute, bannerDismissed, navigate]);
@@ -50,7 +52,8 @@ const StorePage = () => {
   useEffect(() => {
     if (!checkedFirst) {
       setCheckedFirst(true);
-      // Don't prompt modal if we're about to auto-redirect a returning user
+      // When auto redirect is disabled for development, always keep users on school selection.
+      // Saved profile data remains intact for easy re-enable later.
       if (!profile) openModal();
     }
   }, [checkedFirst, profile, openModal]);
