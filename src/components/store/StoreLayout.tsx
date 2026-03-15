@@ -1,6 +1,7 @@
 import { Outlet, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import StoreHeader from "./StoreHeader";
+import StoreFooter from "./StoreFooter";
 import StudentProfileModal from "./StudentProfileModal";
 import { useStudentProfile, StudentProfile } from "@/lib/student-profile";
 
@@ -21,13 +22,7 @@ const StoreLayout = () => {
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="bg-surface-dark py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <p className="text-center text-xs tracking-[0.3em] text-surface-dark-muted uppercase">
-            © 2026 Illume. All rights reserved.
-          </p>
-        </div>
-      </footer>
+      <StoreFooter />
     </div>
   );
 };

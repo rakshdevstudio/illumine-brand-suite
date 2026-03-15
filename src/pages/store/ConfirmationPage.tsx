@@ -18,6 +18,20 @@ const ConfirmationPage = () => {
       <p className="text-sm text-muted-foreground mb-2">
         Thank you for your order.
       </p>
+      <p className="text-sm text-muted-foreground mb-2">
+        Need help with your order?
+      </p>
+      <p className="text-sm mb-4">
+        <span className="text-muted-foreground">Visit: </span>
+        <a
+          href="https://www.illumeonline.in"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-500 hover:text-black transition-colors"
+        >
+          www.illumeonline.in
+        </a>
+      </p>
       {orderId && (
         <p className="text-xs tracking-[0.15em] text-muted-foreground mb-12">
           Order ID: {orderId.slice(0, 8).toUpperCase()}
@@ -35,6 +49,11 @@ const ConfirmationPage = () => {
         <Link to="/store">
           <Button variant="outline" className="text-xs tracking-[0.2em] uppercase h-12 px-8">
             Continue Shopping
+          </Button>
+        </Link>
+        <Link to="/track-order">
+          <Button variant="ghost" className="text-xs tracking-[0.2em] uppercase h-12 px-4 text-muted-foreground hover:text-foreground">
+            Track Another Order
           </Button>
         </Link>
       </div>

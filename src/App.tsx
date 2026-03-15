@@ -16,6 +16,7 @@ import CartPage from "./pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
 import OrderDetailsPage from "./pages/store/OrderDetailsPage";
+import TrackOrderPage from "./pages/store/TrackOrderPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
@@ -28,6 +29,7 @@ import ProductVariantsPage from "./pages/admin/ProductVariantsPage";
 import InventoryPage from "./pages/admin/InventoryPage";
 import InventoryAlertsPage from "./pages/admin/InventoryAlertsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
+import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 
@@ -67,6 +69,10 @@ const App = () => (
             <Route path="order/:orderId" element={<OrderDetailsPage />} />
           </Route>
 
+          <Route path="/track-order" element={<StoreLayout />}>
+            <Route index element={<TrackOrderPage />} />
+          </Route>
+
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
@@ -79,6 +85,7 @@ const App = () => (
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="inventory-alerts" element={<InventoryAlertsPage />} />
             <Route path="orders" element={<OrdersPage />} />
+            <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
           </Route>

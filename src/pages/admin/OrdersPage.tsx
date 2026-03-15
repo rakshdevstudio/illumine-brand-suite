@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ const matchesDateFilter = (createdAt: string, dateFilter: string) => {
 };
 
 const OrdersPage = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [schoolFilter, setSchoolFilter] = useState("all");
@@ -250,9 +252,27 @@ const OrdersPage = () => {
           {new Date(order.created_at).toLocaleDateString()}
         </TableCell>
         <TableCell>
-          <Button variant="outline" size="sm" className="text-xs" onClick={() => setSelectedOrder(order.id)}>
-            View
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => setSelectedOrder(order.id)}>
+              View
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => navigate(`/admin/orders/${order.id}/invoice`)}
+            >
+              Download Invoice
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => navigate(`/admin/orders/${order.id}/invoice?autoprint=1`)}
+            >
+              Print Invoice
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
     );

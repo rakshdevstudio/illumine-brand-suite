@@ -22,6 +22,12 @@ const StoreHeader = () => {
         </Link>
 
         <div className="flex items-center gap-6">
+          <Link
+            to="/track-order"
+            className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+          >
+            Track Order
+          </Link>
           {profile && (
             <button
               onClick={openModal}

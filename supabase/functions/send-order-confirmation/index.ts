@@ -140,6 +140,16 @@ function buildHtml(payload: Payload): string {
             <p style="font-size:13px;color:#555;margin:0 0 32px;">
               Your order is being processed and we will notify you once it is shipped.
             </p>
+
+            <p style="font-size:13px;color:#555;margin:0 0 6px;">
+              Thank you for choosing Illume.
+            </p>
+            <p style="font-size:13px;color:#555;margin:0 0 2px;">
+              Support: hello@illume.co.in
+            </p>
+            <p style="font-size:13px;color:#555;margin:0 0 24px;">
+              Website: www.illumeonline.in
+            </p>
           </td>
         </tr>
 
