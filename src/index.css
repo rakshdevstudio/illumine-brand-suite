@@ -100,6 +100,16 @@
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.15));
     animation: illume-scroll-pulse 1.7s ease-in-out infinite;
   }
+
+  .crafted-story-background {
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.85), transparent 55%),
+      radial-gradient(circle at 80% 80%, rgba(248, 248, 248, 0.9), transparent 60%),
+      linear-gradient(150deg, rgba(246, 246, 242, 0.95), rgba(232, 232, 228, 0.95));
+    background-size: 400% 400%;
+    pointer-events: none;
+    animation: crafted-gradient-shift 20s ease-in-out infinite;
+  }
 }
 
 @keyframes illume-bg-drift {
@@ -123,6 +133,18 @@
   }
 }
 
+@keyframes crafted-gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -137,5 +159,9 @@
     opacity: 1;
     transform: none;
     transition: none;
+  }
+
+  .crafted-story-background {
+    animation: none;
   }
 }

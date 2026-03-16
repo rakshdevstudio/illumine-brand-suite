@@ -1,6 +1,6 @@
 import { Outlet, Navigate } from "react-router-dom";
 import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, LineChart, History } from "lucide-react";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/logo.png";
 import { NavLink } from "@/components/NavLink";
 import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
 import { useAuth } from "@/hooks/use-auth";
@@ -52,7 +52,7 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarContent>
         <div className="p-4 pb-6">
-          {!collapsed ? (
+                    {!collapsed ? (
             <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
           ) : (
             <img src={illumeLogo} alt="Illume" className="h-6 w-auto" />

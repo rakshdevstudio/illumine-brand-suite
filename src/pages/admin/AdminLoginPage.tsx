@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/logo.png";
 import { getRoleRedirectPath, type AppRole } from "@/hooks/use-auth";
 
 const AdminLoginPage = () => {

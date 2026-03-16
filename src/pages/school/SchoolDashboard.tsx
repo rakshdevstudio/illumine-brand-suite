@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/logo.png";
 
 const SchoolDashboard = () => {
   const { user, isSchoolUser, hasAccess, loading, signOut } = useAuth();

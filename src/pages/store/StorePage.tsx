@@ -1,13 +1,41 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion, useMotionValue, useScroll, useSpring, useTransform } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useScroll,
+  useTransform,
+  useSpring,
+  useMotionValue,
+  Variants,
+} from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Ruler, Shield, Sparkles, Star } from "lucide-react";
+import {
+  Building2,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Ruler,
+  Shield,
+  Sparkles,
+  Star,
+  Shirt,
+  Footprints,
+  ShieldCheck,
+  Palette,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/illume-logo.png";
+import illumeLogo from "@/assets/logo.png";
 import { useStudentProfile } from "@/lib/student-profile";
 import ThreadsBackground from "@/components/store/ThreadsBackground";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Easing } from "framer-motion";
 
 const REVEAL = {
   hidden: { opacity: 0, y: 28 },
@@ -16,6 +44,125 @@ const REVEAL = {
     y: 0,
     transition: { duration: 0.55, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] as const },
   }),
+};
+
+const STORY_LINES = [
+  "Every Illume uniform is designed with premium fabrics, clean construction, and lasting comfort for everyday school life.",
+  "We focus on quality that looks refined, feels soft, and performs through every term.",
+];
+
+const FEATURE_CARD_STAGGER = 0.1;
+
+const FEATURE_CARDS = [
+  {
+    num: "01",
+    icon: <Sparkles className="h-5 w-5" strokeWidth={1.5} />,
+    title: "Premium Fabric",
+    body: "Soft touch, breathable materials selected for day-long comfort.",
+  },
+  {
+    num: "02",
+    icon: <Shield className="h-5 w-5" strokeWidth={1.5} />,
+    title: "Durable Stitching",
+    body: "Reinforced seams and dependable construction made to last.",
+  },
+  {
+    num: "03",
+    icon: <Ruler className="h-5 w-5" strokeWidth={1.5} />,
+    title: "Perfect Fit",
+    body: "Carefully graded sizing for a clean, confident school-ready fit.",
+  },
+];
+
+const OFFER_CARDS = [
+  {
+    num: "01",
+    title: "Uniforms",
+    body: "High-quality garments for schools, institutions, and corporates.",
+    icon: Shirt,
+  },
+  {
+    num: "02",
+    title: "Shoes",
+    body: "Ergonomic school shoes designed for comfort and active lifestyles.",
+    icon: Footprints,
+  },
+  {
+    num: "03",
+    title: "Accessories",
+    body: "A complete range of products that complement your uniform needs.",
+    icon: Sparkles,
+  },
+];
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 50, scale: 0.96 },
+  visible: (index = 0) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    boxShadow: "0 18px 40px rgba(0, 0, 0, 0.06)",
+    transition: { duration: 0.8, delay: index * FEATURE_CARD_STAGGER, ease: "easeOut" as Easing },
+  }),
+  hover: {
+    y: -6,
+    scale: 1.02,
+    boxShadow: "0 28px 60px rgba(0, 0, 0, 0.24)",
+    transition: { duration: 0.25, ease: "easeOut" as Easing },
+  },
+};
+
+const iconVariants = {
+  hidden: { rotate: 0 },
+  visible: { rotate: 0 },
+  hover: { rotate: 10, transition: { duration: 0.25, ease: "easeOut" as Easing } },
+};
+
+const offerHeadingVariants: Variants = {
+  hidden: { opacity: 0, y: 30, letterSpacing: "10px" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    letterSpacing: "4px",
+    transition: { duration: 0.8, ease: "easeOut" },
+  },
+};
+
+const offerCardVariants: Variants = {
+  hidden: { opacity: 0, y: 60, scale: 0.96 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.7,
+      delay: i * 0.15,
+      ease: "easeOut",
+    },
+  }),
+  hover: {
+    y: -8,
+    scale: 1.02,
+    boxShadow: "0px 18px 40px rgba(0,0,0,0.08)",
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
+};
+
+const offerIconVariants: Variants = {
+  hover: {
+    rotate: 8,
+    scale: 1.08,
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
+};
+
+const offerDividerVariants: Variants = {
+  hidden: { height: 0, opacity: 0 },
+  visible: {
+    height: "100%",
+    opacity: 1,
+    transition: { duration: 0.7, ease: "easeOut", delay: 0.5 },
+  },
 };
 
 type SchoolWithClasses = {
@@ -101,8 +248,10 @@ const StorePage = () => {
   const [isTestimonialHovered, setIsTestimonialHovered] = useState(false);
   const [testimonialPauseUntil, setTestimonialPauseUntil] = useState(0);
   const heroSectionRef = useRef<HTMLElement | null>(null);
+  const offerSectionRef = useRef<HTMLElement | null>(null);
   const showcaseSectionRef = useRef<HTMLElement | null>(null);
   const testimonialSectionRef = useRef<HTMLElement | null>(null);
+  const missionStatementRef = useRef<HTMLParagraphElement | null>(null);
 
   const { scrollYProgress: heroScrollProgress } = useScroll({
     target: heroSectionRef,
@@ -110,6 +259,11 @@ const StorePage = () => {
   });
   const heroLogoOpacity = useTransform(heroScrollProgress, [0, 1], [1, 0.9]);
   const heroLogoScale = useTransform(heroScrollProgress, [0, 1], [1, 0.92]);
+
+  const { scrollYProgress: scrollYProgress } = useScroll({
+    target: offerSectionRef,
+    offset: ["start end", "end start"],
+  });
 
   const { scrollYProgress: testimonialScrollProgress } = useScroll({
     target: testimonialSectionRef,
@@ -120,7 +274,13 @@ const StorePage = () => {
     target: showcaseSectionRef,
     offset: ["start end", "end start"],
   });
-  const showcaseParallaxY = useTransform(showcaseScrollProgress, [0, 1], [-24, 24]);
+  const showcaseParallaxY = useTransform(showcaseScrollProgress, [0, 1], [-80, 80]);
+
+  const { scrollYProgress: missionScrollProgress } = useScroll({
+    target: missionStatementRef,
+    offset: ["start end", "end start"],
+  });
+  const missionParallaxY = useTransform(missionScrollProgress, [0, 1], [0, -18]);
 
   const rotateXRaw = useMotionValue(0);
   const rotateYRaw = useMotionValue(0);
@@ -234,7 +394,7 @@ const StorePage = () => {
   const nextTestimonialIndex = (activeTestimonial + 1) % TESTIMONIALS.length;
 
   return (
-    <div className="bg-background">
+    <div className="bg-background text-foreground">
       {/* Smart School Detection banner */}
       {profile && profileRoute && !bannerDismissed && (
         <div className="border-b border-border bg-background/95 backdrop-blur-sm px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -418,37 +578,80 @@ const StorePage = () => {
       </section>
 
       {/* ── WHAT WE OFFER ────────────────────────────────────────── */}
-      <section className="border-t border-border px-6 py-10 md:py-16 lg:py-20">
+      <section ref={offerSectionRef} className="border-t border-border px-6 py-10 md:py-16 lg:py-20 overflow-hidden">
         <div className="max-w-5xl mx-auto">
-          <motion.p
-            variants={REVEAL}
+          <motion.h3
+            variants={offerHeadingVariants}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-12"
+            viewport={{ once: true, amount: 0.5 }}
+            className="text-center text-xs md:text-sm tracking-[0.46em] uppercase text-muted-foreground mb-12"
           >
             What We Offer
-          </motion.p>
-          <div className="grid grid-cols-3 gap-px bg-border">
-            {[
-              { num: "01", title: "Uniforms", body: "High-quality garments for schools, institutions, and corporates." },
-              { num: "02", title: "Shoes", body: "Ergonomic school shoes designed for comfort and active lifestyles." },
-              { num: "03", title: "Accessories", body: "A complete range of products that complement your uniform needs." },
-            ].map((item, i) => (
-              <motion.div
-                key={item.num}
-                variants={REVEAL}
-                custom={i}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.25 }}
-                className="bg-background px-8 py-10 flex flex-col items-center gap-3 text-center"
-              >
-                <span className="text-[10px] tracking-[0.36em] uppercase text-muted-foreground/40">{item.num}</span>
-                <h4 className="text-sm tracking-[0.22em] uppercase font-normal">{item.title}</h4>
-                <p className="text-sm text-muted-foreground leading-relaxed">{item.body}</p>
-              </motion.div>
-            ))}
+          </motion.h3>
+          <div className="grid grid-cols-1 md:grid-cols-3">
+            {OFFER_CARDS.map((item, i) => {
+              const isNotLast = i < OFFER_CARDS.length - 1;
+              const parallaxY = useTransform(
+                scrollYProgress,
+                [0, 1],
+                [0, (i === 1 ? 0.03 : 0.05) * -200]
+              );
+
+              return (
+                <motion.div
+                  key={item.num}
+                  variants={offerCardVariants}
+                  custom={i}
+                  initial="hidden"
+                  whileInView="visible"
+                  whileHover="hover"
+                  viewport={{ once: true, amount: 0.4 }}
+                  className="relative group"
+                >
+                  <motion.div
+                    style={{ y: parallaxY }}
+                    className="bg-background px-8 py-10 h-full flex flex-col items-center gap-3 text-center"
+                  >
+                    <motion.div
+                      variants={{
+                        hover: {
+                          background:
+                            "linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.0), rgba(0,0,0,0.02), rgba(0,0,0,0.05))",
+                        },
+                      }}
+                      className="absolute inset-0"
+                    />
+                    <motion.div variants={offerIconVariants}>
+                      <item.icon
+                        className="h-6 w-6 mb-2 text-muted-foreground/60 group-hover:text-foreground transition-colors"
+                        strokeWidth={1.5}
+                      />
+                    </motion.div>
+                    <span className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground/40">
+                      {item.num}
+                    </span>
+                    <h4 className="text-sm tracking-[0.22em] uppercase font-normal">
+                      {item.title}
+                    </h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
+                      {item.body}
+                    </p>
+                  </motion.div>
+
+                  {isNotLast && (
+                    <motion.div
+                      variants={offerDividerVariants}
+                      initial="hidden"
+                      whileInView="visible"
+                      viewport={{ once: true, amount: 0.5 }}
+                      className="absolute top-0 right-0 w-px bg-border hidden md:block"
+                      style={{ originY: 0 }}
+                    />
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -506,76 +709,69 @@ const StorePage = () => {
       </section>
 
       {/* ── SECTION 1 · BRAND STORY ─────────────────────────────── */}
-      <section className="px-6 py-10 md:py-16 lg:py-20">
-        <div className="max-w-2xl mx-auto text-center">
+      <section className="relative overflow-hidden px-6 py-14 md:py-20 lg:py-24">
+        <div className="crafted-story-background absolute inset-0 opacity-70" aria-hidden="true" />
+        <div className="relative z-10 mx-auto max-w-3xl space-y-6 text-center">
           <motion.p
             variants={REVEAL}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.3 }}
-            className="text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-6"
+            className="text-xs md:text-sm tracking-[0.42em] uppercase text-foreground/60"
           >
             Brand Story
           </motion.p>
 
           <motion.h2
-            variants={REVEAL}
-            custom={1}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="text-3xl md:text-4xl font-extralight tracking-[0.22em] uppercase mb-10 leading-snug"
+            initial={{ opacity: 0, letterSpacing: 12, y: 40 }}
+            whileInView={{ opacity: 1, letterSpacing: 4, y: 0 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 0.9, ease: "easeOut" }}
+            className="text-4xl md:text-5xl font-extralight tracking-[0.22em] uppercase mb-4 leading-snug text-foreground"
           >
             Crafted With Care
           </motion.h2>
 
           <motion.div
-            variants={REVEAL}
-            custom={2}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="w-8 h-px bg-foreground/20 mx-auto mb-10"
+            initial={{ opacity: 0, scaleX: 0 }}
+            whileInView={{ opacity: 1, scaleX: 1 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className="mx-auto h-[1px] w-[80px] bg-foreground/40"
+            style={{ transformOrigin: "center" }}
           />
 
-          <motion.p
-            variants={REVEAL}
-            custom={3}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="text-sm text-muted-foreground leading-[1.9] mb-6"
-          >
-            Every Illume uniform is designed with premium fabrics, clean construction, and lasting comfort for everyday school life.
-          </motion.p>
-
-          <motion.p
-            variants={REVEAL}
-            custom={4}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="text-sm text-muted-foreground leading-[1.9]"
-          >
-            We focus on quality that looks refined, feels soft, and performs through every term.
-          </motion.p>
+          <div className="space-y-5 text-base md:text-lg text-foreground leading-[1.9]">
+            {STORY_LINES.map((line, index) => (
+              <motion.p
+                key={line}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.4 }}
+                transition={{ duration: 0.75, delay: index * 0.12, ease: "easeOut" }}
+              >
+                {line}
+              </motion.p>
+            ))}
+          </div>
 
           <motion.div
-            variants={REVEAL}
-            custom={5}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="w-8 h-px bg-foreground/20 mx-auto mt-10 mb-8"
+            initial={{ opacity: 0, scaleX: 0 }}
+            whileInView={{ opacity: 1, scaleX: 1 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 0.6, ease: "easeOut", delay: 0.3 }}
+            className="mx-auto mt-10 h-[2px] w-[80px] bg-foreground/40"
+            style={{ transformOrigin: "center" }}
           />
 
           <motion.p
-            variants={REVEAL}
-            custom={6}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
-            className="text-xs tracking-[0.18em] uppercase text-muted-foreground/70 leading-[2]"
+            ref={missionStatementRef}
+            initial={{ opacity: 0, y: 16, filter: "blur(4px)" }}
+            whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            viewport={{ once: true, amount: 0.35 }}
+            transition={{ duration: 0.7, delay: 0.2, ease: "easeOut" }}
+            style={{ y: missionParallaxY }}
+            className="text-sm md:text-base tracking-[0.18em] uppercase text-foreground/70 leading-[2]"
           >
             Our mission — to blend functionality, performance, and contemporary design,
             providing unmatched quality and value to every institution we serve.
@@ -591,45 +787,27 @@ const StorePage = () => {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.3 }}
-            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-8 md:mb-10"
+            className="text-center text-sm md:text-base tracking-[0.5em] uppercase text-foreground/70 mb-6 md:mb-8"
           >
             Our Promise
           </motion.p>
 
           <div className="grid md:grid-cols-3 gap-px bg-border">
-            {[
-              {
-                num: "01",
-                icon: <Sparkles className="h-5 w-5" strokeWidth={1.5} />,
-                title: "Premium Fabric",
-                body: "Soft touch, breathable materials selected for day-long comfort.",
-              },
-              {
-                num: "02",
-                icon: <Shield className="h-5 w-5" strokeWidth={1.5} />,
-                title: "Durable Stitching",
-                body: "Reinforced seams and dependable construction made to last.",
-              },
-              {
-                num: "03",
-                icon: <Ruler className="h-5 w-5" strokeWidth={1.5} />,
-                title: "Perfect Fit",
-                body: "Carefully graded sizing for a clean, confident school-ready fit.",
-              },
-            ].map((feat, i) => (
+            {FEATURE_CARDS.map((feat, index) => (
               <motion.div
                 key={feat.num}
-                variants={REVEAL}
-                custom={i}
+                variants={cardVariants}
+                custom={index}
                 initial="hidden"
                 whileInView="visible"
-                viewport={{ once: true, amount: 0.25 }}
-                className="bg-background px-10 py-12 md:py-14 flex flex-col gap-5"
+                viewport={{ once: true, amount: 0.3 }}
+                whileHover="hover"
+                className="group bg-background px-10 py-12 md:py-14 flex flex-col gap-5"
               >
-                <div className="flex items-center justify-between text-muted-foreground/40">
+                <motion.div variants={iconVariants} className="flex items-center justify-between text-muted-foreground/40">
                   {feat.icon}
                   <span className="text-[10px] tracking-[0.3em] uppercase">{feat.num}</span>
-                </div>
+                </motion.div>
                 <div>
                   <h4 className="text-xs tracking-[0.24em] uppercase mb-3 font-normal">{feat.title}</h4>
                   <p className="text-sm text-muted-foreground leading-relaxed">{feat.body}</p>

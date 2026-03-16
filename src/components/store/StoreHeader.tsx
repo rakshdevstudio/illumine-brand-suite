@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/logo.png";
 import { STORE_ADD_TO_CART_EVENT, StoreAddToCartDetail } from "@/lib/store-interactions";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -67,7 +67,7 @@ const StoreHeader = () => {
       <header className="bg-surface-dark border-b border-surface-dark">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Link to="/store" className="flex items-center gap-2">
-          <img
+                    <img
             src={illumeLogo}
             alt="Illume"
             className="h-9 w-auto"

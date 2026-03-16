@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/illume-logo.jpeg";
+import illumeLogo from "@/assets/logo.png";
 
 const PosDashboard = () => {
   const { user, role, hasAccess, loading, signOut } = useAuth();
