@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/illume-logo.png";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value || 0);

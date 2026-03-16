@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue, useScroll, useSpring, useTransform } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { Building2, CheckCircle2, ChevronLeft, ChevronRight, Ruler, Shield, Sparkles, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ type SchoolWithClasses = {
 };
 
 const DISABLE_AUTO_SCHOOL_REDIRECT = true;
+const UNIFORM_SHOWCASE_IMAGE = "/uniforms_image.png";
 
 const TESTIMONIALS = [
   {
@@ -74,6 +75,11 @@ const TESTIMONIALS = [
   },
 ] as const;
 
+const getQuotePreview = (text: string, max = 170) => {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trimEnd()}…`;
+};
+
 const getClassRange = (classes: SchoolWithClasses["classes"]) => {
   const active = classes
     .filter((c) => c.status === "active")
@@ -93,6 +99,35 @@ const StorePage = () => {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [isTestimonialHovered, setIsTestimonialHovered] = useState(false);
+  const [testimonialPauseUntil, setTestimonialPauseUntil] = useState(0);
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+  const showcaseSectionRef = useRef<HTMLElement | null>(null);
+  const testimonialSectionRef = useRef<HTMLElement | null>(null);
+
+  const { scrollYProgress: heroScrollProgress } = useScroll({
+    target: heroSectionRef,
+    offset: ["start start", "end start"],
+  });
+  const heroLogoOpacity = useTransform(heroScrollProgress, [0, 1], [1, 0.9]);
+  const heroLogoScale = useTransform(heroScrollProgress, [0, 1], [1, 0.92]);
+
+  const { scrollYProgress: testimonialScrollProgress } = useScroll({
+    target: testimonialSectionRef,
+    offset: ["start end", "end start"],
+  });
+  const quoteParallaxY = useTransform(testimonialScrollProgress, [0, 1], [-28, 28]);
+  const { scrollYProgress: showcaseScrollProgress } = useScroll({
+    target: showcaseSectionRef,
+    offset: ["start end", "end start"],
+  });
+  const showcaseParallaxY = useTransform(showcaseScrollProgress, [0, 1], [-24, 24]);
+
+  const rotateXRaw = useMotionValue(0);
+  const rotateYRaw = useMotionValue(0);
+  const scaleRaw = useMotionValue(1);
+  const rotateX = useSpring(rotateXRaw, { stiffness: 90, damping: 20, mass: 0.85 });
+  const rotateY = useSpring(rotateYRaw, { stiffness: 90, damping: 20, mass: 0.85 });
+  const cardScale = useSpring(scaleRaw, { stiffness: 110, damping: 22, mass: 0.9 });
 
   const profileRoute = profile
     ? `/store/school/${profile.schoolSlug}/class/${profile.classSlug}/gender/${profile.gender}`
@@ -154,19 +189,49 @@ const StorePage = () => {
 
   useEffect(() => {
     if (isTestimonialHovered) return;
+    const waitMs = testimonialPauseUntil - Date.now();
+    if (waitMs > 0) {
+      const resumeTimer = setTimeout(() => setTestimonialPauseUntil(0), waitMs);
+      return () => clearTimeout(resumeTimer);
+    }
+
     const timer = setInterval(() => {
       setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
-    }, 6000);
+    }, 7000);
     return () => clearInterval(timer);
-  }, [isTestimonialHovered]);
+  }, [isTestimonialHovered, testimonialPauseUntil]);
+
+  const pauseTestimonialRotation = () => {
+    setTestimonialPauseUntil(Date.now() + 7000);
+  };
 
   const showPreviousTestimonial = () => {
+    pauseTestimonialRotation();
     setActiveTestimonial((prev) => (prev - 1 + TESTIMONIALS.length) % TESTIMONIALS.length);
   };
 
   const showNextTestimonial = () => {
+    pauseTestimonialRotation();
     setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
   };
+
+  const handleTestimonialCardMove = (event: MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const relativeX = (event.clientX - rect.left) / rect.width;
+    const relativeY = (event.clientY - rect.top) / rect.height;
+    rotateYRaw.set((relativeX - 0.5) * 12);
+    rotateXRaw.set((0.5 - relativeY) * 8);
+    scaleRaw.set(1.02);
+  };
+
+  const handleTestimonialCardLeave = () => {
+    rotateXRaw.set(0);
+    rotateYRaw.set(0);
+    scaleRaw.set(1);
+  };
+
+  const previousTestimonialIndex = (activeTestimonial - 1 + TESTIMONIALS.length) % TESTIMONIALS.length;
+  const nextTestimonialIndex = (activeTestimonial + 1) % TESTIMONIALS.length;
 
   return (
     <div className="bg-background">
@@ -198,27 +263,61 @@ const StorePage = () => {
         </div>
       )}
 
-      <section className="relative overflow-hidden bg-surface-dark text-center px-6 py-32 md:py-44">
-        <ThreadsBackground amplitude={1} distance={0} enableMouseInteraction />
+      <section ref={heroSectionRef} className="relative overflow-hidden bg-surface-dark text-center px-6 py-10 md:py-16 lg:py-28">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1, ease: "easeOut" }}
+          className="absolute inset-0"
+        >
+          <ThreadsBackground amplitude={1} distance={0} enableMouseInteraction />
+        </motion.div>
         <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/22 via-black/10 to-black/34 pointer-events-none" />
 
-        <div className="relative z-[2] max-w-3xl mx-auto flex flex-col items-center pointer-events-none">
-          <img
-            src={illumeLogo}
-            alt="Illume"
-            className="h-24 md:h-28 w-auto mx-auto mb-8 pointer-events-auto"
-            style={{ filter: "brightness(0) invert(1)" }}
-          />
-          <p className="text-[11px] md:text-xs tracking-[0.5em] text-surface-dark-muted uppercase mb-4 font-light pointer-events-auto">
+        <motion.div className="relative z-[2] max-w-3xl mx-auto flex flex-col items-center pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.4, ease: "easeOut" }}
+            className="relative mb-8 pointer-events-auto"
+          >
+            <motion.div
+              style={{ opacity: heroLogoOpacity, scale: heroLogoScale }}
+              animate={{ y: [0, -6, 0] }}
+              transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <img
+                src={illumeLogo}
+                alt="Illume"
+                className="w-[100px] md:w-[130px] lg:w-[170px] h-auto mx-auto"
+              />
+            </motion.div>
+          </motion.div>
+          <motion.p
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.7, ease: "easeOut" }}
+            className="text-[11px] md:text-xs tracking-[0.5em] text-surface-dark-muted uppercase mb-4 font-light pointer-events-auto"
+          >
             Illume
-          </p>
-          <h1 className="text-4xl md:text-6xl font-extralight tracking-[0.28em] text-surface-dark-foreground uppercase leading-[1.1] mb-5 pointer-events-auto">
+          </motion.p>
+          <motion.h1
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 1, ease: "easeOut" }}
+            className="text-4xl md:text-6xl font-extralight tracking-[0.28em] text-surface-dark-foreground uppercase leading-[1.1] mb-5 pointer-events-auto"
+          >
             Be The Change
-          </h1>
-          <p className="text-[11px] md:text-xs tracking-[0.38em] text-surface-dark-muted uppercase max-w-xl mx-auto font-light leading-relaxed pointer-events-auto">
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 1.12, ease: "easeOut" }}
+            className="text-[11px] md:text-xs tracking-[0.38em] text-surface-dark-muted uppercase max-w-xl mx-auto font-light leading-relaxed pointer-events-auto"
+          >
             Premium School Uniforms Crafted With Care
-          </p>
-        </div>
+          </motion.p>
+        </motion.div>
 
         <div className="absolute z-[2] bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-surface-dark-muted pointer-events-none">
           <span className="text-[9px] tracking-[0.35em] uppercase">Scroll</span>
@@ -227,7 +326,7 @@ const StorePage = () => {
       </section>
 
       {/* ── STATS BAR ─────────────────────────────────────────────── */}
-      <section className="bg-surface-dark border-b border-white/10 px-6 py-10">
+      <section className="bg-surface-dark border-b border-white/10 px-6 py-8 md:py-10">
         <div className="max-w-4xl mx-auto grid grid-cols-3 divide-x divide-white/10">
           {[
             { value: "25+", label: "Years of Expertise" },
@@ -250,8 +349,8 @@ const StorePage = () => {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-6 py-28 md:py-36">
-        <div className="text-center mb-14">
+      <section className="max-w-6xl mx-auto px-6 py-10 md:py-16 lg:py-20">
+        <div className="text-center mb-8 md:mb-10">
           <p className="text-[10px] tracking-[0.45em] text-muted-foreground uppercase mb-3">Collections</p>
           <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.18em] uppercase">
             Select Your School
@@ -259,13 +358,13 @@ const StorePage = () => {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 md:gap-10">
             {[1, 2, 3].map((i) => (
               <div key={i} className="rounded-xl border border-border h-72 animate-pulse bg-secondary/60" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 md:gap-10">
             {schools?.map((school) => {
               const classRange = getClassRange(school.classes ?? []);
               return (
@@ -323,7 +422,7 @@ const StorePage = () => {
       </section>
 
       {/* ── WHAT WE OFFER ────────────────────────────────────────── */}
-      <section className="border-t border-border px-6 py-16 md:py-20">
+      <section className="border-t border-border px-6 py-10 md:py-16 lg:py-20">
         <div className="max-w-5xl mx-auto">
           <motion.p
             variants={REVEAL}
@@ -358,8 +457,60 @@ const StorePage = () => {
         </div>
       </section>
 
+      {/* ── UNIFORM SHOWCASE ─────────────────────────────────────── */}
+      <section ref={showcaseSectionRef} className="relative w-full overflow-hidden">
+        <div className="relative h-[520px]">
+          <motion.div
+            style={{ y: showcaseParallaxY }}
+            className="absolute inset-0"
+          >
+            <div
+              className="absolute inset-0 bg-cover bg-[center_24%] md:bg-[center_18%]"
+              style={{ backgroundImage: `url(${UNIFORM_SHOWCASE_IMAGE})` }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/35 to-black/55" />
+          </motion.div>
+
+          <div className="relative z-[2] h-full max-w-6xl mx-auto px-6 flex flex-col items-center justify-center text-center">
+            <motion.h2
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.4 }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="text-3xl md:text-5xl font-extralight tracking-[0.16em] uppercase text-white mb-6"
+            >
+              Premium School Uniforms
+            </motion.h2>
+
+            <motion.p
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.4 }}
+              transition={{ duration: 0.55, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="text-sm md:text-base text-white/90 tracking-wide max-w-2xl mb-8"
+            >
+              Crafted for confidence, comfort and everyday school life.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.4 }}
+              transition={{ duration: 0.55, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Link
+                to="/store"
+                className="inline-flex items-center justify-center rounded-md bg-black px-7 py-3 text-[11px] tracking-[0.18em] uppercase text-white"
+              >
+                Explore Uniforms
+              </Link>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* ── SECTION 1 · BRAND STORY ─────────────────────────────── */}
-      <section className="px-6 py-28 md:py-40">
+      <section className="px-6 py-10 md:py-16 lg:py-20">
         <div className="max-w-2xl mx-auto text-center">
           <motion.p
             variants={REVEAL}
@@ -437,14 +588,14 @@ const StorePage = () => {
       </section>
 
       {/* ── SECTION 2 · QUALITY FEATURES ────────────────────────── */}
-      <section className="bg-secondary/20 border-y border-border px-6 py-20 md:py-28">
+      <section className="bg-secondary/20 border-y border-border px-6 py-10 md:py-16 lg:py-20">
         <div className="max-w-5xl mx-auto">
           <motion.p
             variants={REVEAL}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.3 }}
-            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-16"
+            className="text-center text-[9px] tracking-[0.46em] uppercase text-muted-foreground mb-8 md:mb-10"
           >
             Our Promise
           </motion.p>
@@ -494,7 +645,7 @@ const StorePage = () => {
       </section>
 
       {/* ── INSPIRE THE BEST ─────────────────────────────────────── */}
-      <section className="bg-surface-dark px-6 py-24 md:py-36 text-center overflow-hidden">
+      <section className="bg-surface-dark px-6 py-12 md:py-16 lg:py-24 text-center overflow-hidden">
         <motion.p
           variants={REVEAL}
           initial="hidden"
@@ -535,7 +686,7 @@ const StorePage = () => {
       </section>
 
       {/* ── SECTION 4 · TRUST STRIP ─────────────────────────────── */}
-      <section className="border-b border-border px-6 py-9">
+      <section className="border-b border-border px-6 py-6 md:py-8">
         <motion.ul
           variants={REVEAL}
           initial="hidden"
@@ -559,33 +710,62 @@ const StorePage = () => {
 
       {/* ── TESTIMONIALS · OUR CUSTOMERS SAY ────────────────────── */}
       <motion.section
+        ref={testimonialSectionRef}
         initial={{ opacity: 0, y: 40 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.2 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="relative overflow-hidden px-6 py-28 md:py-36"
+        className="relative overflow-hidden px-6 py-12 md:py-16 lg:py-[90px]"
         style={{ backgroundColor: "#F7F7F7" }}
         onMouseEnter={() => setIsTestimonialHovered(true)}
         onMouseLeave={() => setIsTestimonialHovered(false)}
       >
-        <span className="pointer-events-none absolute left-1/2 top-14 -translate-x-1/2 text-[180px] md:text-[260px] leading-none opacity-[0.08] text-foreground select-none">
+        <motion.span
+          style={{ y: quoteParallaxY }}
+          className="pointer-events-none absolute z-0 left-1/2 top-10 -translate-x-1/2 text-[108px] sm:text-[120px] md:text-[180px] lg:text-[210px] leading-none opacity-[0.06] text-black/40 select-none"
+        >
           “ ”
-        </span>
+        </motion.span>
 
-        <div className="relative z-10 max-w-5xl mx-auto text-center">
-          <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.16em] uppercase mb-20">
+        <div className="relative z-[2] max-w-5xl mx-auto text-center">
+          <h2 className="text-3xl md:text-5xl font-extralight tracking-[0.16em] uppercase mb-8 md:mb-10">
             Our Customers Say
           </h2>
 
-          <div className="relative min-h-[380px] md:min-h-[300px] flex items-center justify-center px-12 md:px-20">
+          <div
+            className="relative min-h-[360px] md:min-h-[390px] flex items-center justify-center px-12 md:px-24"
+            style={{ perspective: 1200 }}
+          >
+            <div className="pointer-events-none hidden md:block absolute inset-0 [transform-style:preserve-3d]" style={{ transform: "translateZ(-80px)" }}>
+              <motion.div
+                key={`prev-${activeTestimonial}`}
+                initial={{ x: -180, scale: 0.84, opacity: 0 }}
+                animate={{ x: -220, scale: 0.88, opacity: 0.45 }}
+                transition={{ duration: 0.6, ease: "easeInOut" }}
+                className="absolute left-1/2 top-1/2 w-full max-w-[760px] -translate-y-1/2 -translate-x-1/2 rounded-2xl bg-white/95 px-10 py-9 text-left shadow-[0_24px_52px_rgba(0,0,0,0.06)]"
+              >
+                <p className="text-sm text-foreground/70 leading-relaxed">{getQuotePreview(TESTIMONIALS[previousTestimonialIndex].quote)}</p>
+              </motion.div>
+
+              <motion.div
+                key={`next-${activeTestimonial}`}
+                initial={{ x: 180, scale: 0.84, opacity: 0 }}
+                animate={{ x: 220, scale: 0.88, opacity: 0.45 }}
+                transition={{ duration: 0.6, ease: "easeInOut" }}
+                className="absolute left-1/2 top-1/2 w-full max-w-[760px] -translate-y-1/2 -translate-x-1/2 rounded-2xl bg-white/95 px-10 py-9 text-left shadow-[0_24px_52px_rgba(0,0,0,0.06)]"
+              >
+                <p className="text-sm text-foreground/70 leading-relaxed">{getQuotePreview(TESTIMONIALS[nextTestimonialIndex].quote)}</p>
+              </motion.div>
+            </div>
+
             <motion.button
               type="button"
               aria-label="Previous testimonial"
               onClick={showPreviousTestimonial}
-              whileHover={{ scale: 1.08, backgroundColor: "#000000" }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.1, backgroundColor: "#000000", boxShadow: "0 16px 30px rgba(0,0,0,0.26)" }}
+              whileTap={{ scale: 0.9 }}
               transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute left-0 md:-left-6 top-1/2 -translate-y-1/2 h-11 w-11 bg-zinc-900 text-white flex items-center justify-center"
+              className="absolute left-0 md:-left-6 top-1/2 z-20 -translate-y-1/2 h-11 w-11 rounded-md bg-zinc-900 text-white flex items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.18)]"
             >
               <ChevronLeft className="h-4 w-4" strokeWidth={1.8} />
             </motion.button>
@@ -593,16 +773,19 @@ const StorePage = () => {
             <AnimatePresence mode="wait" initial={false}>
               <motion.article
                 key={activeTestimonial}
-                initial={{ opacity: 0, x: 40 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -40 }}
-                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                className="w-full max-w-3xl mx-auto"
+                initial={{ opacity: 0.6, x: 200, scale: 0.92 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0.5, x: -200, scale: 0.9 }}
+                transition={{ duration: 0.6, ease: "easeInOut" }}
+                onMouseMove={handleTestimonialCardMove}
+                onMouseLeave={handleTestimonialCardLeave}
+                style={{ rotateX, rotateY, scale: cardScale, willChange: "transform, opacity" }}
+                className="relative z-10 w-full max-w-[760px] mx-auto rounded-2xl bg-white p-8 md:p-[60px] shadow-[0_40px_80px_rgba(0,0,0,0.08)]"
               >
                 <motion.p
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ duration: 0.45, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
                   className="text-base md:text-lg leading-relaxed text-foreground/90 max-w-[700px] mx-auto mb-10"
                 >
                   {TESTIMONIALS[activeTestimonial].quote}
@@ -612,9 +795,9 @@ const StorePage = () => {
                   {[0, 1, 2, 3, 4].map((index) => (
                     <motion.span
                       key={index}
-                      initial={{ opacity: 0, scale: 0.6 }}
+                      initial={{ opacity: 0, scale: 0.7 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.28, delay: 0.12 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                      transition={{ duration: 0.28, delay: 0.15 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
                       className="inline-flex"
                     >
                       <Star className="h-4 w-4 fill-amber-400 text-amber-400" strokeWidth={1.6} />
@@ -631,10 +814,10 @@ const StorePage = () => {
               type="button"
               aria-label="Next testimonial"
               onClick={showNextTestimonial}
-              whileHover={{ scale: 1.08, backgroundColor: "#000000" }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.1, backgroundColor: "#000000", boxShadow: "0 16px 30px rgba(0,0,0,0.26)" }}
+              whileTap={{ scale: 0.9 }}
               transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute right-0 md:-right-6 top-1/2 -translate-y-1/2 h-11 w-11 bg-zinc-900 text-white flex items-center justify-center"
+              className="absolute right-0 md:-right-6 top-1/2 z-20 -translate-y-1/2 h-11 w-11 rounded-md bg-zinc-900 text-white flex items-center justify-center shadow-[0_8px_22px_rgba(0,0,0,0.18)]"
             >
               <ChevronRight className="h-4 w-4" strokeWidth={1.8} />
             </motion.button>
@@ -644,7 +827,7 @@ const StorePage = () => {
       </motion.section>
 
       {/* ── SECTION 3 · BRAND SIGNATURE ─────────────────────────── */}
-      <section className="px-6 py-24 md:py-32">
+      <section className="px-6 py-10 md:py-16 lg:py-20">
         <motion.div
           variants={REVEAL}
           initial="hidden"

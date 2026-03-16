@@ -5,7 +5,7 @@ import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import illumeLogo from "@/assets/illume-logo.png";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 
 type Step = "email" | "sent";
 

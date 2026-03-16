@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/illume-logo.png";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 
 const VendorDashboard = () => {
   const { user, isVendor, hasAccess, loading, signOut } = useAuth();
@@ -22,7 +22,7 @@ const VendorDashboard = () => {
     <div className="min-h-screen bg-background px-8 py-12">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-12">
-          <img src={illumeLogo} alt="Illume" className="h-8 w-auto" style={{ filter: "brightness(0)" }} />
+          <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
           <Button variant="outline" onClick={signOut} className="text-xs tracking-[0.2em] uppercase h-9 px-4">
             Sign Out
           </Button>

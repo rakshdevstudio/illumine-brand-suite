@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
-import illumeLogo from "@/assets/illume-logo.png";
+import illumeLogo from "@/assets/illume-logo.jpeg";
 import { STORE_ADD_TO_CART_EVENT, StoreAddToCartDetail } from "@/lib/store-interactions";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -70,7 +70,7 @@ const StoreHeader = () => {
           <img
             src={illumeLogo}
             alt="Illume"
-            className="h-9 w-auto" style={{ filter: "brightness(0) invert(1)" }}
+            className="h-9 w-auto"
           />
         </Link>
 

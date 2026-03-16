@@ -106,9 +106,9 @@ const ClassProductsPage = () => {
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
+    <div className="max-w-7xl mx-auto px-6 py-14 md:py-16">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-muted-foreground mb-12 flex-wrap">
+      <nav className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-muted-foreground mb-14 flex-wrap">
         <Link to="/store" className="hover:text-foreground transition-colors">All Schools</Link>
         <span>/</span>
         <Link to={`/store/school/${slug}`} className="hover:text-foreground transition-colors">{school?.name ?? "…"}</Link>
@@ -128,18 +128,18 @@ const ClassProductsPage = () => {
         </div>
       )}
 
-      <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-2">
+      <h1 className="text-3xl md:text-4xl font-extralight tracking-[0.12em] uppercase mb-3">
         {cls?.name ?? "…"} — {genderLabel}
       </h1>
-      <p className="text-sm text-muted-foreground mb-12">{school?.name ?? ""}</p>
+      <p className="text-sm text-muted-foreground mb-16 md:mb-20">{school?.name ?? ""}</p>
 
       {isLoading ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-14 md:gap-y-16">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="animate-pulse">
-              <div className="aspect-square bg-secondary mb-4" />
-              <div className="h-4 bg-secondary w-3/4 mb-2" />
-              <div className="h-4 bg-secondary w-1/4" />
+            <div key={i} className="animate-pulse rounded-2xl border border-border/70 bg-background p-5">
+              <div className="aspect-[4/5] rounded-xl bg-secondary mb-6" />
+              <div className="h-4 rounded bg-secondary w-3/4 mb-3" />
+              <div className="h-5 rounded bg-secondary w-1/3" />
             </div>
           ))}
         </div>
@@ -148,7 +148,7 @@ const ClassProductsPage = () => {
           <p className="text-sm text-muted-foreground">No products available for this selection</p>
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-14 md:gap-y-16">
           {products.map((product, index) => {
             const totalStock = product.product_variants?.reduce(
               (s: number, v: any) => s + v.stock, 0
@@ -156,16 +156,28 @@ const ClassProductsPage = () => {
             const galleryImages = getProductGalleryImages(product as any);
             const primaryImage = galleryImages[0] || "/placeholder.svg";
             const secondaryImage = galleryImages[1] && galleryImages[1] !== primaryImage ? galleryImages[1] : null;
+            const sizes = Array.from(
+              new Set(
+                (product.product_variants ?? [])
+                  .map((variant: any) => variant.size)
+                  .filter((size: string | null) => Boolean(size))
+              )
+            ) as string[];
+            const isLowStock = totalStock > 0 && totalStock < 10;
+            const stockLabel = totalStock <= 0
+              ? "Out of stock"
+              : isLowStock
+                ? "Low stock — only few left"
+                : "In stock";
 
             return (
               <motion.div
                 key={product.id}
                 initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.2 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{
-                  duration: 0.45,
-                  delay: index * 0.06,
+                  duration: 0.52,
+                  delay: index * 0.1,
                   ease: INTERACTION_EASE,
                 }}
                 style={{ willChange: "transform, opacity" }}
@@ -175,84 +187,121 @@ const ClassProductsPage = () => {
                     initial="rest"
                     animate="rest"
                     whileHover="hover"
-                    className="group relative"
+                    className="group relative overflow-hidden rounded-2xl border border-border/75 bg-white p-5"
+                    variants={{
+                      rest: {
+                        scale: 1,
+                        boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
+                      },
+                      hover: {
+                        scale: 1.03,
+                        boxShadow: "0 24px 50px rgba(0,0,0,0.10)",
+                      },
+                    }}
+                    transition={{ duration: 0.3, ease: INTERACTION_EASE }}
+                    style={{ willChange: "transform, opacity" }}
                   >
-                    <motion.div
-                      className="pointer-events-none absolute inset-x-6 -bottom-5 h-10 rounded-full bg-black/12 blur-2xl"
-                      variants={{
-                        rest: { opacity: 0.08, scale: 0.92 },
-                        hover: { opacity: 0.18, scale: 1 },
-                      }}
-                      transition={{ duration: 0.22, ease: INTERACTION_EASE }}
-                      style={{ willChange: "transform, opacity" }}
-                    />
+                    <div className="relative mb-6 overflow-hidden rounded-2xl bg-secondary aspect-[4/5]">
+                      {isLowStock && (
+                        <div className="absolute top-3 left-3 z-10 rounded-md bg-red-500/90 px-2.5 py-1 text-[10px] tracking-[0.12em] uppercase text-white">
+                          Low Stock
+                        </div>
+                      )}
 
-                    <motion.div
-                      className="relative rounded-[28px] border border-border/80 bg-background/95 p-4 sm:p-5"
-                      variants={{
-                        rest: { scale: 1, y: 0 },
-                        hover: { scale: 1.04, y: -4 },
-                      }}
-                      transition={{ duration: 0.22, ease: INTERACTION_EASE }}
-                      style={{ willChange: "transform" }}
-                    >
-                      <div className="relative aspect-square mb-5 overflow-hidden rounded-[22px] bg-secondary">
-                        <motion.div
-                          className="absolute inset-0"
-                          variants={{
-                            rest: { scale: 1 },
-                            hover: { scale: 1.08 },
+                      <motion.div
+                        className="absolute inset-0"
+                        variants={{
+                          rest: { scale: 1 },
+                          hover: { scale: 1.08 },
+                        }}
+                        transition={{ duration: 0.4, ease: INTERACTION_EASE }}
+                        style={{ willChange: "transform" }}
+                      >
+                        <motion.img
+                          src={primaryImage}
+                          alt={product.name}
+                          className="absolute inset-0 h-full w-full object-contain"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.src = "/placeholder.svg";
                           }}
-                          transition={{ duration: 0.22, ease: INTERACTION_EASE }}
-                          style={{ willChange: "transform" }}
-                        >
+                          variants={secondaryImage ? {
+                            rest: { opacity: 1 },
+                            hover: { opacity: 0 },
+                          } : {
+                            rest: { opacity: 1 },
+                            hover: { opacity: 1 },
+                          }}
+                          transition={{ duration: 0.3, ease: INTERACTION_EASE }}
+                          style={{ willChange: "opacity" }}
+                        />
+
+                        {secondaryImage && (
                           <motion.img
-                            src={primaryImage}
-                            alt={product.name}
+                            src={secondaryImage}
+                            alt=""
                             className="absolute inset-0 h-full w-full object-contain"
                             loading="lazy"
                             onError={(e) => {
                               e.currentTarget.src = "/placeholder.svg";
                             }}
-                            variants={secondaryImage ? {
-                              rest: { opacity: 1 },
-                              hover: { opacity: 0 },
-                            } : {
-                              rest: { opacity: 1 },
+                            variants={{
+                              rest: { opacity: 0 },
                               hover: { opacity: 1 },
                             }}
-                            transition={{ duration: 0.22, ease: INTERACTION_EASE }}
+                            transition={{ duration: 0.3, ease: INTERACTION_EASE }}
                             style={{ willChange: "opacity" }}
                           />
+                        )}
+                      </motion.div>
 
-                          {secondaryImage && (
-                            <motion.img
-                              src={secondaryImage}
-                              alt=""
-                              className="absolute inset-0 h-full w-full object-contain"
-                              loading="lazy"
-                              onError={(e) => {
-                                e.currentTarget.src = "/placeholder.svg";
-                              }}
-                              variants={{
-                                rest: { opacity: 0 },
-                                hover: { opacity: 1 },
-                              }}
-                              transition={{ duration: 0.22, ease: INTERACTION_EASE }}
-                              style={{ willChange: "opacity" }}
-                            />
-                          )}
-                        </motion.div>
-                      </div>
+                      <motion.div
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/38 via-black/12 to-transparent"
+                        variants={{
+                          rest: { opacity: 0.48 },
+                          hover: { opacity: 0.8 },
+                        }}
+                        transition={{ duration: 0.3, ease: INTERACTION_EASE }}
+                        style={{ willChange: "opacity" }}
+                      />
 
-                      <h3 className="text-sm font-light tracking-wide mb-1">
+                      <motion.div
+                        className="absolute left-4 right-4 bottom-4"
+                        variants={{
+                          rest: { opacity: 0, y: 20 },
+                          hover: { opacity: 1, y: 0 },
+                        }}
+                        transition={{ duration: 0.3, ease: INTERACTION_EASE }}
+                        style={{ willChange: "transform, opacity" }}
+                      >
+                        {sizes.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {sizes.slice(0, 6).map((size) => (
+                              <span
+                                key={size}
+                                className="rounded-full border border-white/65 bg-white/20 px-2.5 py-1 text-[10px] tracking-[0.12em] uppercase text-white"
+                              >
+                                {size}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="w-full rounded-md bg-black px-3 py-2.5 text-center text-[11px] tracking-[0.16em] uppercase text-white">
+                          Add to Cart
+                        </div>
+                      </motion.div>
+                    </div>
+
+                    <div className="space-y-1.5 px-1">
+                      <h3 className="text-[15px] font-medium tracking-wide leading-snug">
                         {product.name}
                       </h3>
-                      <p className="text-base font-light">{formatPrice((product as any).base_price ?? product.price)}</p>
-                      {totalStock <= 10 && totalStock > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">Low stock</p>
-                      )}
-                    </motion.div>
+                      <p className="text-lg font-normal tracking-wide">{formatPrice((product as any).base_price ?? product.price)}</p>
+                      <p className={`text-xs ${isLowStock ? "text-red-500" : "text-muted-foreground"}`}>
+                        {stockLabel}
+                      </p>
+                    </div>
                   </motion.article>
                 </Link>
               </motion.div>
