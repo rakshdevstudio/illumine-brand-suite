@@ -319,10 +319,6 @@ const StorePage = () => {
           </motion.p>
         </motion.div>
 
-        <div className="absolute z-[2] bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-surface-dark-muted pointer-events-none">
-          <span className="text-[9px] tracking-[0.35em] uppercase">Scroll</span>
-          <span className="illume-scroll-indicator" />
-        </div>
       </section>
 
       {/* ── STATS BAR ─────────────────────────────────────────────── */}
