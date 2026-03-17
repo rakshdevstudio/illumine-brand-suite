@@ -97,6 +97,33 @@ const matchesDateFilter = (createdAt: string, dateFilter: string) => {
   return createdDate >= threshold;
 };
 
+const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | null | undefined> | undefined) => {
+  const result = {
+    studentName: "",
+    grade: "",
+    alternatePhone: "",
+  };
+
+  if (!notes?.length) return result;
+
+  for (const entry of notes) {
+    const note = entry?.note || "";
+    if (!note) continue;
+
+    const studentNameMatch = note.match(/Student Name:\s*(.+)/i);
+    const gradeMatch = note.match(/Grade:\s*(.+)/i);
+    const alternateMatch = note.match(/Alternate Phone:\s*(.+)/i);
+
+    if (studentNameMatch?.[1] && !result.studentName) result.studentName = studentNameMatch[1].trim();
+    if (gradeMatch?.[1] && !result.grade) result.grade = gradeMatch[1].trim();
+    if (alternateMatch?.[1] && !result.alternatePhone) result.alternatePhone = alternateMatch[1].trim();
+
+    if (result.studentName && result.grade && result.alternatePhone) break;
+  }
+
+  return result;
+};
+
 const OrdersPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
@@ -408,6 +435,15 @@ const OrdersPage = () => {
   };
 
   const selected = (orders as any[])?.find((o) => o.id === selectedOrder);
+  const noteDerivedStudent = useMemo(
+    () => parseStudentFieldsFromNotes((orderMeta as any)?.order_notes),
+    [orderMeta]
+  );
+
+  const selectedStudentName = (selected as any)?.student_name || noteDerivedStudent.studentName || "-";
+  const selectedGrade = (selected as any)?.grade || noteDerivedStudent.grade || "-";
+  const selectedAlternatePhoneRaw = (selected as any)?.alternate_phone || noteDerivedStudent.alternatePhone || "";
+  const selectedAlternatePhone = selectedAlternatePhoneRaw && selectedAlternatePhoneRaw !== "—" ? selectedAlternatePhoneRaw : "-";
 
   const renderOrderRow = (order: any) => {
     const schoolNames = getOrderSchools(order);
@@ -704,8 +740,20 @@ const OrdersPage = () => {
                   <p>{selected.customer_name}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Student Name</p>
+                  <p>{selectedStudentName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Grade / Class</p>
+                  <p>{selectedGrade}</p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
                   <p>{selected.phone}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Alternate Phone</p>
+                  <p>{selectedAlternatePhone}</p>
                 </div>
                 {(selected as any).email && (
                   <div className="col-span-2">

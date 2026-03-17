@@ -28,6 +28,33 @@ const toPdfText = (value: string) =>
 const formatInvoiceDate = (value: string) =>
   new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
+const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | null | undefined> | undefined) => {
+  const result = {
+    studentName: "",
+    grade: "",
+    alternatePhone: "",
+  };
+
+  if (!notes?.length) return result;
+
+  for (const entry of notes) {
+    const note = entry?.note || "";
+    if (!note) continue;
+
+    const studentNameMatch = note.match(/Student Name:\s*(.+)/i);
+    const gradeMatch = note.match(/Grade:\s*(.+)/i);
+    const alternateMatch = note.match(/Alternate Phone:\s*(.+)/i);
+
+    if (studentNameMatch?.[1] && !result.studentName) result.studentName = studentNameMatch[1].trim();
+    if (gradeMatch?.[1] && !result.grade) result.grade = gradeMatch[1].trim();
+    if (alternateMatch?.[1] && !result.alternatePhone) result.alternatePhone = alternateMatch[1].trim();
+
+    if (result.studentName && result.grade && result.alternatePhone) break;
+  }
+
+  return result;
+};
+
 const InvoicePage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const [searchParams] = useSearchParams();
@@ -37,16 +64,53 @@ const InvoicePage = () => {
     queryKey: ["admin-invoice", orderId],
     enabled: !!orderId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
+      const legacyFields = "id, customer_name, phone, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
+
+      let { data, error } = await supabase
         .from("orders")
-        .select("id, customer_name, phone, address, city, pincode, total_amount, created_at, order_items(quantity, price, products(name), product_variants(size))")
+        .select(withStudentFields)
         .eq("id", orderId!)
         .single();
+
+      if (error?.code === "PGRST204") {
+        const msg = (error.message || "").toLowerCase();
+        const missingStudentCols =
+          msg.includes("alternate_phone") || msg.includes("student_name") || msg.includes("grade");
+
+        if (missingStudentCols) {
+          const fallback = await supabase
+            .from("orders")
+            .select(legacyFields)
+            .eq("id", orderId!)
+            .single();
+
+          data = fallback.data
+            ? {
+                ...fallback.data,
+                alternate_phone: null,
+                student_name: null,
+                grade: null,
+              }
+            : null;
+          error = fallback.error;
+        }
+      }
 
       if (error) throw error;
       return data;
     },
   });
+
+  const noteDerivedStudent = useMemo(
+    () => parseStudentFieldsFromNotes((order as any)?.order_notes),
+    [order]
+  );
+
+  const studentName = (order as any)?.student_name || noteDerivedStudent.studentName || "-";
+  const grade = (order as any)?.grade || noteDerivedStudent.grade || "-";
+  const alternatePhoneRaw = (order as any)?.alternate_phone || noteDerivedStudent.alternatePhone || "";
+  const alternatePhone = alternatePhoneRaw && alternatePhoneRaw !== "—" ? alternatePhoneRaw : "-";
 
   const invoiceNumber = useMemo(() => {
     if (!order?.id) return "ILLUME-PREVIEW";
@@ -153,19 +217,22 @@ const InvoicePage = () => {
 
     draw("Bill To", 40, 670, 11, "medium");
     draw(order.customer_name || "-", 40, 652, 10);
-    draw(order.phone || "-", 40, 636, 10);
-    draw(order.address || "-", 40, 620, 10);
-    draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 604, 10);
+    draw(`Phone: ${order.phone || "-"}`, 40, 636, 10);
+    draw(`Alternate Phone: ${alternatePhone}`, 40, 620, 10);
+    draw(`Student Name: ${studentName}`, 40, 604, 10);
+    draw(`Grade: ${grade}`, 40, 588, 10);
+    draw(order.address || "-", 40, 572, 10);
+    draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
 
-    line(586);
+    line(538);
 
-    draw("Product", 40, 566, 10, "medium");
-    draw("Size", 290, 566, 10, "medium");
-    draw("Qty", 350, 566, 10, "medium");
-    draw("Price", 410, 566, 10, "medium");
-    draw("Subtotal", 490, 566, 10, "medium");
+    draw("Product", 40, 518, 10, "medium");
+    draw("Size", 290, 518, 10, "medium");
+    draw("Qty", 350, 518, 10, "medium");
+    draw("Price", 410, 518, 10, "medium");
+    draw("Subtotal", 490, 518, 10, "medium");
 
-    let y = 546;
+    let y = 498;
     for (const item of items as any[]) {
       const productName = item.products?.name || "Product";
       const size = item.product_variants?.size || "default";
@@ -280,7 +347,10 @@ const InvoicePage = () => {
         <section className="relative z-10 text-sm space-y-1">
           <p className="font-medium">Bill To</p>
           <p>{order.customer_name || "-"}</p>
-          <p>{order.phone || "-"}</p>
+          <p>Phone: {order.phone || "-"}</p>
+          <p>Alternate Phone: {alternatePhone}</p>
+          <p>Student Name: {studentName}</p>
+          <p>Grade: {grade}</p>
           <p>{order.address || "-"}</p>
           <p>{`${order.city || "-"} ${order.pincode || ""}`.trim()}</p>
         </section>

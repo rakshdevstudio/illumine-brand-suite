@@ -10,6 +10,9 @@ type CheckoutForm = {
   customer_name: string;
   email: string;
   phone: string;
+  alternate_phone: string;
+  student_name: string;
+  grade: string;
   address: string;
   city: string;
   pincode: string;
@@ -19,44 +22,87 @@ const EMPTY_FORM: CheckoutForm = {
   customer_name: "",
   email: "",
   phone: "",
+  alternate_phone: "",
+  student_name: "",
+  grade: "",
   address: "",
   city: "",
   pincode: "",
 };
+
+type CheckoutErrors = Partial<Record<keyof CheckoutForm, string>>;
 
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
+  const [errors, setErrors] = useState<CheckoutErrors>({});
   const hasItemsRef = useRef(items.length > 0);
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [field]: e.target.value }));
+    setForm((f) => {
+      const next = { ...f, [field]: e.target.value };
+      if (errors[field]) {
+        setErrors((prev) => ({ ...prev, [field]: undefined }));
+      }
+      return next;
+    });
+
+  const getInputClass = (field: keyof CheckoutForm) =>
+    `h-12 border ${errors[field] ? "border-destructive" : "border-border"} transition-[border-color,box-shadow] duration-200`;
+
+  const getTextareaClass = (field: keyof CheckoutForm) =>
+    `w-full min-h-[80px] border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none transition-[border-color,box-shadow] duration-200 ${errors[field] ? "border-destructive" : "border-border"}`;
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customer_name || !form.email || !form.phone || !form.address || !form.city || !form.pincode) {
+    const nextErrors: CheckoutErrors = {};
+
+    if (!form.customer_name.trim()) nextErrors.customer_name = "Full name is required";
+    if (!form.email.trim()) nextErrors.email = "Email is required";
+    if (!form.phone.trim()) nextErrors.phone = "Phone number is required";
+    if (!form.student_name.trim()) nextErrors.student_name = "Student name is required";
+    if (!form.grade.trim()) nextErrors.grade = "Grade / Class is required";
+    if (!form.address.trim()) nextErrors.address = "Delivery address is required";
+    if (!form.city.trim()) nextErrors.city = "City is required";
+    if (!form.pincode.trim()) nextErrors.pincode = "Pincode is required";
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       toast.error("Please fill all required fields");
       return;
     }
+
+    setErrors({});
+
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
     if (!emailValid) {
+      setErrors((prev) => ({ ...prev, email: "Please enter a valid email address" }));
       toast.error("Please enter a valid email address");
       return;
     }
 
     const phoneDigits = form.phone.replace(/\D/g, "");
     if (!/^\d{10}$/.test(phoneDigits)) {
+      setErrors((prev) => ({ ...prev, phone: "Phone number must be 10 digits" }));
       toast.error("Phone number must be 10 digits");
+      return;
+    }
+
+    const alternatePhoneDigits = form.alternate_phone.replace(/\D/g, "");
+    if (alternatePhoneDigits && !/^\d{10}$/.test(alternatePhoneDigits)) {
+      setErrors((prev) => ({ ...prev, alternate_phone: "Alternate phone must be 10 digits" }));
+      toast.error("Alternate phone number must be 10 digits");
       return;
     }
 
     const pincodeDigits = form.pincode.replace(/\D/g, "");
     if (!/^\d{6}$/.test(pincodeDigits)) {
+      setErrors((prev) => ({ ...prev, pincode: "Pincode must be 6 digits" }));
       toast.error("Pincode must be 6 digits");
       return;
     }
@@ -93,24 +139,41 @@ const CheckoutPage = () => {
 
       // ── Step 2: create order ──────────────────────────────────────────────
       const orderPayload = {
-        customer_name: form.customer_name,
+        fullName: form.customer_name,
         email: form.email,
         phone: form.phone,
+        alternatePhone: form.alternate_phone,
+        studentName: form.student_name,
+        grade: form.grade,
         address: form.address,
         city: form.city,
         pincode: form.pincode,
+      };
+
+      const legacyOrderPayload = {
+        customer_name: orderPayload.fullName,
+        email: orderPayload.email,
+        phone: orderPayload.phone,
+        address: orderPayload.address,
+        city: orderPayload.city,
+        pincode: orderPayload.pincode,
         total_amount: total(),
         status: "pending",
       };
 
       const { data: order, error: orderErr } = await supabase
         .from("orders")
-        .insert(orderPayload)
+        .insert(legacyOrderPayload)
         .select()
         .single();
 
       if (orderErr) throw orderErr;
       if (!order) throw new Error("Order was not created");
+
+      await supabase.from("order_notes").insert({
+        order_id: order.id,
+        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}`,
+      });
 
       // ── Step 3: insert order items ────────────────────────────────────────
       const orderItems = items.map((item) => ({
@@ -152,22 +215,24 @@ const CheckoutPage = () => {
       clearCart();
 
       // Fire-and-forget order confirmation email
-      supabase.functions
-        .invoke("send-order-confirmation", {
-          body: {
-            email: form.email,
-            name: form.customer_name,
-            orderId: order.id,
-            items: items.map((item) => ({
-              name: item.name,
-              size: item.size,
-              quantity: item.quantity,
-              price: item.price,
-            })),
-            total: order.total_amount,
-          },
-        })
-        .catch((err: unknown) => console.error("Order confirmation email failed:", err));
+      if (import.meta.env.PROD) {
+        supabase.functions
+          .invoke("send-order-confirmation", {
+            body: {
+              email: form.email,
+              name: form.customer_name,
+              orderId: order.id,
+              items: items.map((item) => ({
+                name: item.name,
+                size: item.size,
+                quantity: item.quantity,
+                price: item.price,
+              })),
+              total: order.total_amount,
+            },
+          })
+          .catch(() => undefined);
+      }
 
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
@@ -198,10 +263,11 @@ const CheckoutPage = () => {
           <Input
             value={form.customer_name}
             onChange={set("customer_name")}
-            className="h-12 border-border"
+            className={getInputClass("customer_name")}
             placeholder="Enter your full name"
             autoComplete="name"
           />
+          {errors.customer_name && <p className="mt-2 text-xs text-destructive">{errors.customer_name}</p>}
         </div>
 
         {/* Email */}
@@ -213,10 +279,11 @@ const CheckoutPage = () => {
             type="email"
             value={form.email}
             onChange={set("email")}
-            className="h-12 border-border"
+            className={getInputClass("email")}
             placeholder="you@example.com"
             autoComplete="email"
           />
+          {errors.email && <p className="mt-2 text-xs text-destructive">{errors.email}</p>}
         </div>
 
         {/* Phone */}
@@ -228,10 +295,57 @@ const CheckoutPage = () => {
             type="tel"
             value={form.phone}
             onChange={set("phone")}
-            className="h-12 border-border"
+            className={getInputClass("phone")}
             placeholder="+91 98765 43210"
             autoComplete="tel"
           />
+          {errors.phone && <p className="mt-2 text-xs text-destructive">{errors.phone}</p>}
+        </div>
+
+        {/* Alternate Phone */}
+        <div>
+          <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+            Alternate Phone Number (Optional)
+          </label>
+          <Input
+            type="tel"
+            value={form.alternate_phone}
+            onChange={set("alternate_phone")}
+            className={getInputClass("alternate_phone")}
+            placeholder="+91 XXXXX XXXXX"
+            autoComplete="tel"
+          />
+          {errors.alternate_phone && <p className="mt-2 text-xs text-destructive">{errors.alternate_phone}</p>}
+        </div>
+
+        {/* Student Name */}
+        <div>
+          <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+            Student Name <span className="text-destructive">*</span>
+          </label>
+          <Input
+            value={form.student_name}
+            onChange={set("student_name")}
+            className={getInputClass("student_name")}
+            placeholder="Enter student name"
+            autoComplete="off"
+          />
+          {errors.student_name && <p className="mt-2 text-xs text-destructive">{errors.student_name}</p>}
+        </div>
+
+        {/* Grade / Class */}
+        <div>
+          <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+            Grade / Class <span className="text-destructive">*</span>
+          </label>
+          <Input
+            value={form.grade}
+            onChange={set("grade")}
+            className={getInputClass("grade")}
+            placeholder="e.g. Class 10, Nursery, Grade 5"
+            autoComplete="off"
+          />
+          {errors.grade && <p className="mt-2 text-xs text-destructive">{errors.grade}</p>}
         </div>
 
         {/* Address */}
@@ -242,10 +356,11 @@ const CheckoutPage = () => {
           <textarea
             value={form.address}
             onChange={set("address")}
-            className="w-full min-h-[80px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            className={getTextareaClass("address")}
             placeholder="House / flat / street"
             autoComplete="street-address"
           />
+          {errors.address && <p className="mt-2 text-xs text-destructive">{errors.address}</p>}
         </div>
 
         {/* City + Pincode side by side */}
@@ -257,10 +372,11 @@ const CheckoutPage = () => {
             <Input
               value={form.city}
               onChange={set("city")}
-              className="h-12 border-border"
+              className={getInputClass("city")}
               placeholder="City"
               autoComplete="address-level2"
             />
+            {errors.city && <p className="mt-2 text-xs text-destructive">{errors.city}</p>}
           </div>
           <div>
             <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
@@ -269,12 +385,13 @@ const CheckoutPage = () => {
             <Input
               value={form.pincode}
               onChange={set("pincode")}
-              className="h-12 border-border"
+              className={getInputClass("pincode")}
               placeholder="6-digit pincode"
               inputMode="numeric"
               maxLength={6}
               autoComplete="postal-code"
             />
+            {errors.pincode && <p className="mt-2 text-xs text-destructive">{errors.pincode}</p>}
           </div>
         </div>
 

@@ -24,6 +24,9 @@ type Order = {
   id: string;
   customer_name: string;
   phone: string;
+  alternate_phone: string | null;
+  student_name: string | null;
+  grade: string | null;
   address: string;
   city: string | null;
   pincode: string | null;
@@ -73,10 +76,29 @@ const OrderDetailsPage = () => {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchErr } = await supabase
-        .from("orders")
-        .select(
-          `
+      const withStudentFields = `
+          id,
+          customer_name,
+          phone,
+          alternate_phone,
+          student_name,
+          grade,
+          address,
+          city,
+          pincode,
+          status,
+          total_amount,
+          created_at,
+          order_items (
+            id,
+            quantity,
+            price,
+            products ( id, name, image_url, category ),
+            product_variants ( id, size )
+          )
+        `;
+
+      const legacyFields = `
           id,
           customer_name,
           phone,
@@ -93,10 +115,37 @@ const OrderDetailsPage = () => {
             products ( id, name, image_url, category ),
             product_variants ( id, size )
           )
-        `
-        )
+        `;
+
+      let { data, error: fetchErr } = await supabase
+        .from("orders")
+        .select(withStudentFields)
         .eq("id", orderId)
         .single();
+
+      if (fetchErr?.code === "PGRST204") {
+        const msg = (fetchErr.message || "").toLowerCase();
+        const missingStudentCols =
+          msg.includes("alternate_phone") || msg.includes("student_name") || msg.includes("grade");
+
+        if (missingStudentCols) {
+          const fallback = await supabase
+            .from("orders")
+            .select(legacyFields)
+            .eq("id", orderId)
+            .single();
+
+          data = fallback.data
+            ? {
+                ...fallback.data,
+                alternate_phone: null,
+                student_name: null,
+                grade: null,
+              }
+            : null;
+          fetchErr = fallback.error;
+        }
+      }
 
       if (fetchErr || !data) {
         setError("Order not found.");
@@ -185,6 +234,30 @@ const OrderDetailsPage = () => {
             </p>
             <p className="text-sm font-light">{order.phone}</p>
           </div>
+          {order.alternate_phone && (
+            <div>
+              <p className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground mb-1">
+                Alternate Phone
+              </p>
+              <p className="text-sm font-light">{order.alternate_phone}</p>
+            </div>
+          )}
+          {order.student_name && (
+            <div>
+              <p className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground mb-1">
+                Student Name
+              </p>
+              <p className="text-sm font-light">{order.student_name}</p>
+            </div>
+          )}
+          {order.grade && (
+            <div>
+              <p className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground mb-1">
+                Grade
+              </p>
+              <p className="text-sm font-light">{order.grade}</p>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <p className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground mb-1">
               Delivery Address

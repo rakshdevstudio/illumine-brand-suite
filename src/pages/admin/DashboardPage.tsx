@@ -54,6 +54,33 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 const statusStyle = (s: string) =>
   STATUS_STYLES[(s as OrderStatus)] ?? "bg-gray-100 text-gray-700";
 
+const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | null | undefined> | undefined) => {
+  const result = {
+    student_name: null as string | null,
+    grade: null as string | null,
+    alternate_phone: null as string | null,
+  };
+
+  if (!notes?.length) return result;
+
+  for (const entry of notes) {
+    const note = entry?.note || "";
+    if (!note) continue;
+
+    const studentNameMatch = note.match(/Student Name:\s*(.+)/i);
+    const gradeMatch = note.match(/Grade:\s*(.+)/i);
+    const alternateMatch = note.match(/Alternate Phone:\s*(.+)/i);
+
+    if (studentNameMatch?.[1] && !result.student_name) result.student_name = studentNameMatch[1].trim();
+    if (gradeMatch?.[1] && !result.grade) result.grade = gradeMatch[1].trim();
+    if (alternateMatch?.[1] && !result.alternate_phone) result.alternate_phone = alternateMatch[1].trim();
+
+    if (result.student_name && result.grade && result.alternate_phone) break;
+  }
+
+  return result;
+};
+
 // ── KPI card ─────────────────────────────────────────────────────────────────
 
 interface KpiCardProps {
@@ -115,11 +142,19 @@ const DashboardPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id, customer_name, total_amount, status, created_at")
+        .select("id, customer_name, phone, total_amount, status, created_at, order_notes(note, created_at)")
         .order("created_at", { ascending: false })
         .limit(5);
-      if (error) throw error;
-      return data ?? [];
+
+      if (error) {
+        console.error("Supabase error:", error.message);
+        throw error;
+      }
+
+      return (data ?? []).map((order: any) => ({
+        ...order,
+        ...parseStudentFieldsFromNotes(order.order_notes),
+      }));
     },
   });
 
@@ -273,7 +308,15 @@ const DashboardPage = () => {
                     <span className="text-[11px] font-mono text-muted-foreground w-20 shrink-0">
                       #{order.id.slice(0, 8).toUpperCase()}
                     </span>
-                    <span className="flex-1 text-sm truncate">{order.customer_name}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{order.customer_name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        Student: {order.student_name || "—"} · Grade: {order.grade || "—"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        Phone: {order.phone || "—"} · Alt: {(order as any).alternate_phone || "—"}
+                      </p>
+                    </div>
                     <span className="text-sm font-light shrink-0">{fmt(order.total_amount)}</span>
                     <span
                       className={`text-[10px] tracking-[0.12em] uppercase px-2 py-0.5 rounded-full shrink-0 ${statusStyle(order.status)}`}
