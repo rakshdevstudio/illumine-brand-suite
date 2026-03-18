@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate } from "react-router-dom";
-import { CalendarDays, Filter, Search } from "lucide-react";
+import { BadgeCheck, CalendarDays, Clock3, Download, Filter, IndianRupee, Search, ShoppingBag } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PortalEmptyState, PortalShell, portalPanelClassName } from "@/components/dashboard/PortalShell";
+import { PortalEmptyState, PortalMetricCard, PortalShell, portalPanelClassName } from "@/components/dashboard/PortalShell";
 import { ORDER_STATUS_STYLES, formatCurrency, useResolvedSchoolScope } from "@/lib/portal-dashboard";
 import { fetchSchoolPortalData } from "@/lib/school-portal";
+import { toast } from "sonner";
 
 const ORDER_STATUS_OPTIONS = ["all", "pending", "confirmed", "packed", "shipped", "delivered", "cancelled"] as const;
 
@@ -33,6 +34,31 @@ const formatDateTime = (value: string) =>
   });
 
 const formatOrderCode = (value: string) => value.slice(0, 8).toUpperCase();
+
+const formatStudentNameDisplay = (value: string | null | undefined) => value?.trim() || "-";
+
+const formatStudentClassDisplay = (value: string | null | undefined) =>
+  value && value !== "Unassigned" ? value : "-";
+
+const formatAddressDisplay = (parts: Array<string | null | undefined>) => {
+  const value = parts.filter((part): part is string => typeof part === "string" && part.trim().length > 0).join(", ");
+  return value || "-";
+};
+
+const summarizeOrderItems = (order: {
+  order_items: Array<{
+    product?: { name?: string | null } | null;
+    variant?: { size?: string | null } | null;
+    quantity: number;
+  }>;
+}) =>
+  order.order_items.length
+    ? order.order_items
+        .map((item) => `${item.product?.name ?? "Product"} (${item.variant?.size ?? "—"}) x${item.quantity}`)
+        .join(" | ")
+    : "-";
+
+const toCsvValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
 
 const orderMatchesDateRange = (orderDate: string, fromDate: string, toDate: string) => {
   const target = new Date(orderDate);
@@ -116,12 +142,71 @@ const SchoolOrdersPage = () => {
     [allOrders, selectedOrderId],
   );
 
+  const summary = useMemo(() => ({
+    totalOrders: filteredOrders.length,
+    totalRevenue: filteredOrders
+      .filter((order) => order.status !== "cancelled")
+      .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0),
+    pendingCount: filteredOrders.filter((order) => order.status === "pending").length,
+    deliveredCount: filteredOrders.filter((order) => order.status === "delivered").length,
+  }), [filteredOrders]);
+
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
     setClassFilter("all");
     setFromDate("");
     setToDate("");
+  };
+
+  const downloadOrders = () => {
+    if (!filteredOrders.length) {
+      toast.error("There are no filtered orders to export.");
+      return;
+    }
+
+    const headers = [
+      "Order ID",
+      "Customer Name",
+      "Student Name",
+      "Student Class",
+      "Phone",
+      "Alternate Phone",
+      "Total Amount",
+      "Status",
+      "Created At",
+      "Address",
+      "Items",
+    ];
+
+    const csvRows = filteredOrders.map((order) => [
+      formatOrderCode(order.id),
+      order.customer_name,
+      formatStudentNameDisplay(order.resolvedStudentName),
+      formatStudentClassDisplay(order.resolvedClass),
+      order.phone || "-",
+      order.resolvedAlternatePhone || "-",
+      Number(order.total_amount ?? 0),
+      order.status,
+      formatDateTime(order.created_at),
+      formatAddressDisplay([order.address, order.city, order.pincode]),
+      summarizeOrderItems(order),
+    ]);
+
+    const csv = [headers, ...csvRows]
+      .map((row) => row.map(toCsvValue).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `school-orders-${scope?.school?.slug ?? "export"}-${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Orders export downloaded.");
   };
 
   if (loading) {
@@ -166,8 +251,20 @@ const SchoolOrdersPage = () => {
                     Search by customer, student, or phone. Narrow results by status, class, or order date.
                   </p>
                 </div>
-                <div className="rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-foreground">
-                  {filteredOrders.length} of {allOrders.length} orders
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-foreground">
+                    {filteredOrders.length} of {allOrders.length} orders
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={downloadOrders}
+                    disabled={!filteredOrders.length}
+                    className="h-11 rounded-full border-black/10 bg-white text-[11px] uppercase tracking-[0.22em]"
+                  >
+                    <Download className="h-4 w-4" strokeWidth={1.5} />
+                    Download Orders
+                  </Button>
                 </div>
               </div>
 
@@ -260,11 +357,39 @@ const SchoolOrdersPage = () => {
             </CardContent>
           </Card>
 
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <PortalMetricCard
+              label="Total Orders"
+              value={ordersLoading ? "..." : summary.totalOrders}
+              icon={<ShoppingBag className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Total Revenue"
+              value={ordersLoading ? "..." : formatCurrency(summary.totalRevenue)}
+              icon={<IndianRupee className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Pending"
+              value={ordersLoading ? "..." : summary.pendingCount}
+              icon={<Clock3 className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Delivered"
+              value={ordersLoading ? "..." : summary.deliveredCount}
+              icon={<BadgeCheck className="h-4 w-4" strokeWidth={1.5} />}
+            />
+          </div>
+
           <Card className={portalPanelClassName}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
-                All Orders for This School
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
+                  All Orders for This School
+                </CardTitle>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Click any row to inspect student, contact, item, and delivery details.
+                </p>
+              </div>
             </CardHeader>
             <CardContent>
               {ordersLoading ? (
@@ -293,7 +418,7 @@ const SchoolOrdersPage = () => {
                         key={order.id}
                         role="button"
                         aria-label={`Open order ${formatOrderCode(order.id)}`}
-                        className="cursor-pointer"
+                        className="cursor-pointer transition-[background-color,box-shadow] duration-200 hover:bg-stone-50/90"
                         onClick={() => setSelectedOrderId(order.id)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -305,8 +430,8 @@ const SchoolOrdersPage = () => {
                       >
                         <TableCell className="font-medium text-foreground">#{formatOrderCode(order.id)}</TableCell>
                         <TableCell>{order.customer_name}</TableCell>
-                        <TableCell>{order.resolvedStudentName || "—"}</TableCell>
-                        <TableCell>{order.resolvedClass || "—"}</TableCell>
+                        <TableCell>{formatStudentNameDisplay(order.resolvedStudentName)}</TableCell>
+                        <TableCell>{formatStudentClassDisplay(order.resolvedClass)}</TableCell>
                         <TableCell>{order.phone}</TableCell>
                         <TableCell>{formatCurrency(Number(order.total_amount ?? 0))}</TableCell>
                         <TableCell>
@@ -361,11 +486,11 @@ const SchoolOrdersPage = () => {
                     </div>
                     <div className="rounded-[22px] border border-black/5 bg-stone-50/70 p-4">
                       <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Student Name</p>
-                      <p className="mt-2 text-sm font-medium text-foreground">{selectedOrder.resolvedStudentName || "—"}</p>
+                      <p className="mt-2 text-sm font-medium text-foreground">{formatStudentNameDisplay(selectedOrder.resolvedStudentName)}</p>
                     </div>
                     <div className="rounded-[22px] border border-black/5 bg-stone-50/70 p-4">
                       <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Class</p>
-                      <p className="mt-2 text-sm font-medium text-foreground">{selectedOrder.resolvedClass || "—"}</p>
+                      <p className="mt-2 text-sm font-medium text-foreground">{formatStudentClassDisplay(selectedOrder.resolvedClass)}</p>
                     </div>
                     <div className="rounded-[22px] border border-black/5 bg-stone-50/70 p-4">
                       <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Phone</p>
@@ -384,7 +509,7 @@ const SchoolOrdersPage = () => {
                   <div className="rounded-[22px] border border-black/5 bg-white p-5">
                     <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Delivery Address</p>
                     <p className="mt-3 text-sm leading-6 text-foreground">
-                      {[selectedOrder.address, selectedOrder.city, selectedOrder.pincode].filter(Boolean).join(", ") || "—"}
+                      {formatAddressDisplay([selectedOrder.address, selectedOrder.city, selectedOrder.pincode])}
                     </p>
                   </div>
 
