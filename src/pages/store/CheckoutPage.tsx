@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useStudentProfile } from "@/lib/student-profile";
+import { useCustomerAuth } from "@/hooks/use-customer-auth";
 
 type CheckoutForm = {
   customer_name: string;
@@ -32,9 +34,28 @@ const EMPTY_FORM: CheckoutForm = {
 
 type CheckoutErrors = Partial<Record<keyof CheckoutForm, string>>;
 
+const isMissingOrderColumnError = (error: { code?: string; message?: string } | null) => {
+  if (!error) return false;
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    message.includes("student_class") ||
+    message.includes("student_name") ||
+    message.includes("alternate_phone") ||
+    message.includes("grade") ||
+    message.includes("city") ||
+    message.includes("pincode") ||
+    message.includes("customer_id") ||
+    message.includes("email")
+  );
+};
+
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
+  const studentProfile = useStudentProfile((state) => state.profile);
+  const customer = useCustomerAuth((state) => state.customer);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
@@ -154,18 +175,58 @@ const CheckoutPage = () => {
         customer_name: orderPayload.fullName,
         email: orderPayload.email,
         phone: orderPayload.phone,
+        alternate_phone: orderPayload.alternatePhone || null,
+        customer_id: customer?.id ?? null,
+        student_name: orderPayload.studentName,
+        student_class: orderPayload.grade,
+        grade: orderPayload.grade,
         address: orderPayload.address,
         city: orderPayload.city,
         pincode: orderPayload.pincode,
+        school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
         total_amount: total(),
         status: "pending",
       };
 
-      const { data: order, error: orderErr } = await supabase
-        .from("orders")
-        .insert(legacyOrderPayload)
-        .select()
-        .single();
+      const payloadVariants = [
+        legacyOrderPayload,
+        (() => {
+          const { student_class: _studentClass, ...compatPayload } = legacyOrderPayload;
+          return compatPayload;
+        })(),
+        {
+          customer_name: orderPayload.fullName,
+          phone: orderPayload.phone,
+          address: orderPayload.address,
+          school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
+          total_amount: total(),
+          status: "pending",
+        },
+      ];
+
+      let order: any = null;
+      let orderErr: any = null;
+
+      for (const [index, payloadVariant] of payloadVariants.entries()) {
+        const attempt = await (supabase as any)
+          .from("orders")
+          .insert(payloadVariant)
+          .select()
+          .single();
+
+        order = attempt.data;
+        orderErr = attempt.error;
+
+        if (!orderErr) {
+          break;
+        }
+
+        if (!isMissingOrderColumnError(orderErr) || index === payloadVariants.length - 1) {
+          break;
+        }
+
+        console.warn("orders schema is older than the checkout payload, retrying with a compatible insert shape.");
+      }
 
       if (orderErr) throw orderErr;
       if (!order) throw new Error("Order was not created");

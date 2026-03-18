@@ -340,6 +340,7 @@ export type Database = {
           phone: string
           pincode: string | null
           school_id: string | null
+          student_class: string | null
           student_name: string | null
           status: string
           total_amount: number
@@ -357,6 +358,7 @@ export type Database = {
           phone: string
           pincode?: string | null
           school_id?: string | null
+          student_class?: string | null
           student_name?: string | null
           status?: string
           total_amount?: number
@@ -374,6 +376,7 @@ export type Database = {
           phone?: string
           pincode?: string | null
           school_id?: string | null
+          student_class?: string | null
           student_name?: string | null
           status?: string
           total_amount?: number
@@ -603,6 +606,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          school_id: string | null
           status: string
           updated_at: string
         }
@@ -612,6 +616,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          school_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -621,10 +626,19 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          school_id?: string | null
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       schools: {
         Row: {

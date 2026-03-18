@@ -42,6 +42,7 @@ import VendorDashboard from "./pages/vendor/VendorDashboard";
 // School Portal
 import SchoolLoginPage from "./pages/school/SchoolLoginPage";
 import SchoolDashboard from "./pages/school/SchoolDashboard";
+import SchoolOrdersPage from "./pages/school/SchoolOrdersPage";
 
 // POS
 import PosLoginPage from "./pages/pos/PosLoginPage";
@@ -102,6 +103,7 @@ const App = () => (
           {/* School Portal */}
           <Route path="/school/login" element={<SchoolLoginPage />} />
           <Route path="/school/dashboard" element={<SchoolDashboard />} />
+          <Route path="/school/orders" element={<SchoolOrdersPage />} />
 
           {/* POS */}
           <Route path="/pos/login" element={<PosLoginPage />} />
