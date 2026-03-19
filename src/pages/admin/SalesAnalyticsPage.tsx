@@ -375,12 +375,12 @@ const SalesAnalyticsPage = () => {
       const { data, error } = await query;
       if (error) throw error;
 
-      const grouped = new Map<string, { name: string; revenue: number; orders: number }>();
+      const grouped = new Map<string, { id: string; name: string; revenue: number; orders: number }>();
       (data ?? []).forEach((o: any) => {
         const name = resolveSchoolNameFromOrder(o);
         const id = o.school_id ?? `name:${name.toLowerCase()}`;
-        const prev = grouped.get(id) ?? { name, revenue: 0, orders: 0 };
-        grouped.set(id, { name, revenue: prev.revenue + Number(o.total_amount || 0), orders: prev.orders + 1 });
+        const prev = grouped.get(id) ?? { id, name, revenue: 0, orders: 0 };
+        grouped.set(id, { id, name, revenue: prev.revenue + Number(o.total_amount || 0), orders: prev.orders + 1 });
       });
 
       const list = [...grouped.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
@@ -813,7 +813,7 @@ const SalesAnalyticsPage = () => {
               <div className="space-y-3">
                 {schoolLeaderboard?.map((school, idx) => (
                   <div
-                    key={school.name}
+                    key={school.id}
                     className={`rounded-xl p-4 border transition-colors ${
                       idx === 0
                         ? "border-l-4 border-l-foreground border-t-border border-r-border border-b-border bg-secondary/40"

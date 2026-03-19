@@ -58,7 +58,45 @@ const InventoryPage = () => {
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-      return (data ?? []) as BranchInventoryRow[];
+
+      const existingRows = (data ?? []) as BranchInventoryRow[];
+      if (existingRows.length > 0) return existingRows;
+
+      const [{ data: branchData, error: branchError }, { data: variantData, error: variantError }] = await Promise.all([
+        supabase.from("branches").select("id").eq("is_active", true),
+        supabase.from("product_variants").select("id, product_id, stock"),
+      ]);
+
+      if (branchError || variantError) return existingRows;
+
+      const branchesToSeed = branchData ?? [];
+      const variantsToSeed = variantData ?? [];
+
+      if (branchesToSeed.length === 0 || variantsToSeed.length === 0) return existingRows;
+
+      const seedPayload = branchesToSeed.flatMap((branch: any) =>
+        variantsToSeed.map((variant: any) => ({
+          branch_id: branch.id,
+          product_id: variant.product_id,
+          variant_id: variant.id,
+          stock: Number(variant.stock ?? 0),
+          updated_at: new Date().toISOString(),
+        })),
+      );
+
+      const { error: seedError } = await (supabase as any)
+        .from("branch_inventory")
+        .upsert(seedPayload, { onConflict: "branch_id,variant_id" });
+
+      if (seedError) return existingRows;
+
+      const { data: hydratedRows, error: hydratedError } = await supabase
+        .from("branch_inventory")
+        .select("id, branch_id, product_id, variant_id, stock, updated_at, branches(name, location), product_variants(size, low_stock_threshold, products(name, category, price, schools(name)))")
+        .order("updated_at", { ascending: false });
+
+      if (hydratedError) return existingRows;
+      return (hydratedRows ?? []) as BranchInventoryRow[];
     },
   });
 

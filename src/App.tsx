@@ -26,7 +26,7 @@ import SchoolsPage from "./pages/admin/SchoolsPage";
 import ClassesPage from "./pages/admin/ClassesPage";
 import ProductsPage from "./pages/admin/ProductsPage";
 import ProductVariantsPage from "./pages/admin/ProductVariantsPage";
-import InventoryPage from "./pages/admin/InventoryPage";
+import InventoryPage from "@/pages/admin/InventoryPage";
 import InventoryAlertsPage from "./pages/admin/InventoryAlertsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
 import InvoicePage from "@/pages/admin/InvoicePage";

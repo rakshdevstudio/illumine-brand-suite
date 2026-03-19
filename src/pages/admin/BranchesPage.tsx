@@ -20,22 +20,44 @@ const EMPTY_FORM: BranchFormState = {
   is_active: true,
 };
 
+const isMissingBranchInfraError = (error: { code?: string; message?: string; details?: string } | null) => {
+  if (!error) return false;
+  const message = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    message.includes("relation") ||
+    message.includes("branches") ||
+    message.includes("not found")
+  );
+};
+
 const BranchesPage = () => {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [branchInfraMissing, setBranchInfraMissing] = useState(false);
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [form, setForm] = useState<BranchFormState>(EMPTY_FORM);
 
   const { data: branches, isLoading } = useQuery({
     queryKey: ["admin-branches"],
+    retry: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("branches")
         .select("*")
         .order("name", { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        if (isMissingBranchInfraError(error)) {
+          setBranchInfraMissing(true);
+          return [];
+        }
+        throw error;
+      }
+
+      setBranchInfraMissing(false);
       return data ?? [];
     },
   });
@@ -63,6 +85,11 @@ const BranchesPage = () => {
   };
 
   const saveBranch = async () => {
+    if (branchInfraMissing) {
+      toast.error("Branch tables are not available in this environment yet");
+      return;
+    }
+
     const name = form.name.trim();
     const location = form.location.trim();
 
@@ -97,6 +124,11 @@ const BranchesPage = () => {
   };
 
   const toggleBranchStatus = async (branch: any) => {
+    if (branchInfraMissing) {
+      toast.error("Branch tables are not available in this environment yet");
+      return;
+    }
+
     const { error } = await supabase
       .from("branches")
       .update({ is_active: !branch.is_active })
@@ -115,10 +147,16 @@ const BranchesPage = () => {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Branches</h1>
-        <Button onClick={openCreate} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
+        <Button onClick={openCreate} disabled={branchInfraMissing} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
           <Plus className="h-3 w-3 mr-2" /> Add Branch
         </Button>
       </div>
+
+      {branchInfraMissing && (
+        <div className="mb-4 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Branch infrastructure is not available in this Supabase project. Run latest migrations and refresh.
+        </div>
+      )}
 
       <div className="border border-border">
         <Table>
