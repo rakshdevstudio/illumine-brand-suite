@@ -34,6 +34,7 @@ import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import SalesAnalyticsPage from "./pages/admin/SalesAnalyticsPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
+import BranchesPage from "./pages/admin/BranchesPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -47,6 +48,7 @@ import SchoolOrdersPage from "./pages/school/SchoolOrdersPage";
 // POS
 import PosLoginPage from "./pages/pos/PosLoginPage";
 import PosDashboard from "./pages/pos/PosDashboard";
+import BranchDashboardPage from "./pages/branch/BranchDashboardPage";
 
 const queryClient = new QueryClient();
 
@@ -93,8 +95,11 @@ const App = () => (
             <Route path="orders/:orderId" element={<OrdersPage />} />
             <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="branches" element={<BranchesPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
           </Route>
+
+          <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
 
           {/* Vendor Portal */}
           <Route path="/vendor/login" element={<VendorLoginPage />} />

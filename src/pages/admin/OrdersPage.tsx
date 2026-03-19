@@ -27,8 +27,10 @@ import { logActivity } from "@/lib/activity-log";
 
 type SortDir = "asc" | "desc" | null;
 type OrderStatus = "pending" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
+type DispatchStatus = "pending" | "assigned" | "packed" | "dispatched" | "delivered";
 
 const ORDER_STATUSES: OrderStatus[] = ["pending", "confirmed", "packed", "shipped", "delivered", "cancelled"];
+const DISPATCH_STATUSES: DispatchStatus[] = ["pending", "assigned", "packed", "dispatched", "delivered"];
 
 const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
   pending: "bg-gray-200 text-gray-900 border-transparent",
@@ -48,6 +50,22 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 };
 
+const DISPATCH_LABELS: Record<DispatchStatus, string> = {
+  pending: "Pending",
+  assigned: "Assigned",
+  packed: "Packed",
+  dispatched: "Dispatched",
+  delivered: "Delivered",
+};
+
+const DISPATCH_BADGE_CLASSES: Record<DispatchStatus, string> = {
+  pending: "bg-gray-200 text-gray-900 border-transparent",
+  assigned: "bg-blue-200 text-blue-900 border-transparent",
+  packed: "bg-yellow-200 text-yellow-900 border-transparent",
+  dispatched: "bg-purple-200 text-purple-900 border-transparent",
+  delivered: "bg-green-200 text-green-900 border-transparent",
+};
+
 const TIMELINE_EVENT_LABELS: Record<string, string> = {
   ORDER_PLACED: "Order Placed",
   PAYMENT_CONFIRMED: "Payment Confirmed",
@@ -62,9 +80,17 @@ const TIMELINE_EVENT_LABELS: Record<string, string> = {
 const isOrderStatus = (value: string): value is OrderStatus =>
   ORDER_STATUSES.includes(value as OrderStatus);
 
+const isDispatchStatus = (value: string): value is DispatchStatus =>
+  DISPATCH_STATUSES.includes(value as DispatchStatus);
+
 const OrderStatusBadge = ({ status }: { status: string }) => {
   const normalizedStatus: OrderStatus = isOrderStatus(status) ? status : "pending";
   return <Badge className={STATUS_BADGE_CLASSES[normalizedStatus]}>{STATUS_LABELS[normalizedStatus]}</Badge>;
+};
+
+const DispatchStatusBadge = ({ status }: { status: string | null | undefined }) => {
+  const normalizedStatus: DispatchStatus = isDispatchStatus(status ?? "") ? (status as DispatchStatus) : "pending";
+  return <Badge className={DISPATCH_BADGE_CLASSES[normalizedStatus]}>{DISPATCH_LABELS[normalizedStatus]}</Badge>;
 };
 
 const getOrderSchools = (order: any): string[] => {
@@ -132,7 +158,9 @@ const OrdersPage = () => {
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [schoolFilter, setSchoolFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dispatchFilter, setDispatchFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [schoolSort, setSchoolSort] = useState<SortDir>(null);
@@ -154,12 +182,24 @@ const OrdersPage = () => {
     },
   });
 
+  const { data: branches } = useQuery({
+    queryKey: ["admin-branches-filter"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("branches")
+        .select("id, name, location, is_active")
+        .order("name");
+      if (error) throw error;
+      return data as Array<{ id: string; name: string; location: string | null; is_active: boolean }>;
+    },
+  });
+
   const { data: orders, isLoading } = useQuery({
     queryKey: ["admin-all-orders"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
+        .select("*, branches(name, location), order_items(*, products(name, school_id, schools(name)), product_variants(size))")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -219,8 +259,16 @@ const OrdersPage = () => {
       });
     }
 
+    if (branchFilter !== "all") {
+      filtered = filtered.filter((order) => order.branch_id === branchFilter);
+    }
+
     if (statusFilter !== "all") {
       filtered = filtered.filter((order) => order.status === statusFilter);
+    }
+
+    if (dispatchFilter !== "all") {
+      filtered = filtered.filter((order) => (order.dispatch_status ?? "pending") === dispatchFilter);
     }
 
     if (normalizedSearch) {
@@ -244,7 +292,7 @@ const OrdersPage = () => {
     }
 
     return filtered;
-  }, [orders, schoolFilter, statusFilter, searchQuery, dateFilter, schoolSort]);
+  }, [orders, schoolFilter, branchFilter, statusFilter, dispatchFilter, searchQuery, dateFilter, schoolSort]);
 
   // Summary counts
   const summaryCards = useMemo(() => {
@@ -306,6 +354,55 @@ const OrdersPage = () => {
     }
   };
 
+  const updateDispatchStatus = async (orderId: string, dispatchStatus: string) => {
+    if (!isDispatchStatus(dispatchStatus)) {
+      toast.error("Invalid dispatch status");
+      return;
+    }
+
+    let { error } = await (supabase as any)
+      .from("orders")
+      .update({ dispatch_status: dispatchStatus, updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+
+    if (error?.message?.toLowerCase().includes("updated_at")) {
+      const retry = await (supabase as any).from("orders").update({ dispatch_status: dispatchStatus }).eq("id", orderId);
+      error = retry.error;
+    }
+
+    if (error) {
+      toast.error("Failed to update dispatch status");
+      return;
+    }
+
+    toast.success("Dispatch status updated");
+    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
+  };
+
+  const assignOrderBranch = async (orderId: string, branchId: string | null) => {
+    let { error } = await (supabase as any)
+      .from("orders")
+      .update({ branch_id: branchId, dispatch_status: branchId ? "assigned" : "pending", updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+
+    if (error?.message?.toLowerCase().includes("updated_at")) {
+      const retry = await (supabase as any)
+        .from("orders")
+        .update({ branch_id: branchId, dispatch_status: branchId ? "assigned" : "pending" })
+        .eq("id", orderId);
+      error = retry.error;
+    }
+
+    if (error) {
+      toast.error("Failed to assign branch");
+      return;
+    }
+
+    toast.success(branchId ? "Branch assigned" : "Branch cleared");
+    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
+  };
+
   const allVisibleIds = processedOrders.map((o) => o.id);
   const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.includes(id));
 
@@ -356,16 +453,18 @@ const OrdersPage = () => {
     const selectedOrders = (orders as any[] | undefined)?.filter((o) => selectedIds.includes(o.id)) ?? [];
     if (selectedOrders.length === 0) return;
 
-    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Date"];
+    const header = ["Order ID", "Customer", "Phone", "School", "Branch", "Items", "Total", "Status", "Dispatch", "Date"];
     const lines = selectedOrders.map((order) => {
       const row = [
         order.id,
         order.customer_name,
         order.phone,
         getOrderSchools(order).join(" | "),
+        order.branches?.name ?? "",
         getItemSummary(order),
         order.total_amount,
         order.status,
+        order.dispatch_status ?? "pending",
         order.created_at,
       ];
       return row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
@@ -448,6 +547,8 @@ const OrdersPage = () => {
   const renderOrderRow = (order: any) => {
     const schoolNames = getOrderSchools(order);
     const itemSummary = getItemSummary(order);
+    const dispatchStatus = isDispatchStatus(order.dispatch_status) ? order.dispatch_status : "pending";
+    const branchValue = order.branch_id ?? "__unassigned__";
 
     return (
       <TableRow key={order.id}>
@@ -461,6 +562,24 @@ const OrdersPage = () => {
         <TableCell className="text-xs font-mono">{order.id.slice(0, 8).toUpperCase()}</TableCell>
         <TableCell className="text-sm">{order.customer_name}</TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
+        <TableCell>
+          <Select
+            value={branchValue}
+            onValueChange={(value) => assignOrderBranch(order.id, value === "__unassigned__" ? null : value)}
+          >
+            <SelectTrigger className="w-48 h-8 text-xs">
+              <SelectValue placeholder="Assign branch" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__unassigned__">Unassigned</SelectItem>
+              {(branches ?? []).map((branch) => (
+                <SelectItem key={branch.id} value={branch.id}>
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </TableCell>
         <TableCell className="text-sm max-w-[200px] truncate" title={itemSummary}>
           {itemSummary || "—"}
         </TableCell>
@@ -487,6 +606,26 @@ const OrdersPage = () => {
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {new Date(order.created_at).toLocaleDateString()}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <DispatchStatusBadge status={dispatchStatus} />
+            <Select
+              value={dispatchStatus}
+              onValueChange={(value) => updateDispatchStatus(order.id, value)}
+            >
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DISPATCH_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {DISPATCH_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2 flex-wrap">
@@ -564,6 +703,40 @@ const OrdersPage = () => {
                 {ORDER_STATUSES.map((status) => (
                   <SelectItem key={status} value={status}>
                     {STATUS_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Dispatch</span>
+            <Select value={dispatchFilter} onValueChange={setDispatchFilter}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="All Dispatch" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {DISPATCH_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {DISPATCH_LABELS[status]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Branch</span>
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="w-52 h-9 text-xs">
+                <SelectValue placeholder="All Branches" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {(branches ?? []).map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -651,9 +824,11 @@ const OrdersPage = () => {
                   School <SortIcon className="h-3 w-3" />
                 </span>
               </TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Items</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Amount</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Dispatch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Date</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
             </TableRow>
@@ -661,18 +836,18 @@ const OrdersPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : processedOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
               </TableRow>
             ) : groupBySchool && groupedOrders ? (
               groupedOrders.map(([schoolName, schoolOrders]) => (
                 <>
                   <TableRow key={`group-${schoolName}`}>
                     <TableCell
-                      colSpan={9}
+                      colSpan={11}
                       className="bg-muted/30 text-xs font-medium tracking-[0.15em] uppercase py-3 border-b border-border"
                     >
                       {schoolName} — {schoolOrders.length} order{schoolOrders.length !== 1 ? "s" : ""}
@@ -734,10 +909,36 @@ const OrdersPage = () => {
                 <OrderStatusBadge status={selected.status} />
               </div>
 
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Dispatch</p>
+                <div className="flex items-center gap-2">
+                  <DispatchStatusBadge status={selected.dispatch_status} />
+                  <Select
+                    value={isDispatchStatus(selected.dispatch_status) ? selected.dispatch_status : "pending"}
+                    onValueChange={(value) => updateDispatchStatus(selected.id, value)}
+                  >
+                    <SelectTrigger className="w-40 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DISPATCH_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {DISPATCH_LABELS[status]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
                   <p>{selected.customer_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Branch</p>
+                  <p>{selected.branches?.name || "Unassigned"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Student Name</p>

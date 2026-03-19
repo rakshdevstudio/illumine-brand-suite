@@ -1,5 +1,5 @@
 import { Outlet, Navigate } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, LineChart, History } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, LineChart, History, Building2 } from "lucide-react";
 import illumeLogo from "@/assets/logo.png";
 import { NavLink } from "@/components/NavLink";
 import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
@@ -28,6 +28,7 @@ const navItems = [
   { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
   { title: "Inventory Alerts", url: "/admin/inventory-alerts", icon: AlertTriangle, minRole: "staff" as const },
   { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
+  { title: "Branches", url: "/admin/branches", icon: Building2, minRole: "staff" as const },
   { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
   { title: "Assignments", url: "/admin/product-assignments", icon: FlaskConical, minRole: "staff" as const },
 ];
@@ -120,6 +121,10 @@ const AdminLayout = () => {
 
   if (!user || !hasAccess) {
     return <Navigate to="/admin/login" replace />;
+  }
+
+  if (role === "branch_staff") {
+    return <Navigate to="/branch/dashboard" replace />;
   }
 
   return (

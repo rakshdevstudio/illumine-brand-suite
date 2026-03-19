@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isLowStock } from "@/lib/inventory";
 import {
   AlertTriangle,
@@ -138,15 +139,38 @@ const KpiCard = ({
 const SalesAnalyticsPage = () => {
   const queryClient = useQueryClient();
   const [range, setRange] = useState<RangeFilter>("30d");
+  const [branchFilter, setBranchFilter] = useState<string>("all");
   const [activity, setActivity] = useState<string[]>([]);
 
-  const { data: metrics } = useQuery({
-    queryKey: ["sales-metrics"],
+  const { data: branches } = useQuery({
+    queryKey: ["analytics-branches"],
     queryFn: async () => {
-      const [{ data: orders, error: ordersErr }, { data: items, error: itemsErr }] = await Promise.all([
-        supabase.from("orders").select("id, total_amount").neq("status", "cancelled"),
-        supabase.from("order_items").select("quantity"),
-      ]);
+      const { data, error } = await (supabase as any)
+        .from("branches")
+        .select("id, name, location, is_active")
+        .order("name");
+      if (error) throw error;
+      return data as Array<{ id: string; name: string; location: string | null; is_active: boolean }>;
+    },
+  });
+
+  const { data: metrics } = useQuery({
+    queryKey: ["sales-metrics", branchFilter],
+    queryFn: async () => {
+      let ordersQuery = supabase.from("orders").select("id, total_amount").neq("status", "cancelled");
+      if (branchFilter !== "all") {
+        ordersQuery = ordersQuery.eq("branch_id", branchFilter);
+      }
+
+      let itemsQuery = supabase
+        .from("order_items")
+        .select("quantity, orders!inner(branch_id, status)")
+        .neq("orders.status", "cancelled");
+      if (branchFilter !== "all") {
+        itemsQuery = itemsQuery.eq("orders.branch_id", branchFilter);
+      }
+
+      const [{ data: orders, error: ordersErr }, { data: items, error: itemsErr }] = await Promise.all([ordersQuery, itemsQuery]);
 
       if (ordersErr) throw ordersErr;
       if (itemsErr) throw itemsErr;
@@ -166,7 +190,7 @@ const SalesAnalyticsPage = () => {
   });
 
   const { data: revenueSeries } = useQuery({
-    queryKey: ["sales-revenue-series", range],
+    queryKey: ["sales-revenue-series", range, branchFilter],
     queryFn: async () => {
       const sinceIso = getSinceIso(range);
       let query = supabase
@@ -176,6 +200,7 @@ const SalesAnalyticsPage = () => {
         .order("created_at", { ascending: true });
 
       if (sinceIso) query = query.gte("created_at", sinceIso);
+      if (branchFilter !== "all") query = query.eq("branch_id", branchFilter);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -195,12 +220,15 @@ const SalesAnalyticsPage = () => {
   });
 
   const { data: schoolRevenue } = useQuery({
-    queryKey: ["sales-by-school"],
+    queryKey: ["sales-by-school", branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("orders")
         .select("id, total_amount, school_id, schools(name), order_items(products(schools(name)))")
         .neq("status", "cancelled");
+      if (branchFilter !== "all") query = query.eq("branch_id", branchFilter);
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const grouped = new Map<string, { name: string; revenue: number }>();
@@ -217,11 +245,14 @@ const SalesAnalyticsPage = () => {
   });
 
   const { data: topProducts } = useQuery({
-    queryKey: ["sales-top-products"],
+    queryKey: ["sales-top-products", branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("order_items")
-        .select("quantity, products(name), product_variants(size)");
+        .select("quantity, products(name), product_variants(size), orders!inner(branch_id)");
+      if (branchFilter !== "all") query = query.eq("orders.branch_id", branchFilter);
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const grouped = new Map<string, { product: string; units: number }>();
@@ -239,11 +270,14 @@ const SalesAnalyticsPage = () => {
   });
 
   const { data: revenueByCategory } = useQuery({
-    queryKey: ["sales-by-category"],
+    queryKey: ["sales-by-category", branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("order_items")
-        .select("quantity, price, products(category)");
+        .select("quantity, price, products(category), orders!inner(branch_id)");
+      if (branchFilter !== "all") query = query.eq("orders.branch_id", branchFilter);
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const grouped = new Map<string, number>();
@@ -330,12 +364,15 @@ const SalesAnalyticsPage = () => {
 
   // ── School Leaderboard ───────────────────────────────────────────────────
   const { data: schoolLeaderboard } = useQuery({
-    queryKey: ["sales-school-leaderboard"],
+    queryKey: ["sales-school-leaderboard", branchFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("orders")
         .select("id, total_amount, school_id, schools(name), order_items(products(schools(name)))")
         .neq("status", "cancelled");
+      if (branchFilter !== "all") query = query.eq("branch_id", branchFilter);
+
+      const { data, error } = await query;
       if (error) throw error;
 
       const grouped = new Map<string, { name: string; revenue: number; orders: number }>();
@@ -545,7 +582,21 @@ const SalesAnalyticsPage = () => {
             <CardTitle className="text-sm tracking-[0.12em] uppercase font-normal text-muted-foreground">
               Revenue Over Time
             </CardTitle>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="w-56 h-9 text-xs">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Branches</SelectItem>
+                  {(branches ?? []).map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               {RANGE_OPTIONS.map((option) => (
                 <button
                   key={option.key}

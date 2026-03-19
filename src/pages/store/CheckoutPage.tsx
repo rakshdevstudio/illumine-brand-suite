@@ -51,6 +51,19 @@ const isMissingOrderColumnError = (error: { code?: string; message?: string } | 
   );
 };
 
+const isMissingBranchInfraError = (error: { code?: string; message?: string } | null) => {
+  if (!error) return false;
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "42P01" ||
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    message.includes("branch_inventory") ||
+    message.includes("branch_id") ||
+    message.includes("dispatch_status")
+  );
+};
+
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
@@ -132,30 +145,76 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // ── Step 1: validate stock for every cart item ────────────────────────
+      // ── Step 1: validate stock and auto-assign branch when possible ───────
       const variantIds = items.map((i) => i.variantId);
-      const { data: currentVariants, error: stockCheckErr } = await supabase
-        .from("product_variants")
-        .select("id, size, stock")
-        .in("id", variantIds);
+      let stockMap = new Map(([] as any[]).map((v) => [v.id, v]));
+      let assignedBranchId: string | null = null;
+      let branchInventoryMode = false;
+      let selectedBranchRows: Array<{ branch_id: string; variant_id: string; stock: number }> = [];
 
-      if (stockCheckErr) throw stockCheckErr;
+      const branchInventoryAttempt = await (supabase as any)
+        .from("branch_inventory")
+        .select("branch_id, variant_id, stock, branches(is_active)")
+        .in("variant_id", variantIds);
 
-      const stockMap = new Map(
-        (currentVariants ?? []).map((v) => [v.id, v])
-      );
+      if (!branchInventoryAttempt.error && (branchInventoryAttempt.data?.length ?? 0) > 0) {
+        branchInventoryMode = true;
 
-      const insufficientItems = items.filter((item) => {
-        const variant = stockMap.get(item.variantId);
-        return !variant || variant.stock < item.quantity;
-      });
+        const activeRows = (branchInventoryAttempt.data ?? []).filter((row: any) => row.branches?.is_active !== false);
+        const grouped = new Map<string, Map<string, number>>();
 
-      if (insufficientItems.length > 0) {
-        const names = insufficientItems
-          .map((i) => `${i.name} (Size ${i.size})`)
-          .join(", ");
-        toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
-        return;
+        activeRows.forEach((row: any) => {
+          if (!grouped.has(row.branch_id)) grouped.set(row.branch_id, new Map());
+          grouped.get(row.branch_id)!.set(row.variant_id, Number(row.stock ?? 0));
+        });
+
+        const eligibleBranches = [...grouped.entries()]
+          .filter(([, variantStock]) =>
+            items.every((item) => (variantStock.get(item.variantId) ?? 0) >= item.quantity)
+          )
+          .map(([branchId, variantStock]) => ({
+            branchId,
+            totalBuffer: items.reduce((sum, item) => sum + (variantStock.get(item.variantId) ?? 0), 0),
+          }))
+          .sort((a, b) => b.totalBuffer - a.totalBuffer);
+
+        assignedBranchId = eligibleBranches[0]?.branchId ?? null;
+
+        if (assignedBranchId) {
+          selectedBranchRows = activeRows
+            .filter((row: any) => row.branch_id === assignedBranchId)
+            .map((row: any) => ({
+              branch_id: row.branch_id,
+              variant_id: row.variant_id,
+              stock: Number(row.stock ?? 0),
+            }));
+        } else {
+          toast.info("No single branch has complete stock. Order will require manual branch assignment.");
+        }
+      } else {
+        if (branchInventoryAttempt.error && !isMissingBranchInfraError(branchInventoryAttempt.error)) {
+          throw branchInventoryAttempt.error;
+        }
+
+        const { data: currentVariants, error: stockCheckErr } = await supabase
+          .from("product_variants")
+          .select("id, size, stock")
+          .in("id", variantIds);
+
+        if (stockCheckErr) throw stockCheckErr;
+
+        stockMap = new Map((currentVariants ?? []).map((v) => [v.id, v]));
+
+        const insufficientItems = items.filter((item) => {
+          const variant = stockMap.get(item.variantId);
+          return !variant || variant.stock < item.quantity;
+        });
+
+        if (insufficientItems.length > 0) {
+          const names = insufficientItems.map((i) => `${i.name} (Size ${i.size})`).join(", ");
+          toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
+          return;
+        }
       }
 
       // ── Step 2: create order ──────────────────────────────────────────────
@@ -184,6 +243,8 @@ const CheckoutPage = () => {
         city: orderPayload.city,
         pincode: orderPayload.pincode,
         school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
+        branch_id: assignedBranchId,
+        dispatch_status: assignedBranchId ? "assigned" : "pending",
         total_amount: total(),
         status: "pending",
       };
@@ -199,6 +260,7 @@ const CheckoutPage = () => {
           phone: orderPayload.phone,
           address: orderPayload.address,
           school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
+          branch_id: assignedBranchId,
           total_amount: total(),
           status: "pending",
         },
@@ -233,7 +295,7 @@ const CheckoutPage = () => {
 
       await supabase.from("order_notes").insert({
         order_id: order.id,
-        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}`,
+        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}${assignedBranchId ? "\nBranch Assignment: Auto-assigned" : "\nBranch Assignment: Manual required"}`,
       });
 
       // ── Step 3: insert order items ────────────────────────────────────────
@@ -248,29 +310,56 @@ const CheckoutPage = () => {
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
-      // ── Step 4: deduct stock atomically (conditional update guards race conditions)
-      for (const item of items) {
-        const snapshot = stockMap.get(item.variantId)!;
-        const newStock = snapshot.stock - item.quantity;
+      // ── Step 4: deduct stock from assigned branch, fallback to global variant stock ─
+      if (branchInventoryMode && assignedBranchId) {
+        for (const item of items) {
+          const snapshot = selectedBranchRows.find((row) => row.variant_id === item.variantId);
+          const previous = Number(snapshot?.stock ?? 0);
 
-        // .gte("stock", item.quantity) acts as an atomic WHERE guard —
-        // the row only updates if stock hasn't been reduced by a concurrent order
-        const { data: updated } = await supabase
-          .from("product_variants")
-          .update({ stock: newStock })
-          .eq("id", item.variantId)
-          .gte("stock", item.quantity)
-          .select("stock");
+          const { data: updatedBranchRows, error: branchUpdateError } = await (supabase as any)
+            .from("branch_inventory")
+            .update({ stock: Math.max(0, previous - item.quantity), updated_at: new Date().toISOString() })
+            .eq("branch_id", assignedBranchId)
+            .eq("variant_id", item.variantId)
+            .gte("stock", item.quantity)
+            .select("stock");
 
-        await supabase.from("inventory_logs").insert({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          change_type: "order",
-          quantity_change: -item.quantity,
-          previous_stock: snapshot.stock,
-          new_stock: updated?.[0]?.stock ?? newStock,
-          order_id: order.id,
-        });
+          if (branchUpdateError) throw branchUpdateError;
+
+          const updatedStock = Number(updatedBranchRows?.[0]?.stock ?? Math.max(0, previous - item.quantity));
+
+          await supabase.from("inventory_logs").insert({
+            product_id: item.productId,
+            variant_id: item.variantId,
+            change_type: "order",
+            quantity_change: -item.quantity,
+            previous_stock: previous,
+            new_stock: updatedStock,
+            order_id: order.id,
+          });
+        }
+      } else if (!branchInventoryMode) {
+        for (const item of items) {
+          const snapshot = stockMap.get(item.variantId)!;
+          const newStock = snapshot.stock - item.quantity;
+
+          const { data: updated } = await supabase
+            .from("product_variants")
+            .update({ stock: newStock })
+            .eq("id", item.variantId)
+            .gte("stock", item.quantity)
+            .select("stock");
+
+          await supabase.from("inventory_logs").insert({
+            product_id: item.productId,
+            variant_id: item.variantId,
+            change_type: "order",
+            quantity_change: -item.quantity,
+            previous_stock: snapshot.stock,
+            new_stock: updated?.[0]?.stock ?? newStock,
+            order_id: order.id,
+          });
+        }
       }
 
       clearCart();

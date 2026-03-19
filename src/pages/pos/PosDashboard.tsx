@@ -35,6 +35,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/portal-dashboard";
 
@@ -43,6 +44,7 @@ type PaymentMethod = "cash" | "upi";
 type SchoolRow = Database["public"]["Tables"]["schools"]["Row"];
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
 type ClassRow = Database["public"]["Tables"]["classes"]["Row"];
+type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 
 type SellableProduct = {
   productId: string;
@@ -78,6 +80,7 @@ const PAYMENT_OPTIONS: Array<{ id: PaymentMethod; label: string; icon: typeof Wa
 ];
 
 const POS_LAST_SCHOOL_KEY = "illume-pos-last-school";
+const POS_LAST_BRANCH_KEY = "illume-pos-last-branch";
 const POS_LAST_CUSTOMER_KEY = "illume-pos-last-customer";
 const POS_CUSTOMER_CONTEXT_KEY = "illume-pos-customer-context";
 const WALK_IN_CUSTOMER_KEY = "__walk_in_customer__";
@@ -174,6 +177,7 @@ const PosDashboard = () => {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [cart, setCart] = useState<PosCartItem[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(() => readLocalStorageValue(POS_LAST_SCHOOL_KEY));
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(() => readLocalStorageValue(POS_LAST_BRANCH_KEY));
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(() => readPersistedCustomerSelection()?.key ?? null);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -202,6 +206,37 @@ const PosDashboard = () => {
       return (data ?? []) as SchoolRow[];
     },
     staleTime: 60_000,
+  });
+
+  const { data: branches, isLoading: branchesLoading } = useQuery({
+    queryKey: ["pos-branches"],
+    enabled: isAuthorized,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("id, name, location, is_active")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      return (data ?? []) as BranchRow[];
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["pos-profile-branch", user?.id],
+    enabled: isAuthorized && !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, branch_id")
+        .eq("id", user!.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
   });
 
   const { data: customers } = useQuery({
@@ -271,6 +306,11 @@ const PosDashboard = () => {
   const selectedSchool = useMemo(
     () => (schools ?? []).find((school) => school.id === selectedSchoolId) ?? null,
     [schools, selectedSchoolId],
+  );
+
+  const selectedBranch = useMemo(
+    () => (branches ?? []).find((branch) => branch.id === selectedBranchId) ?? null,
+    [branches, selectedBranchId],
   );
 
   const availableCustomers = useMemo(() => {
@@ -348,6 +388,7 @@ const PosDashboard = () => {
   const hasResolvedCustomer = selectedCustomerKey === WALK_IN_CUSTOMER_KEY || Boolean(selectedCustomer);
   const isContextReady = Boolean(
     selectedSchoolId &&
+      selectedBranchId &&
       selectedCustomerKey &&
       hasResolvedCustomer &&
       studentName.trim().length > 0 &&
@@ -355,12 +396,14 @@ const PosDashboard = () => {
   );
 
   const missingSchool = showValidation && !selectedSchoolId;
+  const missingBranch = showValidation && !selectedBranchId;
   const missingCustomer = showValidation && !selectedCustomerKey;
   const missingStudentName = showValidation && Boolean(selectedCustomerKey) && studentName.trim().length === 0;
   const missingStudentClass = showValidation && Boolean(selectedCustomerKey) && studentClass.trim().length === 0;
 
   const contextChecklist = [
     !selectedSchoolId ? "select a school" : null,
+    !selectedBranchId ? "select a branch" : null,
     !selectedCustomerKey ? "choose a customer" : null,
     selectedCustomerKey && studentName.trim().length === 0 ? "enter student name" : null,
     selectedCustomerKey && studentClass.trim().length === 0 ? "enter class" : null,
@@ -387,6 +430,11 @@ const PosDashboard = () => {
     setShowValidation(false);
     setSchoolPickerOpen(false);
     setCustomerPickerOpen(false);
+  };
+
+  const selectBranch = (branchId: string) => {
+    setSelectedBranchId(branchId);
+    setShowValidation(false);
   };
 
   const selectCustomer = (customerKey: string) => {
@@ -456,7 +504,7 @@ const PosDashboard = () => {
     setShowValidation(true);
 
     if (!isContextReady) {
-      toast.error("Select a school, customer, and student details before placing an order.");
+      toast.error("Select a school, branch, customer, and student details before placing an order.");
       return;
     }
 
@@ -469,14 +517,28 @@ const PosDashboard = () => {
 
     try {
       const variantIds = cart.map((item) => item.variantId);
-      const { data: variants, error: variantError } = await supabase
-        .from("product_variants")
-        .select("id, stock")
-        .in("id", variantIds);
+      let stockMap = new Map<string, number>();
+      let branchInventoryMode = false;
 
-      if (variantError) throw variantError;
+      const branchStockAttempt = await (supabase as any)
+        .from("branch_inventory")
+        .select("id, variant_id, stock")
+        .eq("branch_id", selectedBranchId)
+        .in("variant_id", variantIds);
 
-      const stockMap = new Map((variants ?? []).map((variant) => [variant.id, Number(variant.stock ?? 0)]));
+      if (!branchStockAttempt.error && (branchStockAttempt.data?.length ?? 0) > 0) {
+        branchInventoryMode = true;
+        stockMap = new Map((branchStockAttempt.data ?? []).map((row: any) => [row.variant_id, Number(row.stock ?? 0)]));
+      } else {
+        const { data: variants, error: variantError } = await supabase
+          .from("product_variants")
+          .select("id, stock")
+          .in("id", variantIds);
+
+        if (variantError) throw variantError;
+        stockMap = new Map((variants ?? []).map((variant) => [variant.id, Number(variant.stock ?? 0)]));
+      }
+
       const insufficientItem = cart.find((item) => (stockMap.get(item.variantId) ?? 0) < item.quantity);
 
       if (insufficientItem) {
@@ -491,8 +553,14 @@ const PosDashboard = () => {
       const compatibleOrderPayload = {
         customer_name: customerName,
         phone: resolvedPhone,
+        alternate_phone: customerPhone ? normalizedAlternatePhone || null : null,
+        student_name: studentName.trim(),
+        student_class: studentClass.trim(),
+        grade: studentClass.trim(),
         address: `POS Counter - ${selectedSchool?.name ?? "School Billing"}`,
         school_id: selectedSchoolId,
+        branch_id: selectedBranchId,
+        dispatch_status: "assigned",
         total_amount: totalAmount,
         status: "confirmed",
       };
@@ -519,15 +587,31 @@ const PosDashboard = () => {
 
       for (const item of cart) {
         const previousStock = stockMap.get(item.variantId) ?? 0;
-        const { data: updatedVariant, error: updateError } = await supabase
-          .from("product_variants")
-          .update({ stock: previousStock - item.quantity })
-          .eq("id", item.variantId)
-          .gte("stock", item.quantity)
-          .select("stock")
-          .single();
+        let newStock = previousStock - item.quantity;
 
-        if (updateError) throw updateError;
+        if (branchInventoryMode) {
+          const { data: updatedBranchRows, error: updateError } = await (supabase as any)
+            .from("branch_inventory")
+            .update({ stock: Math.max(0, previousStock - item.quantity), updated_at: new Date().toISOString() })
+            .eq("branch_id", selectedBranchId)
+            .eq("variant_id", item.variantId)
+            .gte("stock", item.quantity)
+            .select("stock");
+
+          if (updateError) throw updateError;
+          newStock = Number(updatedBranchRows?.[0]?.stock ?? Math.max(0, previousStock - item.quantity));
+        } else {
+          const { data: updatedVariant, error: updateError } = await supabase
+            .from("product_variants")
+            .update({ stock: previousStock - item.quantity })
+            .eq("id", item.variantId)
+            .gte("stock", item.quantity)
+            .select("stock")
+            .single();
+
+          if (updateError) throw updateError;
+          newStock = Number(updatedVariant?.stock ?? previousStock - item.quantity);
+        }
 
         const { error: logError } = await supabase.from("inventory_logs").insert({
           product_id: item.productId,
@@ -535,7 +619,7 @@ const PosDashboard = () => {
           change_type: "order",
           quantity_change: -item.quantity,
           previous_stock: previousStock,
-          new_stock: Number(updatedVariant?.stock ?? previousStock - item.quantity),
+          new_stock: newStock,
           order_id: order.id,
         });
 
@@ -547,6 +631,7 @@ const PosDashboard = () => {
         note: [
           "Order Source: POS",
           `School: ${selectedSchool?.name ?? "Unknown School"}`,
+          `Branch: ${selectedBranch?.name ?? "Unknown Branch"}`,
           `Customer: ${customerName}`,
           `Payment Method: ${paymentMethod.toUpperCase()}`,
           `Student Name: ${studentName.trim()}`,
@@ -654,6 +739,30 @@ const PosDashboard = () => {
   }, [availableCustomers, selectedCustomerKey, selectedSchoolId]);
 
   useEffect(() => {
+    if (selectedSchoolId) {
+      writeLocalStorageValue(POS_LAST_SCHOOL_KEY, selectedSchoolId);
+    }
+  }, [selectedSchoolId]);
+
+  useEffect(() => {
+    if (selectedBranchId) {
+      writeLocalStorageValue(POS_LAST_BRANCH_KEY, selectedBranchId);
+    }
+  }, [selectedBranchId]);
+
+  useEffect(() => {
+    if (!branches?.length) return;
+    if (selectedBranchId && branches.some((branch) => branch.id === selectedBranchId)) return;
+    setSelectedBranchId(branches[0].id);
+  }, [branches, selectedBranchId]);
+
+  useEffect(() => {
+    if (role !== "branch_staff") return;
+    if (!profile?.branch_id) return;
+    setSelectedBranchId(profile.branch_id);
+  }, [profile?.branch_id, role]);
+
+  useEffect(() => {
     if (!selectedCustomerKey || selectedCustomerKey === WALK_IN_CUSTOMER_KEY) return;
     if (availableCustomers.some((customer) => customer.id === selectedCustomerKey)) return;
 
@@ -700,7 +809,7 @@ const PosDashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5 pt-1">
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-3">
             <div className="space-y-2">
               <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">School</p>
               <Popover open={schoolPickerOpen} onOpenChange={setSchoolPickerOpen}>
@@ -754,6 +863,28 @@ const PosDashboard = () => {
                   </Command>
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Branch</p>
+              <Select
+                value={selectedBranchId ?? ""}
+                onValueChange={(value) => selectBranch(value)}
+                disabled={branchesLoading || (role === "branch_staff" && Boolean(profile?.branch_id))}
+              >
+                <SelectTrigger className={fieldClassName(missingBranch)}>
+                  <SelectValue
+                    placeholder={branchesLoading ? "Loading branches..." : "Select branch"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(branches ?? []).map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.location ? `${branch.name} · ${branch.location}` : branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
