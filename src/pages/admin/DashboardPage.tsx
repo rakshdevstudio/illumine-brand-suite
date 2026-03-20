@@ -175,13 +175,13 @@ const DashboardPage = () => {
     queryKey: ["dash-low-stock"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("product_variants")
-        .select("id, stock, size, low_stock_threshold, products(name)")
+        .from("branch_inventory")
+        .select("id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
         .order("stock", { ascending: true })
         .limit(100);
       if (error) throw error;
       return (data ?? []).filter((v: any) =>
-        isLowStock(v.stock, v.low_stock_threshold)
+        isLowStock(v.stock, v.product_variants?.low_stock_threshold)
       );
     },
   });
@@ -359,8 +359,8 @@ const DashboardPage = () => {
                   className="flex items-center justify-between text-sm bg-white border border-red-100 rounded-lg px-3 py-2"
                 >
                   <span className="truncate text-red-800">
-                    {v.products?.name ?? "Product"}{" "}
-                    <span className="text-red-400 text-xs">· {v.size}</span>
+                    {v.product_variants?.products?.name ?? "Product"}{" "}
+                    <span className="text-red-400 text-xs">· {v.product_variants?.size} · {v.branches?.name ?? "Branch"}</span>
                   </span>
                   <span className="text-red-500 font-medium ml-2 shrink-0">{v.stock} left</span>
                 </div>

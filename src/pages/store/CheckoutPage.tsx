@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
+import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
 
 type CheckoutForm = {
   customer_name: string;
   email: string;
   phone: string;
   alternate_phone: string;
+  gst_number: string;
   student_name: string;
   grade: string;
   address: string;
@@ -25,6 +27,7 @@ const EMPTY_FORM: CheckoutForm = {
   email: "",
   phone: "",
   alternate_phone: "",
+  gst_number: "",
   student_name: "",
   grade: "",
   address: "",
@@ -47,7 +50,9 @@ const isMissingOrderColumnError = (error: { code?: string; message?: string } | 
     message.includes("city") ||
     message.includes("pincode") ||
     message.includes("customer_id") ||
-    message.includes("email")
+    message.includes("email") ||
+    message.includes("gst_number") ||
+    message.includes("is_gst_order")
   );
 };
 
@@ -69,10 +74,14 @@ const CheckoutPage = () => {
   const navigate = useNavigate();
   const studentProfile = useStudentProfile((state) => state.profile);
   const customer = useCustomerAuth((state) => state.customer);
+  const { activeBranchId } = useStoreActiveBranch();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
+  const [hasGstNumber, setHasGstNumber] = useState(false);
   const hasItemsRef = useRef(items.length > 0);
+
+  const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => {
@@ -141,83 +150,78 @@ const CheckoutPage = () => {
       return;
     }
 
+    const normalizedGst = form.gst_number.trim().toUpperCase().replace(/\s+/g, "");
+    if (hasGstNumber) {
+      if (!normalizedGst) {
+        setErrors((prev) => ({ ...prev, gst_number: "GST number is required" }));
+        toast.error("GST number is required");
+        return;
+      }
+
+      if (!GST_REGEX.test(normalizedGst)) {
+        setErrors((prev) => ({ ...prev, gst_number: "Enter a valid GST number" }));
+        toast.error("Enter a valid GST number");
+        return;
+      }
+    }
+
     if (items.length === 0) return;
 
     setLoading(true);
     try {
-      // ── Step 1: validate stock and auto-assign branch when possible ───────
+      // ── Step 1: validate stock from active branch inventory ───────
       const variantIds = items.map((i) => i.variantId);
-      let stockMap = new Map(([] as any[]).map((v) => [v.id, v]));
-      let assignedBranchId: string | null = null;
-      let branchInventoryMode = false;
+      let assignedBranchId: string | null = activeBranchId ?? null;
       let selectedBranchRows: Array<{ branch_id: string; variant_id: string; stock: number }> = [];
+
+      if (!assignedBranchId) {
+        toast.error("Select a branch before checkout");
+        return;
+      }
 
       const branchInventoryAttempt = await (supabase as any)
         .from("branch_inventory")
-        .select("branch_id, variant_id, stock, branches(is_active)")
+        .select("branch_id, variant_id, stock")
+        .eq("branch_id", assignedBranchId)
         .in("variant_id", variantIds);
 
-      if (!branchInventoryAttempt.error && (branchInventoryAttempt.data?.length ?? 0) > 0) {
-        branchInventoryMode = true;
-
-        const activeRows = (branchInventoryAttempt.data ?? []).filter((row: any) => row.branches?.is_active !== false);
-        const grouped = new Map<string, Map<string, number>>();
-
-        activeRows.forEach((row: any) => {
-          if (!grouped.has(row.branch_id)) grouped.set(row.branch_id, new Map());
-          grouped.get(row.branch_id)!.set(row.variant_id, Number(row.stock ?? 0));
-        });
-
-        const eligibleBranches = [...grouped.entries()]
-          .filter(([, variantStock]) =>
-            items.every((item) => (variantStock.get(item.variantId) ?? 0) >= item.quantity)
-          )
-          .map(([branchId, variantStock]) => ({
-            branchId,
-            totalBuffer: items.reduce((sum, item) => sum + (variantStock.get(item.variantId) ?? 0), 0),
-          }))
-          .sort((a, b) => b.totalBuffer - a.totalBuffer);
-
-        assignedBranchId = eligibleBranches[0]?.branchId ?? null;
-
-        if (assignedBranchId) {
-          selectedBranchRows = activeRows
-            .filter((row: any) => row.branch_id === assignedBranchId)
-            .map((row: any) => ({
-              branch_id: row.branch_id,
-              variant_id: row.variant_id,
-              stock: Number(row.stock ?? 0),
-            }));
-        } else {
-          toast.info("No single branch has complete stock. Order will require manual branch assignment.");
-        }
-      } else {
-        if (branchInventoryAttempt.error && !isMissingBranchInfraError(branchInventoryAttempt.error)) {
+      if (branchInventoryAttempt.error) {
+        if (!isMissingBranchInfraError(branchInventoryAttempt.error)) {
           throw branchInventoryAttempt.error;
         }
+        toast.error("Branch inventory is not configured yet");
+        return;
+      }
 
-        const { data: currentVariants, error: stockCheckErr } = await supabase
-          .from("product_variants")
-          .select("id, size, stock")
-          .in("id", variantIds);
+      selectedBranchRows = (branchInventoryAttempt.data ?? []).map((row: any) => ({
+        branch_id: row.branch_id,
+        variant_id: row.variant_id,
+        stock: Number(row.stock ?? 0),
+      }));
 
-        if (stockCheckErr) throw stockCheckErr;
+      const stockByVariant = new Map(selectedBranchRows.map((row) => [row.variant_id, row.stock]));
+      const insufficientItems = items.filter((item) => (stockByVariant.get(item.variantId) ?? 0) < item.quantity);
 
-        stockMap = new Map((currentVariants ?? []).map((v) => [v.id, v]));
-
-        const insufficientItems = items.filter((item) => {
-          const variant = stockMap.get(item.variantId);
-          return !variant || variant.stock < item.quantity;
-        });
-
-        if (insufficientItems.length > 0) {
-          const names = insufficientItems.map((i) => `${i.name} (Size ${i.size})`).join(", ");
-          toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
-          return;
-        }
+      if (insufficientItems.length > 0) {
+        const names = insufficientItems.map((i) => `${i.name} (Size ${i.size})`).join(", ");
+        toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
+        return;
       }
 
       // ── Step 2: create order ──────────────────────────────────────────────
+      const productIds = Array.from(new Set(items.map((item) => item.productId)));
+      const { data: productSchools } = await supabase
+        .from("products")
+        .select("id, school_id")
+        .in("id", productIds);
+
+      const resolvedSchoolIds = Array.from(
+        new Set((productSchools ?? []).map((row) => row.school_id).filter(Boolean))
+      ) as string[];
+
+      const fallbackSchoolId = resolvedSchoolIds.length === 1 ? resolvedSchoolIds[0] : null;
+      const effectiveSchoolId = studentProfile?.schoolId ?? customer?.child_school_id ?? fallbackSchoolId ?? null;
+
       const orderPayload = {
         fullName: form.customer_name,
         email: form.email,
@@ -235,6 +239,8 @@ const CheckoutPage = () => {
         email: orderPayload.email,
         phone: orderPayload.phone,
         alternate_phone: orderPayload.alternatePhone || null,
+        gst_number: hasGstNumber ? normalizedGst : null,
+        is_gst_order: hasGstNumber,
         customer_id: customer?.id ?? null,
         student_name: orderPayload.studentName,
         student_class: orderPayload.grade,
@@ -242,7 +248,7 @@ const CheckoutPage = () => {
         address: orderPayload.address,
         city: orderPayload.city,
         pincode: orderPayload.pincode,
-        school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
+        school_id: effectiveSchoolId,
         branch_id: assignedBranchId,
         dispatch_status: assignedBranchId ? "assigned" : "pending",
         total_amount: total(),
@@ -259,7 +265,26 @@ const CheckoutPage = () => {
           customer_name: orderPayload.fullName,
           phone: orderPayload.phone,
           address: orderPayload.address,
-          school_id: studentProfile?.schoolId ?? customer?.child_school_id ?? null,
+          gst_number: hasGstNumber ? normalizedGst : null,
+          is_gst_order: hasGstNumber,
+          school_id: effectiveSchoolId,
+          branch_id: assignedBranchId,
+          total_amount: total(),
+          status: "pending",
+        },
+        (() => {
+          const { gst_number: _gstNumber, is_gst_order: _isGstOrder, ...legacyWithoutGst } = legacyOrderPayload;
+          return legacyWithoutGst;
+        })(),
+        (() => {
+          const { student_class: _studentClass, gst_number: _gstNumber, is_gst_order: _isGstOrder, ...compatWithoutGst } = legacyOrderPayload;
+          return compatWithoutGst;
+        })(),
+        {
+          customer_name: orderPayload.fullName,
+          phone: orderPayload.phone,
+          address: orderPayload.address,
+          school_id: effectiveSchoolId,
           branch_id: assignedBranchId,
           total_amount: total(),
           status: "pending",
@@ -295,7 +320,7 @@ const CheckoutPage = () => {
 
       await supabase.from("order_notes").insert({
         order_id: order.id,
-        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}${assignedBranchId ? "\nBranch Assignment: Auto-assigned" : "\nBranch Assignment: Manual required"}`,
+        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}${hasGstNumber ? `\nGSTIN: ${normalizedGst}` : ""}${assignedBranchId ? "\nBranch Assignment: Auto-assigned" : "\nBranch Assignment: Manual required"}`,
       });
 
       // ── Step 3: insert order items ────────────────────────────────────────
@@ -310,56 +335,35 @@ const CheckoutPage = () => {
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
-      // ── Step 4: deduct stock from assigned branch, fallback to global variant stock ─
-      if (branchInventoryMode && assignedBranchId) {
-        for (const item of items) {
-          const snapshot = selectedBranchRows.find((row) => row.variant_id === item.variantId);
-          const previous = Number(snapshot?.stock ?? 0);
+      // ── Step 4: deduct stock from assigned branch only ─
+      for (const item of items) {
+        const snapshot = selectedBranchRows.find((row) => row.variant_id === item.variantId);
+        const previous = Number(snapshot?.stock ?? 0);
 
-          const { data: updatedBranchRows, error: branchUpdateError } = await (supabase as any)
-            .from("branch_inventory")
-            .update({ stock: Math.max(0, previous - item.quantity), updated_at: new Date().toISOString() })
-            .eq("branch_id", assignedBranchId)
-            .eq("variant_id", item.variantId)
-            .gte("stock", item.quantity)
-            .select("stock");
+        const { data: movementData, error: branchUpdateError } = await (supabase as any).rpc("apply_inventory_movement", {
+          p_branch_id: assignedBranchId,
+          p_variant_id: item.variantId,
+          p_type: "OUT",
+          p_quantity: item.quantity,
+          p_reference_type: "ORDER",
+          p_reference_id: order.id,
+          p_reason: "Checkout order deduction",
+        });
 
-          if (branchUpdateError) throw branchUpdateError;
+        if (branchUpdateError) throw branchUpdateError;
 
-          const updatedStock = Number(updatedBranchRows?.[0]?.stock ?? Math.max(0, previous - item.quantity));
+        const updatedStock = Number(movementData?.after_stock ?? Math.max(0, previous - item.quantity));
+        const beforeStock = Number(movementData?.before_stock ?? previous);
 
-          await supabase.from("inventory_logs").insert({
-            product_id: item.productId,
-            variant_id: item.variantId,
-            change_type: "order",
-            quantity_change: -item.quantity,
-            previous_stock: previous,
-            new_stock: updatedStock,
-            order_id: order.id,
-          });
-        }
-      } else if (!branchInventoryMode) {
-        for (const item of items) {
-          const snapshot = stockMap.get(item.variantId)!;
-          const newStock = snapshot.stock - item.quantity;
-
-          const { data: updated } = await supabase
-            .from("product_variants")
-            .update({ stock: newStock })
-            .eq("id", item.variantId)
-            .gte("stock", item.quantity)
-            .select("stock");
-
-          await supabase.from("inventory_logs").insert({
-            product_id: item.productId,
-            variant_id: item.variantId,
-            change_type: "order",
-            quantity_change: -item.quantity,
-            previous_stock: snapshot.stock,
-            new_stock: updated?.[0]?.stock ?? newStock,
-            order_id: order.id,
-          });
-        }
+        await supabase.from("inventory_logs").insert({
+          product_id: item.productId,
+          variant_id: item.variantId,
+          change_type: "order",
+          quantity_change: -item.quantity,
+          previous_stock: beforeStock,
+          new_stock: updatedStock,
+          order_id: order.id,
+        });
       }
 
       clearCart();
@@ -466,6 +470,48 @@ const CheckoutPage = () => {
             autoComplete="tel"
           />
           {errors.alternate_phone && <p className="mt-2 text-xs text-destructive">{errors.alternate_phone}</p>}
+        </div>
+
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-xs tracking-[0.12em] text-muted-foreground uppercase">
+            <input
+              type="checkbox"
+              checked={hasGstNumber}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setHasGstNumber(checked);
+                if (!checked) {
+                  setForm((prev) => ({ ...prev, gst_number: "" }));
+                  setErrors((prev) => ({ ...prev, gst_number: undefined }));
+                }
+              }}
+              className="h-4 w-4"
+            />
+            I have GST number
+          </label>
+
+          {hasGstNumber && (
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+                GST Number <span className="text-destructive">*</span>
+              </label>
+              <Input
+                value={form.gst_number}
+                onChange={(e) => {
+                  const nextValue = e.target.value.toUpperCase();
+                  setForm((prev) => ({ ...prev, gst_number: nextValue }));
+                  if (errors.gst_number) {
+                    setErrors((prev) => ({ ...prev, gst_number: undefined }));
+                  }
+                }}
+                className={getInputClass("gst_number")}
+                placeholder="27ABCDE1234F1Z5"
+                autoComplete="off"
+                maxLength={15}
+              />
+              {errors.gst_number && <p className="mt-2 text-xs text-destructive">{errors.gst_number}</p>}
+            </div>
+          )}
         </div>
 
         {/* Student Name */}

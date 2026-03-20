@@ -518,7 +518,6 @@ const PosDashboard = () => {
     try {
       const variantIds = cart.map((item) => item.variantId);
       let stockMap = new Map<string, number>();
-      let branchInventoryMode = false;
 
       const branchStockAttempt = await (supabase as any)
         .from("branch_inventory")
@@ -526,18 +525,11 @@ const PosDashboard = () => {
         .eq("branch_id", selectedBranchId)
         .in("variant_id", variantIds);
 
-      if (!branchStockAttempt.error && (branchStockAttempt.data?.length ?? 0) > 0) {
-        branchInventoryMode = true;
-        stockMap = new Map((branchStockAttempt.data ?? []).map((row: any) => [row.variant_id, Number(row.stock ?? 0)]));
-      } else {
-        const { data: variants, error: variantError } = await supabase
-          .from("product_variants")
-          .select("id, stock")
-          .in("id", variantIds);
-
-        if (variantError) throw variantError;
-        stockMap = new Map((variants ?? []).map((variant) => [variant.id, Number(variant.stock ?? 0)]));
+      if (branchStockAttempt.error) {
+        throw branchStockAttempt.error;
       }
+
+      stockMap = new Map((branchStockAttempt.data ?? []).map((row: any) => [row.variant_id, Number(row.stock ?? 0)]));
 
       const insufficientItem = cart.find((item) => (stockMap.get(item.variantId) ?? 0) < item.quantity);
 
@@ -587,38 +579,26 @@ const PosDashboard = () => {
 
       for (const item of cart) {
         const previousStock = stockMap.get(item.variantId) ?? 0;
-        let newStock = previousStock - item.quantity;
+        const { data: movementData, error: updateError } = await (supabase as any).rpc("apply_inventory_movement", {
+          p_branch_id: selectedBranchId,
+          p_variant_id: item.variantId,
+          p_type: "OUT",
+          p_quantity: item.quantity,
+          p_reference_type: "ORDER",
+          p_reference_id: order.id,
+          p_reason: "POS order deduction",
+        });
 
-        if (branchInventoryMode) {
-          const { data: updatedBranchRows, error: updateError } = await (supabase as any)
-            .from("branch_inventory")
-            .update({ stock: Math.max(0, previousStock - item.quantity), updated_at: new Date().toISOString() })
-            .eq("branch_id", selectedBranchId)
-            .eq("variant_id", item.variantId)
-            .gte("stock", item.quantity)
-            .select("stock");
-
-          if (updateError) throw updateError;
-          newStock = Number(updatedBranchRows?.[0]?.stock ?? Math.max(0, previousStock - item.quantity));
-        } else {
-          const { data: updatedVariant, error: updateError } = await supabase
-            .from("product_variants")
-            .update({ stock: previousStock - item.quantity })
-            .eq("id", item.variantId)
-            .gte("stock", item.quantity)
-            .select("stock")
-            .single();
-
-          if (updateError) throw updateError;
-          newStock = Number(updatedVariant?.stock ?? previousStock - item.quantity);
-        }
+        if (updateError) throw updateError;
+        const newStock = Number(movementData?.after_stock ?? Math.max(0, previousStock - item.quantity));
+        const beforeStock = Number(movementData?.before_stock ?? previousStock);
 
         const { error: logError } = await supabase.from("inventory_logs").insert({
           product_id: item.productId,
           variant_id: item.variantId,
           change_type: "order",
           quantity_change: -item.quantity,
-          previous_stock: previousStock,
+          previous_stock: beforeStock,
           new_stock: newStock,
           order_id: order.id,
         });

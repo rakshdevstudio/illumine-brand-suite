@@ -7,63 +7,32 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowUpDown, ArrowUp, ArrowDown, LayoutList, Group } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 
-type SortDir = "asc" | "desc" | null;
-type OrderStatus = "pending" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled";
-type DispatchStatus = "pending" | "assigned" | "packed" | "dispatched" | "delivered";
+type OrderStatus = "pending" | "assigned" | "packed" | "dispatched" | "delivered" | "cancelled";
 
-const ORDER_STATUSES: OrderStatus[] = ["pending", "confirmed", "packed", "shipped", "delivered", "cancelled"];
-const DISPATCH_STATUSES: DispatchStatus[] = ["pending", "assigned", "packed", "dispatched", "delivered"];
+const ORDER_STATUSES: OrderStatus[] = ["pending", "assigned", "packed", "dispatched", "delivered", "cancelled"];
 
 const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
   pending: "bg-gray-200 text-gray-900 border-transparent",
-  confirmed: "bg-blue-200 text-blue-900 border-transparent",
+  assigned: "bg-blue-200 text-blue-900 border-transparent",
   packed: "bg-yellow-200 text-yellow-900 border-transparent",
-  shipped: "bg-purple-200 text-purple-900 border-transparent",
+  dispatched: "bg-purple-200 text-purple-900 border-transparent",
   delivered: "bg-green-200 text-green-900 border-transparent",
   cancelled: "bg-red-200 text-red-900 border-transparent",
 };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   pending: "Pending",
-  confirmed: "Confirmed",
-  packed: "Packed",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-};
-
-const DISPATCH_LABELS: Record<DispatchStatus, string> = {
-  pending: "Pending",
   assigned: "Assigned",
   packed: "Packed",
   dispatched: "Dispatched",
   delivered: "Delivered",
-};
-
-const DISPATCH_BADGE_CLASSES: Record<DispatchStatus, string> = {
-  pending: "bg-gray-200 text-gray-900 border-transparent",
-  assigned: "bg-blue-200 text-blue-900 border-transparent",
-  packed: "bg-yellow-200 text-yellow-900 border-transparent",
-  dispatched: "bg-purple-200 text-purple-900 border-transparent",
-  delivered: "bg-green-200 text-green-900 border-transparent",
+  cancelled: "Cancelled",
 };
 
 const TIMELINE_EVENT_LABELS: Record<string, string> = {
@@ -77,20 +46,41 @@ const TIMELINE_EVENT_LABELS: Record<string, string> = {
   NOTE_ADDED: "Note Added",
 };
 
-const isOrderStatus = (value: string): value is OrderStatus =>
-  ORDER_STATUSES.includes(value as OrderStatus);
+const isOrderStatus = (value: string): value is OrderStatus => ORDER_STATUSES.includes(value as OrderStatus);
 
-const isDispatchStatus = (value: string): value is DispatchStatus =>
-  DISPATCH_STATUSES.includes(value as DispatchStatus);
+const getUnifiedOrderStatus = (order: any): OrderStatus => {
+  const status = String(order?.status ?? "").toLowerCase();
+  const dispatchStatus = String(order?.dispatch_status ?? "").toLowerCase();
+
+  if (status === "cancelled") return "cancelled";
+  if (status === "delivered" || dispatchStatus === "delivered") return "delivered";
+  if (status === "shipped" || dispatchStatus === "dispatched") return "dispatched";
+  if (status === "packed" || dispatchStatus === "packed") return "packed";
+  if (status === "confirmed" || dispatchStatus === "assigned") return "assigned";
+  return "pending";
+};
+
+const toDbOrderUpdate = (status: OrderStatus): { status: string; dispatch_status: string } => {
+  switch (status) {
+    case "assigned":
+      return { status: "confirmed", dispatch_status: "assigned" };
+    case "packed":
+      return { status: "packed", dispatch_status: "packed" };
+    case "dispatched":
+      return { status: "shipped", dispatch_status: "dispatched" };
+    case "delivered":
+      return { status: "delivered", dispatch_status: "delivered" };
+    case "cancelled":
+      return { status: "cancelled", dispatch_status: "pending" };
+    case "pending":
+    default:
+      return { status: "pending", dispatch_status: "pending" };
+  }
+};
 
 const OrderStatusBadge = ({ status }: { status: string }) => {
   const normalizedStatus: OrderStatus = isOrderStatus(status) ? status : "pending";
   return <Badge className={STATUS_BADGE_CLASSES[normalizedStatus]}>{STATUS_LABELS[normalizedStatus]}</Badge>;
-};
-
-const DispatchStatusBadge = ({ status }: { status: string | null | undefined }) => {
-  const normalizedStatus: DispatchStatus = isDispatchStatus(status ?? "") ? (status as DispatchStatus) : "pending";
-  return <Badge className={DISPATCH_BADGE_CLASSES[normalizedStatus]}>{DISPATCH_LABELS[normalizedStatus]}</Badge>;
 };
 
 const getOrderSchools = (order: any): string[] => {
@@ -157,30 +147,14 @@ const OrdersPage = () => {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const [schoolFilter, setSchoolFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dispatchFilter, setDispatchFilter] = useState<string>("all");
+  const [gstFilter, setGstFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("all");
-  const [schoolSort, setSchoolSort] = useState<SortDir>(null);
-  const [groupBySchool, setGroupBySchool] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
-  const [bulkStatusTarget, setBulkStatusTarget] = useState<OrderStatus | null>(null);
-  const [bulkActionLabel, setBulkActionLabel] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
-
-  const { data: schools } = useQuery({
-    queryKey: ["admin-schools-filter"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("id, name").order("name");
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const { data: branches } = useQuery({
     queryKey: ["admin-branches-filter"],
@@ -252,23 +226,16 @@ const OrdersPage = () => {
     let filtered = orders as any[];
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
-    if (schoolFilter !== "all") {
-      filtered = filtered.filter((order) => {
-        const items = order.order_items || [];
-        return order.school_id === schoolFilter || items.some((i: any) => i.products?.school_id === schoolFilter);
-      });
-    }
-
     if (branchFilter !== "all") {
       filtered = filtered.filter((order) => order.branch_id === branchFilter);
     }
 
     if (statusFilter !== "all") {
-      filtered = filtered.filter((order) => order.status === statusFilter);
+      filtered = filtered.filter((order) => getUnifiedOrderStatus(order) === statusFilter);
     }
 
-    if (dispatchFilter !== "all") {
-      filtered = filtered.filter((order) => (order.dispatch_status ?? "pending") === dispatchFilter);
+    if (gstFilter === "gst_only") {
+      filtered = filtered.filter((order) => Boolean(order.is_gst_order));
     }
 
     if (normalizedSearch) {
@@ -281,43 +248,8 @@ const OrdersPage = () => {
 
     filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
 
-    if (schoolSort) {
-      filtered = [...filtered].sort((a, b) => {
-        const aSchool = getOrderSchools(a)[0] || "";
-        const bSchool = getOrderSchools(b)[0] || "";
-        return schoolSort === "asc"
-          ? aSchool.localeCompare(bSchool)
-          : bSchool.localeCompare(aSchool);
-      });
-    }
-
     return filtered;
-  }, [orders, schoolFilter, branchFilter, statusFilter, dispatchFilter, searchQuery, dateFilter, schoolSort]);
-
-  // Summary counts
-  const summaryCards = useMemo(() => {
-    if (!orders) return [];
-    const counts: Record<string, number> = {};
-    (orders as any[]).forEach((order) => {
-      getOrderSchools(order).forEach((s) => {
-        counts[s] = (counts[s] || 0) + 1;
-      });
-    });
-    return Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
-  }, [orders]);
-
-  // Grouped orders
-  const groupedOrders = useMemo(() => {
-    if (!groupBySchool) return null;
-    const groups: Record<string, any[]> = {};
-    processedOrders.forEach((order) => {
-      const schoolNames = getOrderSchools(order);
-      const key = schoolNames.length > 0 ? schoolNames[0] : "Unknown School";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(order);
-    });
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [processedOrders, groupBySchool]);
+  }, [orders, branchFilter, statusFilter, gstFilter, searchQuery, dateFilter]);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -328,13 +260,15 @@ const OrdersPage = () => {
       return;
     }
 
+    const payload = toDbOrderUpdate(status);
+
     let { error } = await supabase
       .from("orders")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ ...payload, updated_at: new Date().toISOString() })
       .eq("id", orderId);
 
     if (error?.message?.toLowerCase().includes("updated_at")) {
-      const retry = await supabase.from("orders").update({ status }).eq("id", orderId);
+      const retry = await supabase.from("orders").update(payload).eq("id", orderId);
       error = retry.error;
     }
 
@@ -352,32 +286,6 @@ const OrdersPage = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
       queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
     }
-  };
-
-  const updateDispatchStatus = async (orderId: string, dispatchStatus: string) => {
-    if (!isDispatchStatus(dispatchStatus)) {
-      toast.error("Invalid dispatch status");
-      return;
-    }
-
-    let { error } = await (supabase as any)
-      .from("orders")
-      .update({ dispatch_status: dispatchStatus, updated_at: new Date().toISOString() })
-      .eq("id", orderId);
-
-    if (error?.message?.toLowerCase().includes("updated_at")) {
-      const retry = await (supabase as any).from("orders").update({ dispatch_status: dispatchStatus }).eq("id", orderId);
-      error = retry.error;
-    }
-
-    if (error) {
-      toast.error("Failed to update dispatch status");
-      return;
-    }
-
-    toast.success("Dispatch status updated");
-    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
-    queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
   };
 
   const assignOrderBranch = async (orderId: string, branchId: string | null) => {
@@ -401,59 +309,14 @@ const OrdersPage = () => {
 
     toast.success(branchId ? "Branch assigned" : "Branch cleared");
     queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
-  };
-
-  const allVisibleIds = processedOrders.map((o) => o.id);
-  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selectedIds.includes(id));
-
-  const toggleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(Array.from(new Set([...selectedIds, ...allVisibleIds])));
-      return;
-    }
-    setSelectedIds((prev) => prev.filter((id) => !allVisibleIds.includes(id)));
-  };
-
-  const toggleSelectOne = (id: string, checked: boolean) => {
-    setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
-  };
-
-  const askBulkStatusChange = (status: OrderStatus, label: string) => {
-    setBulkStatusTarget(status);
-    setBulkActionLabel(label);
-    setBulkConfirmOpen(true);
-  };
-
-  const runBulkStatusChange = async () => {
-    if (!bulkStatusTarget || selectedIds.length === 0) return;
-
-    let { error } = await supabase
-      .from("orders")
-      .update({ status: bulkStatusTarget, updated_at: new Date().toISOString() })
-      .in("id", selectedIds);
-
-    if (error?.message?.toLowerCase().includes("updated_at")) {
-      const retry = await supabase.from("orders").update({ status: bulkStatusTarget }).in("id", selectedIds);
-      error = retry.error;
-    }
-
-    if (error) {
-      toast.error("Bulk update failed");
-      return;
-    }
-
-    toast.success(`Updated ${selectedIds.length} orders`);
-    setSelectedIds([]);
-    setBulkConfirmOpen(false);
-    setBulkStatusTarget(null);
-    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
   };
 
   const exportSelectedOrders = () => {
-    const selectedOrders = (orders as any[] | undefined)?.filter((o) => selectedIds.includes(o.id)) ?? [];
+    const selectedOrders = processedOrders;
     if (selectedOrders.length === 0) return;
 
-    const header = ["Order ID", "Customer", "Phone", "School", "Branch", "Items", "Total", "Status", "Dispatch", "Date"];
+    const header = ["Order ID", "Customer", "Phone", "School", "Branch", "Items", "Total", "Status", "GST Order", "GST Number", "Date"];
     const lines = selectedOrders.map((order) => {
       const row = [
         order.id,
@@ -463,8 +326,9 @@ const OrdersPage = () => {
         order.branches?.name ?? "",
         getItemSummary(order),
         order.total_amount,
-        order.status,
-        order.dispatch_status ?? "pending",
+        getUnifiedOrderStatus(order),
+        order.is_gst_order ? "Yes" : "No",
+        order.gst_number ?? "",
         order.created_at,
       ];
       return row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
@@ -529,10 +393,6 @@ const OrdersPage = () => {
     if (selectedOrder) queryClient.invalidateQueries({ queryKey: ["order-meta", selectedOrder] });
   };
 
-  const toggleSchoolSort = () => {
-    setSchoolSort((prev) => (prev === null ? "asc" : prev === "asc" ? "desc" : null));
-  };
-
   const selected = (orders as any[])?.find((o) => o.id === selectedOrder);
   const noteDerivedStudent = useMemo(
     () => parseStudentFieldsFromNotes((orderMeta as any)?.order_notes),
@@ -547,20 +407,21 @@ const OrdersPage = () => {
   const renderOrderRow = (order: any) => {
     const schoolNames = getOrderSchools(order);
     const itemSummary = getItemSummary(order);
-    const dispatchStatus = isDispatchStatus(order.dispatch_status) ? order.dispatch_status : "pending";
+    const unifiedStatus = getUnifiedOrderStatus(order);
+    const hasAssignedBranch = Boolean(order.branch_id);
     const branchValue = order.branch_id ?? "__unassigned__";
 
     return (
       <TableRow key={order.id}>
-        <TableCell>
-          <Checkbox
-            checked={selectedIds.includes(order.id)}
-            onCheckedChange={(value) => toggleSelectOne(order.id, Boolean(value))}
-            aria-label={`Select order ${order.id}`}
-          />
-        </TableCell>
         <TableCell className="text-xs font-mono">{order.id.slice(0, 8).toUpperCase()}</TableCell>
-        <TableCell className="text-sm">{order.customer_name}</TableCell>
+        <TableCell className="text-sm">
+          <div className="flex items-center gap-2">
+            <span>{order.customer_name}</span>
+            {order.is_gst_order && (
+              <Badge className="bg-emerald-100 text-emerald-900 border-transparent">GST</Badge>
+            )}
+          </div>
+        </TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
         <TableCell>
           <Select
@@ -568,10 +429,10 @@ const OrdersPage = () => {
             onValueChange={(value) => assignOrderBranch(order.id, value === "__unassigned__" ? null : value)}
           >
             <SelectTrigger className="w-48 h-8 text-xs">
-              <SelectValue placeholder="Assign branch" />
+              <SelectValue placeholder="Assign Branch" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__unassigned__">Unassigned</SelectItem>
+              <SelectItem value="__unassigned__">Assign Branch</SelectItem>
               {(branches ?? []).map((branch) => (
                 <SelectItem key={branch.id} value={branch.id}>
                   {branch.name}
@@ -586,10 +447,11 @@ const OrdersPage = () => {
         <TableCell className="text-sm">{formatPrice(order.total_amount)}</TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
-            <OrderStatusBadge status={order.status} />
+            <OrderStatusBadge status={unifiedStatus} />
             <Select
-              value={isOrderStatus(order.status) ? order.status : "pending"}
+              value={unifiedStatus}
               onValueChange={(value) => updateOrderStatus(order.id, value)}
+              disabled={!hasAssignedBranch}
             >
               <SelectTrigger className="w-36 h-8 text-xs">
                 <SelectValue />
@@ -606,26 +468,6 @@ const OrdersPage = () => {
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {new Date(order.created_at).toLocaleDateString()}
-        </TableCell>
-        <TableCell>
-          <div className="flex items-center gap-2">
-            <DispatchStatusBadge status={dispatchStatus} />
-            <Select
-              value={dispatchStatus}
-              onValueChange={(value) => updateDispatchStatus(order.id, value)}
-            >
-              <SelectTrigger className="w-36 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DISPATCH_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {DISPATCH_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2 flex-wrap">
@@ -654,8 +496,6 @@ const OrdersPage = () => {
     );
   };
 
-  const SortIcon = schoolSort === "asc" ? ArrowUp : schoolSort === "desc" ? ArrowDown : ArrowUpDown;
-
   return (
     <div>
       <h1 className="text-xl font-light tracking-[0.1em] uppercase mb-6">Orders</h1>
@@ -666,32 +506,11 @@ const OrdersPage = () => {
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Orders</p>
           <p className="text-2xl font-light">{orders?.length || 0}</p>
         </div>
-        {summaryCards.map(([school, count]) => (
-          <div key={school} className="border border-border p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{school}</p>
-            <p className="text-2xl font-light">{count}</p>
-          </div>
-        ))}
       </div>
 
       {/* Filter Bar */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
-            <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-              <SelectTrigger className="w-48 h-9 text-xs">
-                <SelectValue placeholder="All Schools" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Schools</SelectItem>
-                {schools?.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Status</span>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -703,23 +522,6 @@ const OrdersPage = () => {
                 {ORDER_STATUSES.map((status) => (
                   <SelectItem key={status} value={status}>
                     {STATUS_LABELS[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Dispatch</span>
-            <Select value={dispatchFilter} onValueChange={setDispatchFilter}>
-              <SelectTrigger className="w-44 h-9 text-xs">
-                <SelectValue placeholder="All Dispatch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {DISPATCH_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {DISPATCH_LABELS[status]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -739,6 +541,19 @@ const OrdersPage = () => {
                     {branch.name}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">GST</span>
+            <Select value={gstFilter} onValueChange={setGstFilter}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="All Orders" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Orders</SelectItem>
+                <SelectItem value="gst_only">GST Orders Only</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -764,41 +579,9 @@ const OrdersPage = () => {
             placeholder="Search name or phone"
             className="h-9 lg:max-w-xs text-sm"
           />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={toggleSchoolSort}
-            >
-              <span className="flex items-center gap-1">
-                Sort <SortIcon className="h-3 w-3" />
-              </span>
-            </Button>
-          </div>
-
-          <div className="ml-auto flex items-center gap-1 border border-border">
-            <Button
-              variant={!groupBySchool ? "default" : "ghost"}
-              size="sm"
-              className="text-xs h-9 rounded-none gap-1"
-              onClick={() => setGroupBySchool(false)}
-            >
-              <LayoutList className="h-3 w-3" /> Flat
-            </Button>
-            <Button
-              variant={groupBySchool ? "default" : "ghost"}
-              size="sm"
-              className="text-xs h-9 rounded-none gap-1"
-              onClick={() => setGroupBySchool(true)}
-            >
-              <Group className="h-3 w-3" /> Group by School
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" className="h-9 text-xs" onClick={exportSelectedOrders}>
+            Export
+          </Button>
         </div>
       </div>
 
@@ -807,89 +590,32 @@ const OrdersPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={(value) => toggleSelectAll(Boolean(value))}
-                  aria-label="Select all orders"
-                />
-              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
-              <TableHead
-                className="text-xs tracking-wider uppercase cursor-pointer select-none hover:text-foreground"
-                onClick={toggleSchoolSort}
-              >
-                <span className="flex items-center gap-1">
-                  School <SortIcon className="h-3 w-3" />
-                </span>
-              </TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Items</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Amount</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Dispatch</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Date</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Order Date</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : processedOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
               </TableRow>
-            ) : groupBySchool && groupedOrders ? (
-              groupedOrders.map(([schoolName, schoolOrders]) => (
-                <>
-                  <TableRow key={`group-${schoolName}`}>
-                    <TableCell
-                      colSpan={11}
-                      className="bg-muted/30 text-xs font-medium tracking-[0.15em] uppercase py-3 border-b border-border"
-                    >
-                      {schoolName} — {schoolOrders.length} order{schoolOrders.length !== 1 ? "s" : ""}
-                    </TableCell>
-                  </TableRow>
-                  {schoolOrders.map(renderOrderRow)}
-                </>
-              ))
             ) : (
               processedOrders.map(renderOrderRow)
             )}
           </TableBody>
         </Table>
       </div>
-
-      {selectedIds.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
-          <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("confirmed", "Mark as Confirmed")}>Mark Confirmed</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("packed", "Mark as Packed")}>Mark Packed</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("shipped", "Mark as Shipped")}>Mark Shipped</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("delivered", "Mark as Delivered")}>Mark Delivered</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => askBulkStatusChange("cancelled", "Cancel Orders")}>Cancel Orders</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={exportSelectedOrders}>Export Selected</Button>
-          <Button size="sm" variant="ghost" className="h-8 text-xs text-white hover:text-white" onClick={() => setSelectedIds([])}>Clear</Button>
-        </div>
-      )}
-
-      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{bulkActionLabel}</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to apply this action to {selectedIds.length} selected orders?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={runBulkStatusChange}>Confirm</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Order Detail Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
@@ -906,29 +632,7 @@ const OrdersPage = () => {
             <div className="space-y-6 px-6 pb-6 overflow-y-auto max-h-[calc(88vh-88px)]">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
-                <OrderStatusBadge status={selected.status} />
-              </div>
-
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Dispatch</p>
-                <div className="flex items-center gap-2">
-                  <DispatchStatusBadge status={selected.dispatch_status} />
-                  <Select
-                    value={isDispatchStatus(selected.dispatch_status) ? selected.dispatch_status : "pending"}
-                    onValueChange={(value) => updateDispatchStatus(selected.id, value)}
-                  >
-                    <SelectTrigger className="w-40 h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DISPATCH_STATUSES.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {DISPATCH_LABELS[status]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <OrderStatusBadge status={getUnifiedOrderStatus(selected)} />
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -951,6 +655,10 @@ const OrdersPage = () => {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
                   <p>{selected.phone}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">GST</p>
+                  <p>{selected.is_gst_order ? `GST Order${selected.gst_number ? ` · ${selected.gst_number}` : ""}` : "Non-GST Order"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Alternate Phone</p>

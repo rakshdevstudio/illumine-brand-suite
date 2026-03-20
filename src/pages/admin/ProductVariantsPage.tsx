@@ -97,7 +97,7 @@ const ProductVariantsPage = () => {
       const payload: any = {
         product_id: form.product_id,
         size: form.size,
-        stock: parseInt(form.stock) || 0,
+        stock: 0,
       };
       if (form.price_override) payload.price_override = parseFloat(form.price_override);
       
@@ -118,25 +118,9 @@ const ProductVariantsPage = () => {
   };
 
   const handleAdjustStock = async () => {
-    if (!adjusting || adjustAmount === 0) return;
-    const newStock = Math.max(0, adjusting.stock + adjustAmount);
-    try {
-      await supabase.from("product_variants").update({ stock: newStock }).eq("id", adjusting.id);
-      await supabase.from("inventory_logs").insert({
-        product_id: adjusting.product_id,
-        variant_id: adjusting.id,
-        change_type: adjustAmount > 0 ? "restock" : "adjustment",
-        quantity_change: adjustAmount,
-        previous_stock: adjusting.stock,
-        new_stock: newStock,
-      });
-      queryClient.invalidateQueries({ queryKey: ["admin-variants"] });
-      toast.success("Stock updated");
-      setAdjusting(null);
-      setAdjustAmount(0);
-    } catch {
-      toast.error("Failed to update stock");
-    }
+    toast.error("Stock is managed per branch. Use Inventory page to adjust branch inventory.");
+    setAdjusting(null);
+    setAdjustAmount(0);
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
@@ -334,11 +318,13 @@ const ProductVariantsPage = () => {
         <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide">
-              Adjust Stock — {adjusting?.products?.name} (Size {adjusting?.size})
+              Stock Managed by Branch
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-muted-foreground mb-4">Current stock: {adjusting?.stock}</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Variant stock is no longer adjusted here. Use Admin Inventory to adjust branch inventory rows.
+            </p>
             <div className="flex items-center gap-3">
               <button onClick={() => setAdjustAmount((a) => a - 1)}
                 className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors">
@@ -351,11 +337,11 @@ const ProductVariantsPage = () => {
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              New stock: {adjusting ? Math.max(0, adjusting.stock + adjustAmount) : 0}
+              Branch stock updates are handled in Inventory.
             </p>
           </div>
-          <Button onClick={handleAdjustStock} disabled={adjustAmount === 0} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
-            Update Stock
+          <Button onClick={handleAdjustStock} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
+            Open Inventory Workflow
           </Button>
         </DialogContent>
       </Dialog>

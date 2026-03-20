@@ -28,6 +28,21 @@ type BranchInventoryRow = {
   } | null;
 };
 
+type InventoryMovementRow = {
+  id: string;
+  branch_id: string;
+  variant_id: string;
+  type: "IN" | "OUT" | "ADJUSTMENT" | "TRANSFER";
+  quantity: number;
+  before_stock: number;
+  after_stock: number;
+  reason?: string | null;
+  reference_type: "ORDER" | "MANUAL" | "SYSTEM";
+  created_at: string;
+  branches?: { name?: string } | null;
+  product_variants?: { size?: string | null; products?: { name?: string } | null } | null;
+};
+
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
@@ -40,6 +55,8 @@ const InventoryPage = () => {
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [initializing, setInitializing] = useState(false);
+  const [adjustReason, setAdjustReason] = useState("");
+  const [bulkReason, setBulkReason] = useState("");
 
   const { data: branches } = useQuery({
     queryKey: ["admin-branches-filter"],
@@ -82,6 +99,25 @@ const InventoryPage = () => {
 
       if (error) throw error;
       return (data ?? []) as BranchInventoryRow[];
+    },
+  });
+
+  const { data: movements, isLoading: loadingMovements } = useQuery({
+    queryKey: ["admin-inventory-movements", branchFilter],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("inventory_movements")
+        .select("id, branch_id, variant_id, type, quantity, before_stock, after_stock, reason, reference_type, created_at, branches(name), product_variants(size, products(name))")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (branchFilter !== "all") {
+        query = query.eq("branch_id", branchFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as InventoryMovementRow[];
     },
   });
 
@@ -129,12 +165,20 @@ const InventoryPage = () => {
 
   const handleAdjustStock = async (row: BranchInventoryRow) => {
     if (adjustAmount === 0) return;
+    if (!adjustReason.trim()) {
+      toast.error("Adjustment reason is required");
+      return;
+    }
 
-    const nextStock = Math.max(0, Number(row.stock || 0) + adjustAmount);
-    const { error } = await supabase
-      .from("branch_inventory")
-      .update({ stock: nextStock, updated_at: new Date().toISOString() })
-      .eq("id", row.id);
+    const movementType = adjustAmount > 0 ? "IN" : "ADJUSTMENT";
+    const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+      p_branch_id: row.branch_id,
+      p_variant_id: row.variant_id,
+      p_type: movementType,
+      p_quantity: adjustAmount,
+      p_reference_type: "MANUAL",
+      p_reason: adjustReason.trim(),
+    });
 
     if (error) {
       toast.error("Failed to update stock");
@@ -143,21 +187,33 @@ const InventoryPage = () => {
 
     toast.success("Branch stock updated");
     setAdjustAmount(0);
+    setAdjustReason("");
     setAdjusting(null);
-    queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+    ]);
   };
 
   const runBulkAdjust = async () => {
     if (bulkAdjust === 0 || selectedIds.length === 0) return;
+    if (!bulkReason.trim()) {
+      toast.error("Adjustment reason is required for bulk actions");
+      return;
+    }
 
     const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.id));
+    const movementType = bulkAdjust > 0 ? "IN" : "ADJUSTMENT";
 
     for (const row of selectedRows) {
-      const nextStock = Math.max(0, Number(row.stock || 0) + bulkAdjust);
-      const { error } = await supabase
-        .from("branch_inventory")
-        .update({ stock: nextStock, updated_at: new Date().toISOString() })
-        .eq("id", row.id);
+      const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+        p_branch_id: row.branch_id,
+        p_variant_id: row.variant_id,
+        p_type: movementType,
+        p_quantity: bulkAdjust,
+        p_reference_type: "MANUAL",
+        p_reason: bulkReason.trim(),
+      });
       if (error) {
         toast.error(`Failed for ${row.product_variants?.products?.name ?? "item"}`);
         return;
@@ -166,9 +222,13 @@ const InventoryPage = () => {
 
     toast.success(`Adjusted stock for ${selectedRows.length} branch inventory rows`);
     setBulkAdjust(0);
+    setBulkReason("");
     setSelectedIds([]);
     setBulkConfirmOpen(false);
-    queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+    ]);
   };
 
   const exportSelectedInventory = () => {
@@ -326,9 +386,15 @@ const InventoryPage = () => {
                               <Input type="number" value={adjustAmount} onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)} className="w-24 text-center h-10" />
                               <button onClick={() => setAdjustAmount((a) => a + 1)} className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors"><Plus className="h-3 w-3" /></button>
                             </div>
+                            <Input
+                              value={adjustReason}
+                              onChange={(e) => setAdjustReason(e.target.value)}
+                              placeholder="Reason (required)"
+                              className="mt-3 h-10"
+                            />
                             <p className="text-xs text-muted-foreground mt-2">New stock: {Math.max(0, stock + adjustAmount)}</p>
                           </div>
-                          <Button onClick={() => handleAdjustStock(row)} disabled={adjustAmount === 0} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
+                          <Button onClick={() => handleAdjustStock(row)} disabled={adjustAmount === 0 || !adjustReason.trim()} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
                             Update Stock
                           </Button>
                         </DialogContent>
@@ -346,6 +412,7 @@ const InventoryPage = () => {
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
           <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
           <Input type="number" value={bulkAdjust} onChange={(e) => setBulkAdjust(parseInt(e.target.value || "0") || 0)} className="h-8 w-24 text-xs bg-white text-black" placeholder="±Stock" />
+          <Input value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} className="h-8 w-44 text-xs bg-white text-black" placeholder="Reason" />
           <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setBulkConfirmOpen(true)}>Adjust Stock</Button>
           <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={exportSelectedInventory}>Export</Button>
           <Button size="sm" variant="ghost" className="h-8 text-xs text-white hover:text-white" onClick={() => setSelectedIds([])}>Clear</Button>
@@ -362,10 +429,48 @@ const InventoryPage = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={runBulkAdjust} disabled={bulkAdjust === 0}>Confirm</AlertDialogAction>
+            <AlertDialogAction onClick={runBulkAdjust} disabled={bulkAdjust === 0 || !bulkReason.trim()}>Confirm</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <div className="mt-8 border border-border">
+        <div className="px-4 py-3 border-b border-border text-xs uppercase tracking-[0.12em]">Recent Inventory Movements</div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs tracking-wider uppercase">Time</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Type</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Delta</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Before → After</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Reason</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loadingMovements ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-6 text-sm text-muted-foreground">Loading movement history...</TableCell></TableRow>
+            ) : (movements ?? []).length === 0 ? (
+              <TableRow><TableCell colSpan={8} className="text-center py-6 text-sm text-muted-foreground">No inventory movements found</TableCell></TableRow>
+            ) : (
+              (movements ?? []).map((movement) => (
+                <TableRow key={movement.id}>
+                  <TableCell className="text-xs text-muted-foreground">{new Date(movement.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-sm">{movement.branches?.name ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{movement.product_variants?.products?.name ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{movement.product_variants?.size ?? "default"}</TableCell>
+                  <TableCell className="text-xs uppercase tracking-wide">{movement.type}</TableCell>
+                  <TableCell className="text-sm font-medium">{movement.quantity > 0 ? `+${movement.quantity}` : movement.quantity}</TableCell>
+                  <TableCell className="text-sm">{movement.before_stock} → {movement.after_stock}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{movement.reason || movement.reference_type}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 };

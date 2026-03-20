@@ -64,7 +64,7 @@ const InvoicePage = () => {
     queryKey: ["admin-invoice", orderId],
     enabled: !!orderId,
     queryFn: async () => {
-      const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
+      const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, gst_number, is_gst_order, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
       const legacyFields = "id, customer_name, phone, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
 
       let { data, error } = await supabase
@@ -91,6 +91,8 @@ const InvoicePage = () => {
                 alternate_phone: null,
                 student_name: null,
                 grade: null,
+                gst_number: null,
+                is_gst_order: false,
               }
             : null;
           error = fallback.error;
@@ -111,6 +113,9 @@ const InvoicePage = () => {
   const grade = (order as any)?.grade || noteDerivedStudent.grade || "-";
   const alternatePhoneRaw = (order as any)?.alternate_phone || noteDerivedStudent.alternatePhone || "";
   const alternatePhone = alternatePhoneRaw && alternatePhoneRaw !== "—" ? alternatePhoneRaw : "-";
+  const gstNumber = ((order as any)?.gst_number ?? "").trim();
+  const isGstOrder = Boolean((order as any)?.is_gst_order) && !!gstNumber;
+  const invoiceTypeLabel = isGstOrder ? "TAX INVOICE" : "RETAIL INVOICE";
 
   const invoiceNumber = useMemo(() => {
     if (!order?.id) return "ILLUME-PREVIEW";
@@ -206,7 +211,7 @@ const InvoicePage = () => {
     };
 
     draw("ILLUME", 88, 786, 16, "medium");
-    draw("INVOICE", 470, 786, 14, "medium");
+    draw(invoiceTypeLabel, 430, 786, 14, "medium");
     draw("Premium School Uniforms", 88, 770, 10);
 
     draw(`Invoice # ${invoiceNumber}`, 40, 738, 10, "medium");
@@ -221,8 +226,14 @@ const InvoicePage = () => {
     draw(`Alternate Phone: ${alternatePhone}`, 40, 620, 10);
     draw(`Student Name: ${studentName}`, 40, 604, 10);
     draw(`Grade: ${grade}`, 40, 588, 10);
-    draw(order.address || "-", 40, 572, 10);
-    draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
+    if (isGstOrder) {
+      draw(`GSTIN: ${gstNumber}`, 40, 572, 10, "medium");
+      draw(order.address || "-", 40, 556, 10);
+      draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 540, 10);
+    } else {
+      draw(order.address || "-", 40, 572, 10);
+      draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
+    }
 
     line(538);
 
@@ -333,7 +344,7 @@ const InvoicePage = () => {
               <p className="text-sm text-muted-foreground">Premium School Uniforms</p>
             </div>
           </div>
-          <h2 className="text-lg md:text-xl font-medium tracking-[0.14em]">INVOICE</h2>
+          <h2 className="text-lg md:text-xl font-medium tracking-[0.14em]">{invoiceTypeLabel}</h2>
         </header>
 
         <div className="relative z-10 text-sm space-y-1">
@@ -351,6 +362,7 @@ const InvoicePage = () => {
           <p>Alternate Phone: {alternatePhone}</p>
           <p>Student Name: {studentName}</p>
           <p>Grade: {grade}</p>
+          {isGstOrder && <p>GSTIN: {gstNumber}</p>}
           <p>{order.address || "-"}</p>
           <p>{`${order.city || "-"} ${order.pincode || ""}`.trim()}</p>
         </section>

@@ -18,8 +18,8 @@ const InventoryAlertsPage = () => {
     queryKey: ["admin-inventory-alerts"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("product_variants")
-        .select("*, products(name)")
+        .from("branch_inventory")
+        .select("id, branch_id, variant_id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
         .order("stock", { ascending: true });
 
       if (error) throw error;
@@ -30,12 +30,13 @@ const InventoryAlertsPage = () => {
 
   const rows = useMemo(() => variants ?? [], [variants]);
   const thresholdColumnAvailable = !thresholdColumnForcedUnavailable && (
-    rows.length === 0 || rows.some((variant: any) => Object.prototype.hasOwnProperty.call(variant, "low_stock_threshold"))
+    rows.length === 0 || rows.some((variant: any) => Object.prototype.hasOwnProperty.call(variant.product_variants ?? {}, "low_stock_threshold"))
   );
 
   const getDraftValue = (variant: any) => {
-    if (drafts[variant.id] !== undefined) return drafts[variant.id];
-    return String(getLowStockThreshold(variant.low_stock_threshold));
+    const key = variant.variant_id ?? variant.id;
+    if (drafts[key] !== undefined) return drafts[key];
+    return String(getLowStockThreshold(variant.product_variants?.low_stock_threshold));
   };
 
   const handleThresholdSave = async (variantId: string) => {
@@ -100,6 +101,7 @@ const InventoryAlertsPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Current Stock</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Alert Threshold</TableHead>
@@ -109,33 +111,34 @@ const InventoryAlertsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-destructive">
+                <TableCell colSpan={6} className="text-center py-8 text-sm text-destructive">
                   {(error as Error)?.message || "Failed to load inventory alerts"}
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
                   No variants found
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((variant: any) => {
-                const threshold = getLowStockThreshold(variant.low_stock_threshold);
-                const lowStock = isLowStock(variant.stock, variant.low_stock_threshold);
+                const threshold = getLowStockThreshold(variant.product_variants?.low_stock_threshold);
+                const lowStock = isLowStock(variant.stock, variant.product_variants?.low_stock_threshold);
                 const draftValue = getDraftValue(variant);
                 const isDirty = draftValue !== String(threshold);
 
                 return (
                   <TableRow key={variant.id} className={lowStock ? "bg-red-50" : undefined}>
-                    <TableCell className="text-sm font-medium">{variant.products?.name || "Product"}</TableCell>
-                    <TableCell className="text-sm">{variant.size}</TableCell>
+                    <TableCell className="text-sm font-medium">{variant.product_variants?.products?.name || "Product"}</TableCell>
+                    <TableCell className="text-sm">{variant.branches?.name || "Branch"}</TableCell>
+                    <TableCell className="text-sm">{variant.product_variants?.size}</TableCell>
                     <TableCell className={lowStock ? "text-red-600 font-medium" : "text-sm font-medium"}>
                       {variant.stock}
                     </TableCell>
@@ -147,7 +150,7 @@ const InventoryAlertsPage = () => {
                         onChange={(e) =>
                           setDrafts((prev) => ({
                             ...prev,
-                            [variant.id]: e.target.value,
+                            [variant.variant_id]: e.target.value,
                           }))
                         }
                         className="h-9 w-28"
@@ -158,10 +161,10 @@ const InventoryAlertsPage = () => {
                         size="sm"
                         variant="outline"
                         className="text-xs"
-                        disabled={!thresholdColumnAvailable || !isDirty || savingId === variant.id}
-                        onClick={() => handleThresholdSave(variant.id)}
+                        disabled={!thresholdColumnAvailable || !isDirty || savingId === variant.variant_id}
+                        onClick={() => handleThresholdSave(variant.variant_id)}
                       >
-                        {savingId === variant.id ? "Saving..." : "Save"}
+                        {savingId === variant.variant_id ? "Saving..." : "Save"}
                       </Button>
                     </TableCell>
                   </TableRow>

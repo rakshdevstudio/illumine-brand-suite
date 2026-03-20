@@ -1,10 +1,11 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
+import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -27,6 +28,7 @@ const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
   const [searchParams] = useSearchParams();
   const setProfile = useStudentProfile((s) => s.setProfile);
+  const { activeBranchId, activeBranch } = useStoreActiveBranch();
   const debugMode = searchParams.get("debug") === "true";
 
   const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
@@ -102,6 +104,35 @@ const ClassProductsPage = () => {
     },
   });
 
+  const allVariantIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (products ?? []).flatMap((product: any) => (product.product_variants ?? []).map((variant: any) => variant.id))
+        )
+      ),
+    [products]
+  );
+
+  const { data: branchInventoryRows } = useQuery({
+    queryKey: ["store-class-products-branch-inventory", activeBranchId, allVariantIds.join(",")],
+    enabled: !!activeBranchId && allVariantIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("branch_inventory")
+        .select("variant_id, stock")
+        .eq("branch_id", activeBranchId)
+        .in("variant_id", allVariantIds);
+      if (error) throw error;
+      return (data ?? []) as Array<{ variant_id: string; stock: number }>;
+    },
+  });
+
+  const branchStockByVariant = useMemo(
+    () => new Map((branchInventoryRows ?? []).map((row) => [row.variant_id, Number(row.stock ?? 0)])),
+    [branchInventoryRows]
+  );
+
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
@@ -150,9 +181,10 @@ const ClassProductsPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-14 md:gap-y-16">
           {products.map((product, index) => {
-            const totalStock = product.product_variants?.reduce(
-              (s: number, v: any) => s + v.stock, 0
-            ) ?? 0;
+            const totalStock = (product.product_variants ?? []).reduce(
+              (sum: number, variant: any) => sum + Number(branchStockByVariant.get(variant.id) ?? 0),
+              0
+            );
             const galleryImages = getProductGalleryImages(product as any);
             const primaryImage = galleryImages[0] || "/placeholder.svg";
             const secondaryImage = galleryImages[1] && galleryImages[1] !== primaryImage ? galleryImages[1] : null;
@@ -167,8 +199,8 @@ const ClassProductsPage = () => {
             const stockLabel = totalStock <= 0
               ? "Out of stock"
               : isLowStock
-                ? "Low stock — only few left"
-                : "In stock";
+                ? `Low stock at ${activeBranch?.name ?? "selected branch"}`
+                : `In stock at ${activeBranch?.name ?? "selected branch"}`;
 
             return (
               <motion.div

@@ -21,6 +21,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Line,
   LineChart,
   Pie,
@@ -52,24 +53,8 @@ const formatCurrency = (value: number) =>
 const formatDateLabel = (value: string) =>
   new Date(value).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
-const resolveSchoolNameFromOrder = (order: any) => {
-  const directSchool = Array.isArray(order.schools)
-    ? order.schools[0]?.name
-    : order.schools?.name;
-  if (directSchool) return directSchool;
-
-  const fromItems = (order.order_items ?? []).find((item: any) => {
-    const school = Array.isArray(item.products?.schools)
-      ? item.products?.schools[0]?.name
-      : item.products?.schools?.name;
-    return Boolean(school);
-  });
-
-  if (!fromItems) return "Unknown School";
-  return Array.isArray(fromItems.products?.schools)
-    ? fromItems.products?.schools[0]?.name ?? "Unknown School"
-    : fromItems.products?.schools?.name ?? "Unknown School";
-};
+const sanitizeSchoolDisplayName = (name: string | null | undefined) =>
+  (name ?? "Unknown School").trim().replace(/\s+/g, " ");
 
 const getSinceIso = (range: RangeFilter) => {
   if (range === "all") return null;
@@ -157,7 +142,7 @@ const SalesAnalyticsPage = () => {
   const { data: metrics } = useQuery({
     queryKey: ["sales-metrics", branchFilter],
     queryFn: async () => {
-      let ordersQuery = supabase.from("orders").select("id, total_amount").neq("status", "cancelled");
+      let ordersQuery = supabase.from("orders").select("id, total_amount, is_gst_order").neq("status", "cancelled");
       if (branchFilter !== "all") {
         ordersQuery = ordersQuery.eq("branch_id", branchFilter);
       }
@@ -178,12 +163,18 @@ const SalesAnalyticsPage = () => {
       const totalRevenue = (orders ?? []).reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
       const totalOrders = orders?.length ?? 0;
       const totalUnits = (items ?? []).reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+      const totalGstOrders = (orders ?? []).filter((order: any) => Boolean(order.is_gst_order)).length;
+      const gstRevenue = (orders ?? [])
+        .filter((order: any) => Boolean(order.is_gst_order))
+        .reduce((sum, order: any) => sum + Number(order.total_amount || 0), 0);
 
       return {
         totalRevenue,
         totalOrders,
         avgOrderValue: totalOrders ? totalRevenue / totalOrders : 0,
         totalUnits,
+        totalGstOrders,
+        gstRevenue,
       };
     },
     staleTime: 30_000,
@@ -223,23 +214,99 @@ const SalesAnalyticsPage = () => {
     queryKey: ["sales-by-school", branchFilter],
     queryFn: async () => {
       let query = supabase
-        .from("orders")
-        .select("id, total_amount, school_id, schools(name), order_items(products(schools(name)))")
-        .neq("status", "cancelled");
-      if (branchFilter !== "all") query = query.eq("branch_id", branchFilter);
+        .from("order_items")
+        .select("order_id, quantity, price, orders!inner(id, status, branch_id), products!inner(school_id, schools(name))")
+        .neq("orders.status", "cancelled")
+        .not("products.school_id", "is", null);
+      if (branchFilter !== "all") query = query.eq("orders.branch_id", branchFilter);
 
       const { data, error } = await query;
       if (error) throw error;
 
-      const grouped = new Map<string, { name: string; revenue: number }>();
-      (data ?? []).forEach((o: any) => {
-        const name = resolveSchoolNameFromOrder(o);
-        const id = o.school_id ?? `name:${name.toLowerCase()}`;
-        const prev = grouped.get(id) ?? { name, revenue: 0 };
-        grouped.set(id, { name, revenue: prev.revenue + Number(o.total_amount || 0) });
+      const grouped = new Map<string, { id: string; name: string; revenue: number; orderIds: Set<string> }>();
+      (data ?? []).forEach((item: any) => {
+        const schoolId = item.products?.school_id;
+        if (!schoolId) return;
+
+        const id = String(schoolId);
+        const name = sanitizeSchoolDisplayName(
+          Array.isArray(item.products?.schools) ? item.products?.schools[0]?.name : item.products?.schools?.name
+        );
+        const prev = grouped.get(id) ?? { id, name, revenue: 0, orderIds: new Set<string>() };
+        const lineRevenue = Number(item.price || 0) * Number(item.quantity || 0);
+        if (item.order_id) prev.orderIds.add(String(item.order_id));
+
+        grouped.set(id, {
+          id,
+          name,
+          revenue: prev.revenue + lineRevenue,
+          orderIds: prev.orderIds,
+        });
       });
 
-      return [...grouped.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+      const ranked = [...grouped.values()]
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          revenue: row.revenue,
+          orders: row.orderIds.size,
+        }))
+        .sort((a, b) => b.revenue - a.revenue);
+      const totalRevenue = ranked.reduce((sum, row) => sum + row.revenue, 0);
+
+      return ranked.slice(0, 8).map((row, idx) => ({
+        ...row,
+        rank: idx + 1,
+        contributionPct: totalRevenue > 0 ? Math.round((row.revenue / totalRevenue) * 100) : 0,
+        revenueLabel: formatCurrency(row.revenue),
+      }));
+    },
+    staleTime: 30_000,
+  });
+
+  const { data: branchSales } = useQuery({
+    queryKey: ["sales-by-branch", branchFilter],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("orders")
+        .select("id, total_amount, branch_id, branches(name)")
+        .not("branch_id", "is", null)
+        .neq("status", "cancelled");
+
+      if (branchFilter !== "all") {
+        query = query.eq("branch_id", branchFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const grouped = new Map<string, { branchId: string; branchName: string; revenue: number; orders: number }>();
+
+      (data ?? []).forEach((order: any) => {
+        const branchId = order.branch_id as string;
+        const branchName = order.branches?.name ?? "Unknown Branch";
+        const prev = grouped.get(branchId) ?? {
+          branchId,
+          branchName,
+          revenue: 0,
+          orders: 0,
+        };
+
+        grouped.set(branchId, {
+          branchId,
+          branchName,
+          revenue: prev.revenue + Number(order.total_amount || 0),
+          orders: prev.orders + 1,
+        });
+      });
+
+      const list = [...grouped.values()].sort((a, b) => b.revenue - a.revenue);
+      const maxRevenue = list[0]?.revenue ?? 1;
+
+      return list.map((row) => ({
+        ...row,
+        revenuePct: Math.round((row.revenue / maxRevenue) * 100),
+      }));
     },
     staleTime: 30_000,
   });
@@ -363,32 +430,14 @@ const SalesAnalyticsPage = () => {
   });
 
   // ── School Leaderboard ───────────────────────────────────────────────────
-  const { data: schoolLeaderboard } = useQuery({
-    queryKey: ["sales-school-leaderboard", branchFilter],
-    queryFn: async () => {
-      let query = supabase
-        .from("orders")
-        .select("id, total_amount, school_id, schools(name), order_items(products(schools(name)))")
-        .neq("status", "cancelled");
-      if (branchFilter !== "all") query = query.eq("branch_id", branchFilter);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const grouped = new Map<string, { id: string; name: string; revenue: number; orders: number }>();
-      (data ?? []).forEach((o: any) => {
-        const name = resolveSchoolNameFromOrder(o);
-        const id = o.school_id ?? `name:${name.toLowerCase()}`;
-        const prev = grouped.get(id) ?? { id, name, revenue: 0, orders: 0 };
-        grouped.set(id, { id, name, revenue: prev.revenue + Number(o.total_amount || 0), orders: prev.orders + 1 });
-      });
-
-      const list = [...grouped.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-      const maxRevenue = list[0]?.revenue ?? 1;
-      return list.map((s) => ({ ...s, pct: Math.round((s.revenue / maxRevenue) * 100) }));
-    },
-    staleTime: 30_000,
-  });
+  const schoolLeaderboard = useMemo(() => {
+    const list = (schoolRevenue ?? [])
+      .slice()
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+    const maxRevenue = list[0]?.revenue ?? 1;
+    return list.map((s) => ({ ...s, pct: Math.round((s.revenue / maxRevenue) * 100) }));
+  }, [schoolRevenue]);
 
   const { data: schoolsForTicker } = useQuery({
     queryKey: ["sales-schools-map"],
@@ -414,7 +463,6 @@ const SalesAnalyticsPage = () => {
     queryClient.invalidateQueries({ queryKey: ["sales-by-category"] });
     queryClient.invalidateQueries({ queryKey: ["sales-low-stock"] });
     queryClient.invalidateQueries({ queryKey: ["sales-burn-rate"] });
-    queryClient.invalidateQueries({ queryKey: ["sales-school-leaderboard"] });
   };
 
   useEffect(() => {
@@ -551,7 +599,7 @@ const SalesAnalyticsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Total Revenue"
           value={metrics?.totalRevenue ?? 0}
@@ -573,6 +621,17 @@ const SalesAnalyticsPage = () => {
           title="Total Units Sold"
           value={metrics?.totalUnits ?? 0}
           icon={<Package className="h-4 w-4" strokeWidth={1.5} />}
+        />
+        <KpiCard
+          title="Total GST Orders"
+          value={metrics?.totalGstOrders ?? 0}
+          icon={<ShoppingCart className="h-4 w-4" strokeWidth={1.5} />}
+        />
+        <KpiCard
+          title="GST Revenue"
+          value={metrics?.gstRevenue ?? 0}
+          suffix="currency"
+          icon={<IndianRupee className="h-4 w-4" strokeWidth={1.5} />}
         />
       </div>
 
@@ -639,17 +698,48 @@ const SalesAnalyticsPage = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={schoolRevenue ?? []} layout="vertical" margin={{ left: 30 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis type="number" tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value: number) => [formatCurrency(value), "Revenue"]} />
-                  <Bar dataKey="revenue" fill="#0f172a" radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {(schoolRevenue?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No school-linked non-cancelled orders found.</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={schoolRevenue ?? []} layout="vertical" margin={{ left: 30, right: 28 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis type="number" tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                      <YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        formatter={(value: number, _name, props: any) => [formatCurrency(value), `${props?.payload?.orders ?? 0} orders`]}
+                      />
+                      <Bar dataKey="revenue" radius={[0, 6, 6, 0]}>
+                        {(schoolRevenue ?? []).map((row) => (
+                          <Cell key={row.id} fill={row.rank === 1 ? "#0f172a" : "#334155"} />
+                        ))}
+                        <LabelList dataKey="revenueLabel" position="right" className="fill-muted-foreground text-[10px]" />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  {(schoolRevenue ?? []).map((school) => (
+                    <div
+                      key={school.id}
+                      className={`rounded-lg border p-3 ${school.rank === 1 ? "border-foreground/30 bg-secondary/30" : "border-border"}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium truncate">
+                          {school.rank}. {school.name}
+                        </p>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{school.orders} orders</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{school.contributionPct}% of total revenue</p>
+                      <p className="text-sm mt-1">{formatCurrency(school.revenue)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -731,6 +821,50 @@ const SalesAnalyticsPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-xl border border-border/60 bg-white/90 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-sm tracking-[0.12em] uppercase font-normal text-muted-foreground">
+            Sales by Branch
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {(branchSales?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No assigned non-cancelled orders found for this filter.</p>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {branchSales?.map((row) => (
+                  <div key={row.branchId} className="border border-border rounded-lg p-3">
+                    <p className="text-sm font-medium truncate">{row.branchName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Revenue</p>
+                    <p className="text-base font-light">{formatCurrency(row.revenue)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Orders: {row.orders}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={branchSales} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                    <YAxis type="category" dataKey="branchName" width={180} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(value: number, _name, props: any) => [formatCurrency(value), `${props?.payload?.orders ?? 0} orders`]}
+                    />
+                    <Bar dataKey="revenue" radius={[0, 6, 6, 0]}>
+                      {(branchSales ?? []).map((row) => (
+                        <Cell key={row.branchId} fill="#0f172a" fillOpacity={Math.max(0.45, (row.revenuePct ?? 0) / 100)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Burn Rate + School Leaderboard row */}
       <div className="grid lg:grid-cols-2 gap-4">

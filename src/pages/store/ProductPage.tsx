@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
+import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -24,6 +25,7 @@ const ProductPage = () => {
   const mobileAddButtonRef = useRef<HTMLDivElement | null>(null);
   const desktopAddControls = useAnimationControls();
   const mobileAddControls = useAnimationControls();
+  const { activeBranchId, activeBranch } = useStoreActiveBranch();
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
@@ -38,13 +40,33 @@ const ProductPage = () => {
     },
   });
 
+  const { data: branchInventoryRows } = useQuery({
+    queryKey: ["store-product-branch-inventory", id, activeBranchId],
+    enabled: !!id && !!activeBranchId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("branch_inventory")
+        .select("variant_id, stock")
+        .eq("branch_id", activeBranchId)
+        .eq("product_id", id);
+      if (error) throw error;
+      return (data ?? []) as Array<{ variant_id: string; stock: number }>;
+    },
+  });
+
+  const branchStockByVariant = useMemo(
+    () => new Map((branchInventoryRows ?? []).map((row) => [row.variant_id, Number(row.stock ?? 0)])),
+    [branchInventoryRows]
+  );
+
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   const selectedVariant = product?.product_variants?.find(
     (v: any) => v.size === selectedSize
   );
-  const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariant.stock)) : 1;
+  const selectedVariantStock = selectedVariant ? Number(branchStockByVariant.get(selectedVariant.id) ?? 0) : 0;
+  const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariantStock)) : 1;
   const basePrice = (product as any)?.base_price ?? product?.price ?? 0;
 
   // Build image gallery
@@ -198,32 +220,35 @@ const ProductPage = () => {
             <div className="flex gap-3">
               {product.product_variants
                 ?.sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size))
-                .map((v: any) => (
+                .map((v: any) => {
+                  const variantStock = Number(branchStockByVariant.get(v.id) ?? 0);
+                  return (
                   <button
                     key={v.id}
                     onClick={() => {
                       setSelectedSize(v.size);
                       setQuantity(1);
                     }}
-                    disabled={v.stock === 0}
+                    disabled={variantStock <= 0}
                     className={`w-12 h-12 border text-sm transition-all duration-200 ${
                       selectedSize === v.size
                         ? "border-foreground bg-primary text-primary-foreground"
-                        : v.stock === 0
+                        : variantStock <= 0
                         ? "border-border text-muted-foreground/30 cursor-not-allowed"
                         : "border-border hover:border-foreground"
                     }`}
                   >
                     {v.size}
                   </button>
-                ))}
+                  );
+                })}
             </div>
-            {selectedVariant && selectedVariant.stock > 0 && selectedVariant.stock <= LOW_STOCK_THRESHOLD && (
+            {selectedVariant && selectedVariantStock > 0 && selectedVariantStock <= LOW_STOCK_THRESHOLD && (
               <p className="text-red-500 text-sm mt-2">
-                ⚠ Only {selectedVariant.stock} left in stock
+                ⚠ Only {selectedVariantStock} left in stock at {activeBranch?.name ?? "selected branch"}
               </p>
             )}
-            {selectedVariant?.stock === 0 && (
+            {selectedVariant && selectedVariantStock <= 0 && (
               <p className="text-xs text-red-500 mt-2">Out of stock</p>
             )}
           </div>
@@ -261,10 +286,10 @@ const ProductPage = () => {
           >
             <Button
               onClick={() => triggerAddToCartInteraction(desktopAddButtonRef, desktopAddControls)}
-              disabled={!selectedVariant || selectedVariant.stock === 0}
+              disabled={!selectedVariant || selectedVariantStock <= 0 || !activeBranchId}
               className="w-full h-12 text-xs tracking-[0.2em] uppercase md:inline-flex"
             >
-              {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
+              {!activeBranchId ? "Select Branch" : selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
             </Button>
           </motion.div>
 
@@ -305,10 +330,10 @@ const ProductPage = () => {
         >
           <Button
             onClick={() => triggerAddToCartInteraction(mobileAddButtonRef, mobileAddControls)}
-            disabled={!selectedVariant || selectedVariant.stock === 0}
+            disabled={!selectedVariant || selectedVariantStock <= 0 || !activeBranchId}
             className="w-full h-12 text-xs tracking-[0.2em] uppercase"
           >
-            {selectedVariant?.stock === 0 ? "Out of Stock" : "Add to Bag"}
+            {!activeBranchId ? "Select Branch" : selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
           </Button>
         </motion.div>
       </div>
