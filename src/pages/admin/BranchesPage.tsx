@@ -98,6 +98,19 @@ const BranchesPage = () => {
       return;
     }
 
+    const duplicateExists = (branches ?? []).some((branch: any) => {
+      if (editingBranchId && branch.id === editingBranchId) return false;
+      return (
+        String(branch.name ?? "").trim().toLowerCase() === name.toLowerCase() &&
+        String(branch.location ?? "").trim().toLowerCase() === location.toLowerCase()
+      );
+    });
+
+    if (duplicateExists) {
+      toast.error("A branch with the same name and location already exists");
+      return;
+    }
+
     setSaving(true);
 
     const payload = {
@@ -114,6 +127,10 @@ const BranchesPage = () => {
     setSaving(false);
 
     if (error) {
+      if ((error as any).code === "23505") {
+        toast.error("A branch with this name and location already exists");
+        return;
+      }
       toast.error(error.message || "Failed to save branch");
       return;
     }
@@ -135,6 +152,10 @@ const BranchesPage = () => {
       .eq("id", branch.id);
 
     if (error) {
+      if ((error as any).message?.toLowerCase().includes("at least one active branch")) {
+        toast.error("At least one active branch is required");
+        return;
+      }
       toast.error("Failed to update branch status");
       return;
     }

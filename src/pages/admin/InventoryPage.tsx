@@ -39,6 +39,7 @@ const InventoryPage = () => {
   const [bulkAdjust, setBulkAdjust] = useState(0);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [branchFilter, setBranchFilter] = useState<string>("all");
+  const [initializing, setInitializing] = useState(false);
 
   const { data: branches } = useQuery({
     queryKey: ["admin-branches-filter"],
@@ -46,6 +47,28 @@ const InventoryPage = () => {
       const { data, error } = await supabase.from("branches").select("id, name, location, is_active").order("name");
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  const { data: variantsCount } = useQuery({
+    queryKey: ["admin-product-variants-count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("product_variants")
+        .select("id", { head: true, count: "exact" });
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const { data: branchInventoryCount } = useQuery({
+    queryKey: ["admin-branch-inventory-count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("branch_inventory")
+        .select("id", { head: true, count: "exact" });
+      if (error) throw error;
+      return count ?? 0;
     },
   });
 
@@ -58,47 +81,30 @@ const InventoryPage = () => {
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
-
-      const existingRows = (data ?? []) as BranchInventoryRow[];
-      if (existingRows.length > 0) return existingRows;
-
-      const [{ data: branchData, error: branchError }, { data: variantData, error: variantError }] = await Promise.all([
-        supabase.from("branches").select("id").eq("is_active", true),
-        supabase.from("product_variants").select("id, product_id, stock"),
-      ]);
-
-      if (branchError || variantError) return existingRows;
-
-      const branchesToSeed = branchData ?? [];
-      const variantsToSeed = variantData ?? [];
-
-      if (branchesToSeed.length === 0 || variantsToSeed.length === 0) return existingRows;
-
-      const seedPayload = branchesToSeed.flatMap((branch: any) =>
-        variantsToSeed.map((variant: any) => ({
-          branch_id: branch.id,
-          product_id: variant.product_id,
-          variant_id: variant.id,
-          stock: Number(variant.stock ?? 0),
-          updated_at: new Date().toISOString(),
-        })),
-      );
-
-      const { error: seedError } = await (supabase as any)
-        .from("branch_inventory")
-        .upsert(seedPayload, { onConflict: "branch_id,variant_id" });
-
-      if (seedError) return existingRows;
-
-      const { data: hydratedRows, error: hydratedError } = await supabase
-        .from("branch_inventory")
-        .select("id, branch_id, product_id, variant_id, stock, updated_at, branches(name, location), product_variants(size, low_stock_threshold, products(name, category, price, schools(name)))")
-        .order("updated_at", { ascending: false });
-
-      if (hydratedError) return existingRows;
-      return (hydratedRows ?? []) as BranchInventoryRow[];
+      return (data ?? []) as BranchInventoryRow[];
     },
   });
+
+  const initializeInventory = async () => {
+    setInitializing(true);
+    const { data, error } = await (supabase as any).rpc("initialize_branch_inventory");
+    setInitializing(false);
+
+    if (error) {
+      toast.error(error.message || "Failed to initialize inventory");
+      return;
+    }
+
+    const inserted = Number(data?.rowsInserted ?? 0);
+    toast.success(inserted > 0 ? `Initialized inventory (${inserted} rows added)` : "Inventory already initialized");
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-branches-filter"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory-count"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-product-variants-count"] }),
+    ]);
+  };
 
   const visibleRows = useMemo(() => {
     if (!rows) return [];
@@ -198,22 +204,50 @@ const InventoryPage = () => {
     <div>
       <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Inventory</h1>
-        <div className="w-full max-w-xs">
-          <Select value={branchFilter} onValueChange={setBranchFilter}>
-            <SelectTrigger className="h-10 text-xs uppercase tracking-[0.12em]">
-              <SelectValue placeholder="Filter by branch" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Branches</SelectItem>
-              {(branches ?? []).map((branch: any) => (
-                <SelectItem key={branch.id} value={branch.id}>
-                  {branch.name} · {branch.location}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex gap-2 items-center w-full max-w-xl">
+          <div className="w-full max-w-xs">
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="h-10 text-xs uppercase tracking-[0.12em]">
+                <SelectValue placeholder="Filter by branch" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {(branches ?? []).map((branch: any) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name} · {branch.location}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            variant="outline"
+            className="h-10 text-xs tracking-[0.12em] uppercase"
+            onClick={initializeInventory}
+            disabled={initializing}
+          >
+            {initializing ? "Initializing..." : "Initialize Inventory"}
+          </Button>
         </div>
       </div>
+
+      <div className="mb-4 border border-border bg-muted/30 px-4 py-3 text-xs tracking-wide uppercase flex flex-wrap gap-4">
+        <span>Branches: {(branches ?? []).length}</span>
+        <span>Variants: {variantsCount ?? 0}</span>
+        <span>Branch Inventory Rows: {branchInventoryCount ?? 0}</span>
+      </div>
+
+      {(branches ?? []).length === 0 && (
+        <div className="mb-4 border border-amber-600/40 bg-amber-600/5 px-4 py-3 text-sm text-amber-800">
+          No branches found. Add a branch in Branches management, then run Initialize Inventory.
+        </div>
+      )}
+
+      {(branches ?? []).length > 0 && (rows ?? []).length === 0 && !isLoading && (
+        <div className="mb-4 border border-amber-600/40 bg-amber-600/5 px-4 py-3 text-sm text-amber-800">
+          No branch inventory rows found. Click Initialize Inventory to seed missing rows for active branches.
+        </div>
+      )}
 
       <div className="border border-border">
         <Table>
