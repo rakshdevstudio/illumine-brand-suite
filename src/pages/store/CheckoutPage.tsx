@@ -65,7 +65,7 @@ const isMissingBranchInfraError = (error: { code?: string; message?: string } | 
     error.code === "PGRST204" ||
     message.includes("branch_inventory") ||
     message.includes("branch_id") ||
-    message.includes("dispatch_status")
+    message.includes("assigned_at")
   );
 };
 
@@ -250,9 +250,8 @@ const CheckoutPage = () => {
         pincode: orderPayload.pincode,
         school_id: effectiveSchoolId,
         branch_id: assignedBranchId,
-        dispatch_status: assignedBranchId ? "assigned" : "pending",
         total_amount: total(),
-        status: "pending",
+        status: "PLACED",
       };
 
       const payloadVariants = [
@@ -270,7 +269,7 @@ const CheckoutPage = () => {
           school_id: effectiveSchoolId,
           branch_id: assignedBranchId,
           total_amount: total(),
-          status: "pending",
+          status: "PLACED",
         },
         (() => {
           const { gst_number: _gstNumber, is_gst_order: _isGstOrder, ...legacyWithoutGst } = legacyOrderPayload;
@@ -287,7 +286,7 @@ const CheckoutPage = () => {
           school_id: effectiveSchoolId,
           branch_id: assignedBranchId,
           total_amount: total(),
-          status: "pending",
+          status: "PLACED",
         },
       ];
 

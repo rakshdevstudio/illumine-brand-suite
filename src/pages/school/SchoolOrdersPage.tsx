@@ -15,7 +15,7 @@ import { ORDER_STATUS_STYLES, formatCurrency, useResolvedSchoolScope } from "@/l
 import { fetchSchoolPortalData } from "@/lib/school-portal";
 import { toast } from "sonner";
 
-const ORDER_STATUS_OPTIONS = ["all", "pending", "confirmed", "packed", "shipped", "delivered", "cancelled"] as const;
+const ORDER_STATUS_OPTIONS = ["all", "PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"] as const;
 
 const SectionEmpty = ({ title, description }: { title: string; description: string }) => (
   <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[22px] border border-dashed border-black/10 bg-stone-50/70 px-6 py-10 text-center">
@@ -145,10 +145,10 @@ const SchoolOrdersPage = () => {
   const summary = useMemo(() => ({
     totalOrders: filteredOrders.length,
     totalRevenue: filteredOrders
-      .filter((order) => order.status !== "cancelled")
+      .filter((order) => order.status !== "CANCELLED")
       .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0),
-    pendingCount: filteredOrders.filter((order) => order.status === "pending").length,
-    deliveredCount: filteredOrders.filter((order) => order.status === "delivered").length,
+    pendingCount: filteredOrders.filter((order) => order.status === "PLACED").length,
+    deliveredCount: filteredOrders.filter((order) => order.status === "DELIVERED").length,
   }), [filteredOrders]);
 
   const clearFilters = () => {
@@ -369,7 +369,7 @@ const SchoolOrdersPage = () => {
               icon={<IndianRupee className="h-4 w-4" strokeWidth={1.5} />}
             />
             <PortalMetricCard
-              label="Pending"
+              label="Placed"
               value={ordersLoading ? "..." : summary.pendingCount}
               icon={<Clock3 className="h-4 w-4" strokeWidth={1.5} />}
             />

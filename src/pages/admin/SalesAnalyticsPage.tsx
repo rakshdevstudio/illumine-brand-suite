@@ -142,7 +142,7 @@ const SalesAnalyticsPage = () => {
   const { data: metrics } = useQuery({
     queryKey: ["sales-metrics", branchFilter],
     queryFn: async () => {
-      let ordersQuery = supabase.from("orders").select("id, total_amount, is_gst_order").neq("status", "cancelled");
+      let ordersQuery = supabase.from("orders").select("id, total_amount, is_gst_order").neq("status", "CANCELLED");
       if (branchFilter !== "all") {
         ordersQuery = ordersQuery.eq("branch_id", branchFilter);
       }
@@ -150,7 +150,7 @@ const SalesAnalyticsPage = () => {
       let itemsQuery = supabase
         .from("order_items")
         .select("quantity, orders!inner(branch_id, status)")
-        .neq("orders.status", "cancelled");
+        .neq("orders.status", "CANCELLED");
       if (branchFilter !== "all") {
         itemsQuery = itemsQuery.eq("orders.branch_id", branchFilter);
       }
@@ -187,7 +187,7 @@ const SalesAnalyticsPage = () => {
       let query = supabase
         .from("orders")
         .select("created_at, total_amount")
-        .neq("status", "cancelled")
+        .neq("status", "CANCELLED")
         .order("created_at", { ascending: true });
 
       if (sinceIso) query = query.gte("created_at", sinceIso);
@@ -216,7 +216,7 @@ const SalesAnalyticsPage = () => {
       let query = supabase
         .from("order_items")
         .select("order_id, quantity, price, orders!inner(id, status, branch_id), products!inner(school_id, schools(name))")
-        .neq("orders.status", "cancelled")
+        .neq("orders.status", "CANCELLED")
         .not("products.school_id", "is", null);
       if (branchFilter !== "all") query = query.eq("orders.branch_id", branchFilter);
 
@@ -271,7 +271,7 @@ const SalesAnalyticsPage = () => {
         .from("orders")
         .select("id, total_amount, branch_id, branches(name)")
         .not("branch_id", "is", null)
-        .neq("status", "cancelled");
+        .neq("status", "CANCELLED");
 
       if (branchFilter !== "all") {
         query = query.eq("branch_id", branchFilter);

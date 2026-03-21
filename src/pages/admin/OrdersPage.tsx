@@ -13,33 +13,33 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 
-type OrderStatus = "pending" | "assigned" | "packed" | "dispatched" | "delivered" | "cancelled";
+type OrderStatus = "PLACED" | "ASSIGNED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
 
-const ORDER_STATUSES: OrderStatus[] = ["pending", "assigned", "packed", "dispatched", "delivered", "cancelled"];
+const ORDER_STATUSES: OrderStatus[] = ["PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"];
 
 const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
-  pending: "bg-gray-200 text-gray-900 border-transparent",
-  assigned: "bg-blue-200 text-blue-900 border-transparent",
-  packed: "bg-yellow-200 text-yellow-900 border-transparent",
-  dispatched: "bg-purple-200 text-purple-900 border-transparent",
-  delivered: "bg-green-200 text-green-900 border-transparent",
-  cancelled: "bg-red-200 text-red-900 border-transparent",
+  PLACED: "bg-gray-200 text-gray-900 border-transparent",
+  ASSIGNED: "bg-blue-200 text-blue-900 border-transparent",
+  PACKED: "bg-yellow-200 text-yellow-900 border-transparent",
+  DISPATCHED: "bg-purple-200 text-purple-900 border-transparent",
+  DELIVERED: "bg-green-200 text-green-900 border-transparent",
+  CANCELLED: "bg-red-200 text-red-900 border-transparent",
 };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: "Pending",
-  assigned: "Assigned",
-  packed: "Packed",
-  dispatched: "Dispatched",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
+  PLACED: "Placed",
+  ASSIGNED: "Assigned",
+  PACKED: "Packed",
+  DISPATCHED: "Dispatched",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
 };
 
 const TIMELINE_EVENT_LABELS: Record<string, string> = {
   ORDER_PLACED: "Order Placed",
-  PAYMENT_CONFIRMED: "Payment Confirmed",
+  ASSIGNED: "Assigned",
   PACKED: "Packed",
-  SHIPPED: "Shipped",
+  DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
   REFUNDED: "Refunded",
@@ -48,39 +48,107 @@ const TIMELINE_EVENT_LABELS: Record<string, string> = {
 
 const isOrderStatus = (value: string): value is OrderStatus => ORDER_STATUSES.includes(value as OrderStatus);
 
-const getUnifiedOrderStatus = (order: any): OrderStatus => {
-  const status = String(order?.status ?? "").toLowerCase();
-  const dispatchStatus = String(order?.dispatch_status ?? "").toLowerCase();
-
-  if (status === "cancelled") return "cancelled";
-  if (status === "delivered" || dispatchStatus === "delivered") return "delivered";
-  if (status === "shipped" || dispatchStatus === "dispatched") return "dispatched";
-  if (status === "packed" || dispatchStatus === "packed") return "packed";
-  if (status === "confirmed" || dispatchStatus === "assigned") return "assigned";
-  return "pending";
+const normalizeOrderStatus = (value: string | null | undefined): OrderStatus => {
+  const status = String(value ?? "").toUpperCase();
+  switch (status) {
+    case "PLACED":
+    case "ASSIGNED":
+    case "PACKED":
+    case "DISPATCHED":
+    case "DELIVERED":
+    case "CANCELLED":
+      return status;
+    case "PENDING":
+      return "PLACED";
+    case "CONFIRMED":
+      return "ASSIGNED";
+    case "SHIPPED":
+      return "DISPATCHED";
+    default:
+      return "PLACED";
+  }
 };
 
-const toDbOrderUpdate = (status: OrderStatus): { status: string; dispatch_status: string } => {
+const toDbOrderUpdate = (status: OrderStatus): Record<string, any> => {
+  const now = new Date().toISOString();
   switch (status) {
-    case "assigned":
+    case "ASSIGNED":
+      return { status, assigned_at: now };
+    case "PACKED":
+      return { status, packed_at: now };
+    case "DISPATCHED":
+      return { status, dispatched_at: now };
+    case "DELIVERED":
+      return { status, delivered_at: now };
+    case "CANCELLED":
+    case "PLACED":
+    default:
+      return { status };
+  }
+};
+
+const toLegacyOrderUpdate = (status: OrderStatus): { status: string; dispatch_status: string } => {
+  switch (status) {
+    case "ASSIGNED":
       return { status: "confirmed", dispatch_status: "assigned" };
-    case "packed":
+    case "PACKED":
       return { status: "packed", dispatch_status: "packed" };
-    case "dispatched":
+    case "DISPATCHED":
       return { status: "shipped", dispatch_status: "dispatched" };
-    case "delivered":
+    case "DELIVERED":
       return { status: "delivered", dispatch_status: "delivered" };
-    case "cancelled":
+    case "CANCELLED":
       return { status: "cancelled", dispatch_status: "pending" };
-    case "pending":
+    case "PLACED":
     default:
       return { status: "pending", dispatch_status: "pending" };
   }
 };
 
+const shouldTryLegacyFallback = (error: { message?: string; code?: string; status?: number } | null | undefined) => {
+  if (!error) return false;
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.status === 404 ||
+    error.code === "PGRST204" ||
+    message.includes("assigned_at") ||
+    message.includes("packed_at") ||
+    message.includes("dispatched_at") ||
+    message.includes("delivered_at") ||
+    message.includes("order_lifecycle_status")
+  );
+};
+
+const summarizeSupabaseError = (error: { message?: string; code?: string; details?: string } | null | undefined) => {
+  if (!error) return "Unknown error";
+  const parts = [error.message, error.details, error.code].filter(Boolean);
+  return parts.join(" · ");
+};
+
+const isDispatchStatusMissingError = (error: { message?: string; code?: string } | null | undefined) => {
+  if (!error) return false;
+  const message = (error.message ?? "").toLowerCase();
+  return error.code === "PGRST204" && message.includes("dispatch_status");
+};
+
 const OrderStatusBadge = ({ status }: { status: string }) => {
-  const normalizedStatus: OrderStatus = isOrderStatus(status) ? status : "pending";
+  const normalizedStatus = normalizeOrderStatus(status);
   return <Badge className={STATUS_BADGE_CLASSES[normalizedStatus]}>{STATUS_LABELS[normalizedStatus]}</Badge>;
+};
+
+const getLifecycleAction = (status: OrderStatus) => {
+  switch (status) {
+    case "PLACED":
+      return { next: "ASSIGNED" as OrderStatus, label: "Assign Branch" };
+    case "ASSIGNED":
+      return { next: "PACKED" as OrderStatus, label: "Mark Packed" };
+    case "PACKED":
+      return { next: "DISPATCHED" as OrderStatus, label: "Dispatch" };
+    case "DISPATCHED":
+      return { next: "DELIVERED" as OrderStatus, label: "Mark Delivered" };
+    default:
+      return null;
+  }
 };
 
 const getOrderSchools = (order: any): string[] => {
@@ -231,7 +299,7 @@ const OrdersPage = () => {
     }
 
     if (statusFilter !== "all") {
-      filtered = filtered.filter((order) => getUnifiedOrderStatus(order) === statusFilter);
+      filtered = filtered.filter((order) => normalizeOrderStatus(order.status) === statusFilter);
     }
 
     if (gstFilter === "gst_only") {
@@ -260,23 +328,70 @@ const OrdersPage = () => {
       return;
     }
 
+    const currentOrder = (orders as any[] | undefined)?.find((entry) => entry.id === orderId);
+    const hasAssignedBranch = Boolean(currentOrder?.branch_id);
+
+    if (status !== "PLACED" && status !== "CANCELLED" && !hasAssignedBranch) {
+      toast.error("Assign a branch before moving lifecycle forward");
+      return;
+    }
+
     const payload = toDbOrderUpdate(status);
+    const legacyPayload = toLegacyOrderUpdate(status);
+    const now = new Date().toISOString();
 
-    let { error } = await supabase
-      .from("orders")
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq("id", orderId);
+    const lifecycleWithUpdatedAt = { ...payload, updated_at: now };
+    const { updated_at: _ignoreUpdatedAt, ...lifecycleWithoutUpdatedAt } = lifecycleWithUpdatedAt;
+    const statusOnlyWithUpdatedAt = { status, updated_at: now };
+    const statusOnly = { status };
 
-    if (error?.message?.toLowerCase().includes("updated_at")) {
-      const retry = await supabase.from("orders").update(payload).eq("id", orderId);
-      error = retry.error;
+    const attemptPayloads: Array<Record<string, any>> = [
+      lifecycleWithUpdatedAt,
+      lifecycleWithoutUpdatedAt,
+      statusOnlyWithUpdatedAt,
+      statusOnly,
+    ];
+
+    let error: any = null;
+
+    for (const attemptPayload of attemptPayloads) {
+      const attempt = await (supabase as any)
+        .from("orders")
+        .update(attemptPayload)
+        .eq("id", orderId);
+
+      error = attempt.error;
+      if (!error) break;
+    }
+
+    const originalError = error;
+
+    if (error && shouldTryLegacyFallback(error as any)) {
+      const legacyWithUpdatedAt = { ...legacyPayload, updated_at: now };
+      const { updated_at: _legacyUpdatedAt, ...legacyWithoutUpdatedAt } = legacyWithUpdatedAt;
+
+      const legacyAttempts = [legacyWithUpdatedAt, legacyWithoutUpdatedAt];
+
+      for (const attemptPayload of legacyAttempts) {
+        const legacyAttempt = await (supabase as any)
+          .from("orders")
+          .update(attemptPayload)
+          .eq("id", orderId);
+
+        error = legacyAttempt.error;
+        if (!error) break;
+        if (isDispatchStatusMissingError(error)) {
+          error = originalError;
+          break;
+        }
+      }
     }
 
     if (error) {
-      toast.error("Failed to update status");
+      toast.error(`Failed to update status: ${summarizeSupabaseError(error)}`);
     } else {
       await logActivity({
-        actionType: status === "cancelled" ? "ORDER_CANCELLED" : "ORDER_STATUS_UPDATED",
+        actionType: status === "CANCELLED" ? "ORDER_CANCELLED" : "ORDER_STATUS_UPDATED",
         entityType: "order",
         entityId: orderId,
         description: `Order #${orderId.slice(0, 8).toUpperCase()} marked as ${status.toUpperCase()}`,
@@ -289,21 +404,78 @@ const OrdersPage = () => {
   };
 
   const assignOrderBranch = async (orderId: string, branchId: string | null) => {
-    let { error } = await (supabase as any)
-      .from("orders")
-      .update({ branch_id: branchId, dispatch_status: branchId ? "assigned" : "pending", updated_at: new Date().toISOString() })
-      .eq("id", orderId);
+    const currentOrder = (orders as any[] | undefined)?.find((entry) => entry.id === orderId);
+    const currentStatus = normalizeOrderStatus(currentOrder?.status);
 
-    if (error?.message?.toLowerCase().includes("updated_at")) {
-      const retry = await (supabase as any)
+    if (!branchId && !["PLACED", "CANCELLED"].includes(currentStatus)) {
+      toast.error("Cannot clear branch after lifecycle has started");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const patch: Record<string, any> = { branch_id: branchId, updated_at: now };
+    if (branchId && currentStatus === "PLACED") {
+      patch.status = "ASSIGNED";
+      patch.assigned_at = now;
+    }
+
+    const legacyPatch: Record<string, any> = {
+      branch_id: branchId,
+      dispatch_status: branchId ? "assigned" : "pending",
+      updated_at: now,
+      ...(branchId && currentStatus === "PLACED" ? { status: "confirmed" } : {}),
+    };
+
+    const legacyStatusOnlyPatch: Record<string, any> = {
+      branch_id: branchId,
+      updated_at: now,
+      ...(branchId && currentStatus === "PLACED" ? { status: "confirmed" } : {}),
+    };
+
+    const { updated_at: _patchUpdatedAt, ...patchWithoutUpdatedAt } = patch;
+    const branchOnlyWithUpdatedAt = { branch_id: branchId, updated_at: now };
+    const branchOnly = { branch_id: branchId };
+
+    const lifecycleAttempts: Array<Record<string, any>> = [
+      patch,
+      patchWithoutUpdatedAt,
+      branchOnlyWithUpdatedAt,
+      branchOnly,
+    ];
+
+    let error: any = null;
+
+    for (const attemptPayload of lifecycleAttempts) {
+      const attempt = await (supabase as any)
         .from("orders")
-        .update({ branch_id: branchId, dispatch_status: branchId ? "assigned" : "pending" })
+        .update(attemptPayload)
         .eq("id", orderId);
-      error = retry.error;
+
+      error = attempt.error;
+      if (!error) break;
+    }
+
+    if (error && shouldTryLegacyFallback(error as any)) {
+      const { updated_at: _legacyUpdatedAt, ...legacyNoUpdatedAt } = legacyPatch;
+      const { updated_at: _legacyStatusOnlyUpdatedAt, ...legacyStatusOnlyNoUpdatedAt } = legacyStatusOnlyPatch;
+      const legacyAttempts = [legacyPatch, legacyNoUpdatedAt, legacyStatusOnlyPatch, legacyStatusOnlyNoUpdatedAt];
+
+      for (const attemptPayload of legacyAttempts) {
+        const legacyAttempt = await (supabase as any)
+          .from("orders")
+          .update(attemptPayload)
+          .eq("id", orderId);
+
+        error = legacyAttempt.error;
+        if (!error) break;
+        if (isDispatchStatusMissingError(error)) {
+          continue;
+        }
+      }
     }
 
     if (error) {
-      toast.error("Failed to assign branch");
+      toast.error(`Failed to assign branch: ${summarizeSupabaseError(error)}`);
       return;
     }
 
@@ -326,7 +498,7 @@ const OrdersPage = () => {
         order.branches?.name ?? "",
         getItemSummary(order),
         order.total_amount,
-        getUnifiedOrderStatus(order),
+        normalizeOrderStatus(order.status),
         order.is_gst_order ? "Yes" : "No",
         order.gst_number ?? "",
         order.created_at,
@@ -407,9 +579,10 @@ const OrdersPage = () => {
   const renderOrderRow = (order: any) => {
     const schoolNames = getOrderSchools(order);
     const itemSummary = getItemSummary(order);
-    const unifiedStatus = getUnifiedOrderStatus(order);
+    const unifiedStatus = normalizeOrderStatus(order.status);
     const hasAssignedBranch = Boolean(order.branch_id);
     const branchValue = order.branch_id ?? "__unassigned__";
+    const lifecycleAction = getLifecycleAction(unifiedStatus);
 
     return (
       <TableRow key={order.id}>
@@ -490,6 +663,23 @@ const OrdersPage = () => {
             >
               Print Invoice
             </Button>
+            {lifecycleAction && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                disabled={lifecycleAction.next !== "CANCELLED" && lifecycleAction.next !== "PLACED" && !hasAssignedBranch}
+                onClick={() => {
+                  if (lifecycleAction.next === "ASSIGNED" && !order.branch_id) {
+                    toast.error("Select branch first, then use Assign Branch");
+                    return;
+                  }
+                  updateOrderStatus(order.id, lifecycleAction.next);
+                }}
+              >
+                {lifecycleAction.label}
+              </Button>
+            )}
           </div>
         </TableCell>
       </TableRow>
@@ -632,7 +822,7 @@ const OrdersPage = () => {
             <div className="space-y-6 px-6 pb-6 overflow-y-auto max-h-[calc(88vh-88px)]">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
-                <OrderStatusBadge status={getUnifiedOrderStatus(selected)} />
+                <OrderStatusBadge status={normalizeOrderStatus(selected.status)} />
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -714,7 +904,7 @@ const OrdersPage = () => {
                             <span className="absolute left-[8px] top-4 h-[calc(100%+8px)] w-px bg-border" />
                           )}
                           <span className={`absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 ${
-                            ["ORDER_PLACED", "PAYMENT_CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "NOTE_ADDED"].includes(event.event_type)
+                            ["ORDER_PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "NOTE_ADDED"].includes(event.event_type)
                               ? "bg-green-500 border-green-500"
                               : "bg-gray-300 border-gray-300"
                           }`} />

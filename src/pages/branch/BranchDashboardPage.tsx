@@ -9,9 +9,39 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-type DispatchStatus = "pending" | "assigned" | "packed" | "dispatched" | "delivered";
+type OrderStatus = "PLACED" | "ASSIGNED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
 
-const DISPATCH_STATUSES: DispatchStatus[] = ["pending", "assigned", "packed", "dispatched", "delivered"];
+const ORDER_STATUSES: OrderStatus[] = ["PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"];
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  PLACED: "Placed",
+  ASSIGNED: "Assigned",
+  PACKED: "Packed",
+  DISPATCHED: "Dispatched",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+const normalizeOrderStatus = (value: string | null | undefined): OrderStatus => {
+  const status = String(value ?? "").toUpperCase();
+  switch (status) {
+    case "PLACED":
+    case "ASSIGNED":
+    case "PACKED":
+    case "DISPATCHED":
+    case "DELIVERED":
+    case "CANCELLED":
+      return status;
+    case "PENDING":
+      return "PLACED";
+    case "CONFIRMED":
+      return "ASSIGNED";
+    case "SHIPPED":
+      return "DISPATCHED";
+    default:
+      return "PLACED";
+  }
+};
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value || 0);
@@ -58,7 +88,7 @@ const BranchDashboardPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("id, customer_name, total_amount, dispatch_status, created_at, status")
+        .select("id, customer_name, total_amount, created_at, status")
         .eq("branch_id", branchId!)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -90,9 +120,12 @@ const BranchDashboardPage = () => {
     today.setHours(0, 0, 0, 0);
 
     const todayOrders = allOrders.filter((order: any) => new Date(order.created_at) >= today).length;
-    const pendingDispatch = allOrders.filter((order: any) => order.dispatch_status !== "delivered").length;
+    const pendingDispatch = allOrders.filter((order: any) => {
+      const status = normalizeOrderStatus(order.status);
+      return status !== "DELIVERED" && status !== "CANCELLED";
+    }).length;
     const revenue = allOrders
-      .filter((order: any) => order.status !== "cancelled")
+      .filter((order: any) => normalizeOrderStatus(order.status) !== "CANCELLED")
       .reduce((sum: number, order: any) => sum + Number(order.total_amount || 0), 0);
 
     const lowStock = (inventory ?? []).filter((row: any) => {
@@ -103,21 +136,28 @@ const BranchDashboardPage = () => {
     return { todayOrders, pendingDispatch, revenue, lowStock };
   }, [orders, inventory]);
 
-  const updateDispatchStatus = async (orderId: string, dispatchStatus: DispatchStatus) => {
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     if (!branchId) return;
+
+    const patch: Record<string, any> = { status };
+    const now = new Date().toISOString();
+    if (status === "ASSIGNED") patch.assigned_at = now;
+    if (status === "PACKED") patch.packed_at = now;
+    if (status === "DISPATCHED") patch.dispatched_at = now;
+    if (status === "DELIVERED") patch.delivered_at = now;
 
     const { error } = await supabase
       .from("orders")
-      .update({ dispatch_status: dispatchStatus })
+      .update(patch)
       .eq("id", orderId)
       .eq("branch_id", branchId);
 
     if (error) {
-      toast.error("Failed to update dispatch status");
+      toast.error("Failed to update order status");
       return;
     }
 
-    toast.success("Dispatch status updated");
+    toast.success("Order status updated");
     queryClient.invalidateQueries({ queryKey: ["branch-orders", branchId] });
   };
 
@@ -172,7 +212,7 @@ const BranchDashboardPage = () => {
                 <TableHead className="text-xs uppercase tracking-wider">Order</TableHead>
                 <TableHead className="text-xs uppercase tracking-wider">Customer</TableHead>
                 <TableHead className="text-xs uppercase tracking-wider">Amount</TableHead>
-                <TableHead className="text-xs uppercase tracking-wider">Dispatch</TableHead>
+                <TableHead className="text-xs uppercase tracking-wider">Status</TableHead>
                 <TableHead className="text-xs uppercase tracking-wider">Date</TableHead>
               </TableRow>
             </TableHeader>
@@ -189,15 +229,15 @@ const BranchDashboardPage = () => {
                     <TableCell className="text-sm">{formatCurrency(order.total_amount)}</TableCell>
                     <TableCell>
                       <Select
-                        value={order.dispatch_status || "pending"}
-                        onValueChange={(value) => updateDispatchStatus(order.id, value as DispatchStatus)}
+                        value={normalizeOrderStatus(order.status)}
+                        onValueChange={(value) => updateOrderStatus(order.id, value as OrderStatus)}
                       >
                         <SelectTrigger className="w-36 h-8 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {DISPATCH_STATUSES.map((status) => (
-                            <SelectItem key={status} value={status}>{status}</SelectItem>
+                          {ORDER_STATUSES.map((status) => (
+                            <SelectItem key={status} value={status}>{STATUS_LABELS[status]}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

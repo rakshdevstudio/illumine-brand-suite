@@ -70,13 +70,34 @@ export interface SchoolPortalData {
 
 const readNullableString = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
 
+const normalizeOrderStatus = (value: unknown) => {
+  const status = String(value ?? "").toUpperCase();
+  switch (status) {
+    case "PLACED":
+    case "ASSIGNED":
+    case "PACKED":
+    case "DISPATCHED":
+    case "DELIVERED":
+    case "CANCELLED":
+      return status;
+    case "PENDING":
+      return "PLACED";
+    case "CONFIRMED":
+      return "ASSIGNED";
+    case "SHIPPED":
+      return "DISPATCHED";
+    default:
+      return "PLACED";
+  }
+};
+
 const parseOrderRows = (rows: Array<Partial<OrderRow> & { [key: string]: unknown }> | null): SchoolOrderBaseRow[] =>
   (rows ?? []).map((row: any) => ({
     id: typeof row.id === "string" ? row.id : "",
     customer_name: typeof row.customer_name === "string" ? row.customer_name : "Unknown customer",
     phone: typeof row.phone === "string" ? row.phone : "",
     total_amount: Number(row.total_amount ?? 0),
-    status: typeof row.status === "string" ? row.status : "pending",
+    status: normalizeOrderStatus(row.status),
     created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
     school_id: readNullableString(row.school_id),
     student_name: readNullableString(row.student_name),

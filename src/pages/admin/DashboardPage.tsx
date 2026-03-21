@@ -35,24 +35,27 @@ const monthStart = () => {
 };
 
 type OrderStatus =
-  | "pending"
-  | "confirmed"
-  | "packed"
-  | "shipped"
-  | "delivered"
-  | "cancelled";
+  | "PLACED"
+  | "ASSIGNED"
+  | "PACKED"
+  | "DISPATCHED"
+  | "DELIVERED"
+  | "CANCELLED";
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
-  pending:   "bg-gray-100 text-gray-700",
-  confirmed: "bg-blue-100 text-blue-700",
-  packed:    "bg-yellow-100 text-yellow-700",
-  shipped:   "bg-purple-100 text-purple-700",
-  delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
+  PLACED: "bg-gray-100 text-gray-700",
+  ASSIGNED: "bg-blue-100 text-blue-700",
+  PACKED: "bg-yellow-100 text-yellow-700",
+  DISPATCHED: "bg-purple-100 text-purple-700",
+  DELIVERED: "bg-green-100 text-green-700",
+  CANCELLED: "bg-red-100 text-red-700",
 };
 
-const statusStyle = (s: string) =>
-  STATUS_STYLES[(s as OrderStatus)] ?? "bg-gray-100 text-gray-700";
+const statusStyle = (value: string) => {
+  const status = String(value || "").toUpperCase();
+  const normalized = status === "PENDING" ? "PLACED" : status === "CONFIRMED" ? "ASSIGNED" : status === "SHIPPED" ? "DISPATCHED" : status;
+  return STATUS_STYLES[(normalized as OrderStatus)] ?? "bg-gray-100 text-gray-700";
+};
 
 const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | null | undefined> | undefined) => {
   const result = {
@@ -116,7 +119,7 @@ const DashboardPage = () => {
         .from("orders")
         .select("id, total_amount")
         .gte("created_at", todayStart())
-        .neq("status", "cancelled");
+        .neq("status", "CANCELLED");
       if (error) throw error;
       return data ?? [];
     },
@@ -130,7 +133,7 @@ const DashboardPage = () => {
         .from("orders")
         .select("id, total_amount")
         .gte("created_at", monthStart())
-        .neq("status", "cancelled");
+        .neq("status", "CANCELLED");
       if (error) throw error;
       return data ?? [];
     },

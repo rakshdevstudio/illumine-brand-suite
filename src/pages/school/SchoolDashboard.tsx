@@ -31,10 +31,10 @@ const TIME_FILTER_OPTIONS: Array<{ value: SchoolTimeFilter; label: string; descr
 ];
 
 const STATUS_SECTIONS = [
-  { key: "pending", label: "Pending", icon: Clock3 },
-  { key: "confirmed", label: "Confirmed", icon: BadgeCheck },
-  { key: "shipped", label: "Shipped", icon: Truck },
-  { key: "cancelled", label: "Cancelled", icon: XCircle },
+  { key: "PLACED", label: "Placed", icon: Clock3 },
+  { key: "ASSIGNED", label: "Assigned", icon: BadgeCheck },
+  { key: "DISPATCHED", label: "Dispatched", icon: Truck },
+  { key: "CANCELLED", label: "Cancelled", icon: XCircle },
 ] as const;
 
 const SectionEmpty = ({ title, description }: { title: string; description: string }) => (
@@ -83,8 +83,8 @@ const buildSmartInsights = ({
     insights.push(`${lowStockCount} product variants are below the low-stock threshold and need replenishment.`);
   }
 
-  if ((statusBreakdown.pending ?? 0) > 0) {
-    insights.push(`${statusBreakdown.pending} pending orders still need action from the school operations team.`);
+  if ((statusBreakdown.PLACED ?? 0) > 0) {
+    insights.push(`${statusBreakdown.PLACED} placed orders still need action from the school operations team.`);
   }
 
   if (studentInsights[0]) {
@@ -124,7 +124,7 @@ const SchoolDashboard = () => {
   const totalOrders = allOrders.length;
   const totalStudentOrders = allOrders.filter((order) => Boolean(order.resolvedStudentName || order.resolvedClass !== "Unassigned")).length;
   const totalRevenue = allOrders
-    .filter((order) => order.status !== "cancelled")
+    .filter((order) => order.status !== "CANCELLED")
     .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
 
   const ordersToday = useMemo(
@@ -138,10 +138,10 @@ const SchoolDashboard = () => {
 
   const statusBreakdown = useMemo(() => {
     const counts: Record<string, number> = {
-      pending: 0,
-      confirmed: 0,
-      shipped: 0,
-      cancelled: 0,
+      PLACED: 0,
+      ASSIGNED: 0,
+      DISPATCHED: 0,
+      CANCELLED: 0,
     };
 
     viewOrders.forEach((order) => {
@@ -160,7 +160,7 @@ const SchoolDashboard = () => {
       const className = order.resolvedClass || "Unassigned";
       const current = classMap.get(className) ?? { className, orderCount: 0, revenue: 0 };
       current.orderCount += 1;
-      if (order.status !== "cancelled") {
+      if (order.status !== "CANCELLED") {
         current.revenue += Number(order.total_amount ?? 0);
       }
       classMap.set(className, current);
@@ -176,7 +176,7 @@ const SchoolDashboard = () => {
     const productMap = new Map<string, { name: string; unitsSold: number }>();
 
     viewOrders
-      .filter((order) => order.status !== "cancelled")
+      .filter((order) => order.status !== "CANCELLED")
       .forEach((order) => {
         order.order_items.forEach((item) => {
           const key = item.product?.id ?? item.productId;

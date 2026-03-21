@@ -31,6 +31,12 @@ type Order = {
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  PLACED: { bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
+  ASSIGNED: { bg: "bg-blue-50 border-blue-200", text: "text-blue-700" },
+  PACKED: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700" },
+  DISPATCHED: { bg: "bg-indigo-50 border-indigo-200", text: "text-indigo-700" },
+  DELIVERED: { bg: "bg-green-50 border-green-200", text: "text-green-700" },
+  CANCELLED: { bg: "bg-red-50 border-red-200", text: "text-red-700" },
   pending:    { bg: "bg-yellow-50 border-yellow-200",  text: "text-yellow-700" },
   confirmed:  { bg: "bg-blue-50 border-blue-200",     text: "text-blue-700"   },
   processing: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700" },

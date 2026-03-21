@@ -163,6 +163,12 @@ export const formatShortDate = (value: string) =>
   });
 
 export const ORDER_STATUS_STYLES: Record<string, string> = {
+  PLACED: "bg-stone-100 text-stone-700 border-stone-200",
+  ASSIGNED: "bg-sky-100 text-sky-700 border-sky-200",
+  PACKED: "bg-amber-100 text-amber-700 border-amber-200",
+  DISPATCHED: "bg-violet-100 text-violet-700 border-violet-200",
+  DELIVERED: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  CANCELLED: "bg-rose-100 text-rose-700 border-rose-200",
   pending: "bg-stone-100 text-stone-700 border-stone-200",
   confirmed: "bg-sky-100 text-sky-700 border-sky-200",
   packed: "bg-amber-100 text-amber-700 border-amber-200",

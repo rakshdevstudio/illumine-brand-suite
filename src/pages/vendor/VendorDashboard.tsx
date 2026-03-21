@@ -49,7 +49,7 @@ const VendorDashboard = () => {
       if (ordersError) throw ordersError;
       if (productsError) throw productsError;
 
-      const completedOrders = (orders ?? []).filter((order: any) => order.status !== "cancelled");
+      const completedOrders = (orders ?? []).filter((order: any) => order.status !== "CANCELLED");
 
       const totalRevenue = completedOrders.reduce(
         (sum: number, order: any) => sum + Number(order.total_amount ?? 0),

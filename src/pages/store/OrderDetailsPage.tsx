@@ -37,6 +37,12 @@ type Order = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
+  PLACED: "Placed",
+  ASSIGNED: "Assigned",
+  PACKED: "Packed",
+  DISPATCHED: "Dispatched",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
   pending: "Pending",
   confirmed: "Confirmed",
   processing: "Processing",

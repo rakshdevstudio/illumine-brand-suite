@@ -59,28 +59,49 @@ const formatDateTime = (iso: string) =>
 
 const PUBLIC_TIMELINE_STEPS = [
   { key: "ORDER_PLACED", label: "Order Placed" },
-  { key: "PAYMENT_CONFIRMED", label: "Payment Confirmed" },
+  { key: "ASSIGNED", label: "Assigned" },
   { key: "PACKED", label: "Packed" },
-  { key: "SHIPPED", label: "Shipped" },
+  { key: "DISPATCHED", label: "Dispatched" },
   { key: "DELIVERED", label: "Delivered" },
 ] as const;
 
-const STATUS_STEPS = ["pending", "confirmed", "packed", "shipped", "delivered"] as const;
+const STATUS_STEPS = ["PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED"] as const;
 
 const STATUS_LABELS: Record<(typeof STATUS_STEPS)[number], string> = {
-  pending: "Order Placed",
-  confirmed: "Confirmed",
-  packed: "Packed",
-  shipped: "Shipped",
-  delivered: "Delivered",
+  PLACED: "Order Placed",
+  ASSIGNED: "Assigned",
+  PACKED: "Packed",
+  DISPATCHED: "Dispatched",
+  DELIVERED: "Delivered",
 };
 
 const STATUS_INDEX: Record<string, number> = {
-  pending: 0,
-  confirmed: 1,
-  packed: 2,
-  shipped: 3,
-  delivered: 4,
+  PLACED: 0,
+  ASSIGNED: 1,
+  PACKED: 2,
+  DISPATCHED: 3,
+  DELIVERED: 4,
+};
+
+const normalizeOrderStatus = (value: string | null | undefined) => {
+  const status = String(value ?? "").toUpperCase();
+  switch (status) {
+    case "PLACED":
+    case "ASSIGNED":
+    case "PACKED":
+    case "DISPATCHED":
+    case "DELIVERED":
+    case "CANCELLED":
+      return status;
+    case "PENDING":
+      return "PLACED";
+    case "CONFIRMED":
+      return "ASSIGNED";
+    case "SHIPPED":
+      return "DISPATCHED";
+    default:
+      return "PLACED";
+  }
 };
 
 const TrackOrderPage = () => {
@@ -103,14 +124,20 @@ const TrackOrderPage = () => {
     return [order.address, order.city, order.pincode].filter(Boolean).join(", ");
   }, [order]);
 
-  const currentStatusIndex = order ? STATUS_INDEX[order.status] ?? 0 : 0;
+  const currentStatusIndex = order ? STATUS_INDEX[normalizeOrderStatus(order.status)] ?? 0 : 0;
 
   const timelineByEvent = useMemo(() => {
     const map = new Map<string, { event_type: string; description: string; created_at: string }>();
     (order?.order_timeline ?? [])
       .filter((e) => e.event_type !== "NOTE_ADDED")
       .forEach((event) => {
-        if (!map.has(event.event_type)) map.set(event.event_type, event);
+        const normalizedEventType =
+          event.event_type === "PAYMENT_CONFIRMED"
+            ? "ASSIGNED"
+            : event.event_type === "SHIPPED"
+              ? "DISPATCHED"
+              : event.event_type;
+        if (!map.has(normalizedEventType)) map.set(normalizedEventType, event);
       });
     return map;
   }, [order]);
@@ -279,7 +306,7 @@ const TrackOrderPage = () => {
               </div>
             </div>
 
-            {order.status === "delivered" && (
+            {normalizeOrderStatus(order.status) === "DELIVERED" && (
               <p className="text-sm text-muted-foreground border-t pt-4">Thank you for shopping with Illume.</p>
             )}
           </section>
