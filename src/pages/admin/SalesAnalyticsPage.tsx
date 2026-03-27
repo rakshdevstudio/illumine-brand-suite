@@ -142,12 +142,14 @@ const SalesAnalyticsPage = () => {
   const { data: metrics } = useQuery({
     queryKey: ["sales-metrics", branchFilter],
     queryFn: async () => {
-      let ordersQuery = supabase.from("orders").select("id, total_amount, is_gst_order").neq("status", "CANCELLED");
+      const client = supabase as any;
+
+      let ordersQuery = client.from("orders").select("id, total_amount, is_gst_order").neq("status", "CANCELLED");
       if (branchFilter !== "all") {
         ordersQuery = ordersQuery.eq("branch_id", branchFilter);
       }
 
-      let itemsQuery = supabase
+      let itemsQuery = client
         .from("order_items")
         .select("quantity, orders!inner(branch_id, status)")
         .neq("orders.status", "CANCELLED");

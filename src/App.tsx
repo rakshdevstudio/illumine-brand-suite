@@ -32,9 +32,13 @@ import OrdersPage from "./pages/admin/OrdersPage";
 import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
-import SalesAnalyticsPage from "./pages/admin/SalesAnalyticsPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
 import BranchesPage from "./pages/admin/BranchesPage";
+import ReportsLayoutPage from "./pages/admin/reports/ReportsLayoutPage";
+import SalesReportPage from "./pages/admin/reports/SalesReportPage";
+import GstReportPage from "./pages/admin/reports/GstReportPage";
+import InventoryReportPage from "./pages/admin/reports/InventoryReportPage";
+import BranchPerformanceReportPage from "./pages/admin/reports/BranchPerformanceReportPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -83,7 +87,7 @@ const App = () => (
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="sales" element={<SalesAnalyticsPage />} />
+            <Route path="sales" element={<Navigate to="/admin/reports/sales" replace />} />
             <Route path="activity-logs" element={<ActivityLogsPage />} />
             <Route path="schools" element={<SchoolsPage />} />
             <Route path="classes" element={<ClassesPage />} />
@@ -97,6 +101,13 @@ const App = () => (
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="branches" element={<BranchesPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
+            <Route path="reports" element={<ReportsLayoutPage />}>
+              <Route index element={<Navigate to="/admin/reports/sales" replace />} />
+              <Route path="sales" element={<SalesReportPage />} />
+              <Route path="gst" element={<GstReportPage />} />
+              <Route path="inventory" element={<InventoryReportPage />} />
+              <Route path="branches" element={<BranchPerformanceReportPage />} />
+            </Route>
           </Route>
 
           <Route path="/branch/dashboard" element={<BranchDashboardPage />} />

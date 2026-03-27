@@ -1,5 +1,5 @@
-import { Outlet, Navigate } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, LineChart, History, Building2 } from "lucide-react";
+import { Outlet, Navigate, useLocation } from "react-router-dom";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, BarChart3, History, Building2, ReceiptText, Boxes } from "lucide-react";
 import illumeLogo from "@/assets/logo.png";
 import { NavLink } from "@/components/NavLink";
 import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
@@ -10,16 +10,19 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 
 const navItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, minRole: "staff" as const },
-  { title: "Sales", url: "/admin/sales", icon: LineChart, minRole: "staff" as const },
   { title: "Activity Logs", url: "/admin/activity-logs", icon: History, minRole: "staff" as const },
   { title: "Schools", url: "/admin/schools", icon: GraduationCap, minRole: "staff" as const },
   { title: "Classes", url: "/admin/classes", icon: BookOpen, minRole: "staff" as const },
@@ -33,6 +36,13 @@ const navItems = [
   { title: "Assignments", url: "/admin/product-assignments", icon: FlaskConical, minRole: "staff" as const },
 ];
 
+const reportNavItems = [
+  { title: "Sales Report", url: "/admin/reports/sales", icon: BarChart3 },
+  { title: "GST Report", url: "/admin/reports/gst", icon: ReceiptText },
+  { title: "Inventory Report", url: "/admin/reports/inventory", icon: Boxes },
+  { title: "Branch Performance", url: "/admin/reports/branches", icon: Building2 },
+];
+
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
@@ -41,7 +51,9 @@ const roleLabels: Record<string, string> = {
 
 function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string | null }) {
   const { state } = useSidebar();
+  const location = useLocation();
   const collapsed = state === "collapsed";
+  const isReportsActive = location.pathname.startsWith("/admin/reports");
 
   const visibleItems = navItems.filter((item) => {
     if (item.minRole === "staff") return true;
@@ -53,7 +65,7 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarContent>
         <div className="p-4 pb-6">
-                    {!collapsed ? (
+          {!collapsed ? (
             <img src={illumeLogo} alt="Illume" className="h-8 w-auto" />
           ) : (
             <img src={illumeLogo} alt="Illume" className="h-6 w-auto" />
@@ -76,6 +88,49 @@ function AdminSidebar({ onSignOut, role }: { onSignOut: () => void; role: string
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          {!collapsed && <SidebarGroupLabel>Reports</SidebarGroupLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isReportsActive}>
+                  <NavLink
+                    to="/admin/reports/sales"
+                    className="text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    activeClassName="bg-sidebar-accent text-sidebar-foreground font-medium"
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                    {!collapsed && <span className="text-sm">Reports</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+                <SidebarMenuSub>
+                  {reportNavItems.map((item) => (
+                    <SidebarMenuSubItem key={item.url}>
+                      <SidebarMenuSubButton asChild isActive={location.pathname === item.url}>
+                        <NavLink
+                          to={item.url}
+                          className="text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                          activeClassName="text-sidebar-foreground"
+                        >
+                          <item.icon className="h-3.5 w-3.5" strokeWidth={1.5} />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  ))}
+                </SidebarMenuSub>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <a

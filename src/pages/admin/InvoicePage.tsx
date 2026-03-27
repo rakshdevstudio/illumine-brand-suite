@@ -55,19 +55,46 @@ const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | nul
   return result;
 };
 
+type InvoiceOrderItem = {
+  id?: string | number;
+  quantity: number;
+  price: number;
+  products?: { name?: string | null };
+  product_variants?: { size?: string | null };
+};
+
+type InvoiceOrder = {
+  id: string;
+  customer_name: string;
+  phone: string;
+  alternate_phone: string | null;
+  student_name: string | null;
+  grade: string | null;
+  gst_number: string | null;
+  is_gst_order: boolean;
+  address: string;
+  city: string;
+  pincode: string;
+  total_amount: number;
+  created_at: string;
+  order_notes: Array<{ note?: string | null }>;
+  order_items: InvoiceOrderItem[];
+};
+
 const InvoicePage = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const [searchParams] = useSearchParams();
   const hasPrintedRef = useRef(false);
 
-  const { data: order, isLoading, error } = useQuery({
+  const { data: order, isLoading, error } = useQuery<InvoiceOrder | null>({
     queryKey: ["admin-invoice", orderId],
     enabled: !!orderId,
     queryFn: async () => {
       const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, gst_number, is_gst_order, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
       const legacyFields = "id, customer_name, phone, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
+      const client = supabase as any;
 
-      let { data, error } = await supabase
+      let { data, error } = await client
         .from("orders")
         .select(withStudentFields)
         .eq("id", orderId!)
@@ -79,13 +106,13 @@ const InvoicePage = () => {
           msg.includes("alternate_phone") || msg.includes("student_name") || msg.includes("grade");
 
         if (missingStudentCols) {
-          const fallback = await supabase
+          const fallback = await client
             .from("orders")
             .select(legacyFields)
             .eq("id", orderId!)
             .single();
 
-          data = fallback.data
+          const fallbackData = fallback.data
             ? {
                 ...fallback.data,
                 alternate_phone: null,
@@ -95,26 +122,25 @@ const InvoicePage = () => {
                 is_gst_order: false,
               }
             : null;
-          error = fallback.error;
+
+          if (fallback.error) throw fallback.error;
+          return fallbackData as InvoiceOrder | null;
         }
       }
 
       if (error) throw error;
-      return data;
+      return data as InvoiceOrder | null;
     },
   });
 
-  const noteDerivedStudent = useMemo(
-    () => parseStudentFieldsFromNotes((order as any)?.order_notes),
-    [order]
-  );
+  const noteDerivedStudent = useMemo(() => parseStudentFieldsFromNotes(order?.order_notes), [order]);
 
-  const studentName = (order as any)?.student_name || noteDerivedStudent.studentName || "-";
-  const grade = (order as any)?.grade || noteDerivedStudent.grade || "-";
-  const alternatePhoneRaw = (order as any)?.alternate_phone || noteDerivedStudent.alternatePhone || "";
+  const studentName = order?.student_name || noteDerivedStudent.studentName || "-";
+  const grade = order?.grade || noteDerivedStudent.grade || "-";
+  const alternatePhoneRaw = order?.alternate_phone || noteDerivedStudent.alternatePhone || "";
   const alternatePhone = alternatePhoneRaw && alternatePhoneRaw !== "—" ? alternatePhoneRaw : "-";
-  const gstNumber = ((order as any)?.gst_number ?? "").trim();
-  const isGstOrder = Boolean((order as any)?.is_gst_order) && !!gstNumber;
+  const gstNumber = (order?.gst_number ?? "").trim();
+  const isGstOrder = Boolean(order?.is_gst_order) && !!gstNumber;
   const invoiceTypeLabel = isGstOrder ? "TAX INVOICE" : "RETAIL INVOICE";
 
   const invoiceNumber = useMemo(() => {
@@ -129,8 +155,8 @@ const InvoicePage = () => {
 
   const items = order?.order_items ?? [];
   const subtotal = useMemo(
-    () => items.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
-    [items]
+    () => items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
+    [items],
   );
   const shipping = 0;
   const tax = 0;
@@ -244,7 +270,7 @@ const InvoicePage = () => {
     draw("Subtotal", 490, 518, 10, "medium");
 
     let y = 498;
-    for (const item of items as any[]) {
+    for (const item of items) {
       const productName = item.products?.name || "Product";
       const size = item.product_variants?.size || "default";
       const qty = Number(item.quantity || 0);
@@ -381,7 +407,7 @@ const InvoicePage = () => {
               </tr>
             </thead>
             <tbody>
-              {items.map((item: any, index: number) => {
+              {items.map((item: InvoiceOrderItem, index: number) => {
                 const qty = Number(item.quantity || 0);
                 const unit = Number(item.price || 0);
                 const rowTotal = qty * unit;

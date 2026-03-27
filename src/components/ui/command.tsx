@@ -39,19 +39,19 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
   );
 };
 
-export type CommandInputProps = React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input> & {
-  onChange?: React.ChangeEventHandler<HTMLInputElement>;
+export type CommandInputProps = Omit<React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>, "onValueChange"> & {
+  onValueChange?: (value: string) => void;
 };
 
 const CommandInputBase = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   CommandInputProps
->(({ className, onChange, ...props }, ref) => (
+>(({ className, onValueChange, ...props }, ref) => (
   <div className="flex items-center border-b px-3" cmdk-input-wrapper="">
     <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
-      onChange={onChange as any}
+      onValueChange={onValueChange}
       className={cn(
         "flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className,

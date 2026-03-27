@@ -546,6 +546,7 @@ const PosDashboard = () => {
         customer_name: customerName,
         phone: resolvedPhone,
         alternate_phone: customerPhone ? normalizedAlternatePhone || null : null,
+        payment_mode: paymentMethod.toUpperCase(),
         student_name: studentName.trim(),
         student_class: studentClass.trim(),
         grade: studentClass.trim(),
@@ -556,7 +557,7 @@ const PosDashboard = () => {
         status: "ASSIGNED",
       };
 
-      const { data: order, error: orderError } = await supabase
+      const { data: order, error: orderError } = await (supabase as any)
         .from("orders")
         .insert(compatibleOrderPayload)
         .select("id, total_amount")
