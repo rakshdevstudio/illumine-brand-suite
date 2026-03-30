@@ -37,12 +37,9 @@ import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
-import BranchesPage from "./pages/admin/BranchesPage";
 import ReportsLayoutPage from "./pages/admin/reports/ReportsLayoutPage";
 import SalesReportPage from "./pages/admin/reports/SalesReportPage";
-import GstReportPage from "./pages/admin/reports/GstReportPage";
 import InventoryReportPage from "./pages/admin/reports/InventoryReportPage";
-import BranchPerformanceReportPage from "./pages/admin/reports/BranchPerformanceReportPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -56,7 +53,6 @@ import SchoolOrdersPage from "./pages/school/SchoolOrdersPage";
 // POS
 import PosLoginPage from "./pages/pos/PosLoginPage";
 import PosDashboard from "./pages/pos/PosDashboard";
-import BranchDashboardPage from "./pages/branch/BranchDashboardPage";
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -200,18 +196,13 @@ const App = () => (
             <Route path="orders/:orderId" element={<OrdersPage />} />
             <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
             <Route path="users" element={<AdminUsersPage />} />
-            <Route path="branches" element={<BranchesPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
             <Route path="reports" element={<ReportsLayoutPage />}>
               <Route index element={<Navigate to="/admin/reports/sales" replace />} />
               <Route path="sales" element={<SalesReportPage />} />
-              <Route path="gst" element={<GstReportPage />} />
               <Route path="inventory" element={<InventoryReportPage />} />
-              <Route path="branches" element={<BranchPerformanceReportPage />} />
             </Route>
           </Route>
-
-          <Route path="/branch/dashboard" element={<BranchDashboardPage />} />
 
           {/* Vendor Portal */}
           <Route path="/vendor/login" element={<VendorLoginPage />} />

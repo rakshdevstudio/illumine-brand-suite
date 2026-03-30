@@ -1,13 +1,11 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { BarChart3, Building2, Boxes, ReceiptText } from "lucide-react";
+import { BarChart3, Boxes } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 
 const reportLinks = [
   { title: "Sales Report", url: "/admin/reports/sales", icon: BarChart3 },
-  { title: "GST Report", url: "/admin/reports/gst", icon: ReceiptText },
   { title: "Inventory Report", url: "/admin/reports/inventory", icon: Boxes },
-  { title: "Branch Performance", url: "/admin/reports/branches", icon: Building2 },
 ];
 
 const ReportsLayoutPage = () => {

@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, BarChart3, History, Building2, ReceiptText, Boxes } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, BarChart3, History, Building2, Boxes } from "lucide-react";
 import illumeLogo from "@/assets/logo.png";
 import { NavLink } from "@/components/NavLink";
 import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
@@ -31,16 +31,13 @@ const navItems = [
   { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
   { title: "Inventory Alerts", url: "/admin/inventory-alerts", icon: AlertTriangle, minRole: "staff" as const },
   { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
-  { title: "Branches", url: "/admin/branches", icon: Building2, minRole: "staff" as const },
   { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
   { title: "Assignments", url: "/admin/product-assignments", icon: FlaskConical, minRole: "staff" as const },
 ];
 
 const reportNavItems = [
   { title: "Sales Report", url: "/admin/reports/sales", icon: BarChart3 },
-  { title: "GST Report", url: "/admin/reports/gst", icon: ReceiptText },
   { title: "Inventory Report", url: "/admin/reports/inventory", icon: Boxes },
-  { title: "Branch Performance", url: "/admin/reports/branches", icon: Building2 },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -179,7 +176,7 @@ const AdminLayout = () => {
   }
 
   if (role === "branch_staff") {
-    return <Navigate to="/branch/dashboard" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
   return (

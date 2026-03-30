@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
-import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
 import illumeLogo from "@/assets/logo.png";
 import { STORE_ADD_TO_CART_EVENT, StoreAddToCartDetail } from "@/lib/store-interactions";
 
@@ -24,7 +23,6 @@ const StoreHeader = () => {
   const count = items.reduce((s, i) => s + i.quantity, 0);
   const profile = useStudentProfile((s) => s.profile);
   const openModal = useStudentProfile((s) => s.openModal);
-  const { branches, activeBranchId, setActiveBranchId } = useStoreActiveBranch();
   const cartLinkRef = useRef<HTMLAnchorElement | null>(null);
   const cartControls = useAnimationControls();
   const [flyingItem, setFlyingItem] = useState<FlyingCartItem | null>(null);
@@ -77,25 +75,6 @@ const StoreHeader = () => {
         </Link>
 
         <div className="flex items-center gap-6">
-          <label className="hidden md:flex items-center gap-2 text-[10px] tracking-[0.12em] uppercase text-surface-dark-muted">
-            <span>Branch</span>
-            <select
-              value={activeBranchId ?? ""}
-              onChange={(e) => setActiveBranchId(e.target.value || null)}
-              className="h-7 bg-transparent border border-surface-dark-muted/30 text-surface-dark-foreground px-2 text-[10px] tracking-[0.08em] uppercase"
-            >
-              {branches.length === 0 ? (
-                <option value="">No Branch</option>
-              ) : (
-                branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
           <Link
             to="/track-order"
             className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"

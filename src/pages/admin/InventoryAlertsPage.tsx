@@ -28,7 +28,22 @@ const InventoryAlertsPage = () => {
     retry: false,
   });
 
-  const rows = useMemo(() => variants ?? [], [variants]);
+  const rows = useMemo(() => {
+    const source = variants ?? [];
+    const grouped = new Map<string, any>();
+
+    source.forEach((variant: any) => {
+      const key = variant.variant_id ?? variant.id;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, { ...variant, stock: Number(variant.stock ?? 0) });
+        return;
+      }
+      existing.stock += Number(variant.stock ?? 0);
+    });
+
+    return Array.from(grouped.values());
+  }, [variants]);
   const thresholdColumnAvailable = !thresholdColumnForcedUnavailable && (
     rows.length === 0 || rows.some((variant: any) => Object.prototype.hasOwnProperty.call(variant.product_variants ?? {}, "low_stock_threshold"))
   );
@@ -101,7 +116,6 @@ const InventoryAlertsPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Current Stock</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Alert Threshold</TableHead>
@@ -135,9 +149,8 @@ const InventoryAlertsPage = () => {
                 const isDirty = draftValue !== String(threshold);
 
                 return (
-                  <TableRow key={variant.id} className={lowStock ? "bg-red-50" : undefined}>
+                  <TableRow key={variant.variant_id ?? variant.id} className={lowStock ? "bg-red-50" : undefined}>
                     <TableCell className="text-sm font-medium">{variant.product_variants?.products?.name || "Product"}</TableCell>
-                    <TableCell className="text-sm">{variant.branches?.name || "Branch"}</TableCell>
                     <TableCell className="text-sm">{variant.product_variants?.size}</TableCell>
                     <TableCell className={lowStock ? "text-red-600 font-medium" : "text-sm font-medium"}>
                       {variant.stock}

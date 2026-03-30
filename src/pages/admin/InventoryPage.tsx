@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
@@ -26,6 +25,15 @@ type BranchInventoryRow = {
     low_stock_threshold?: number | null;
     products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
   } | null;
+};
+
+type AggregatedInventoryRow = {
+  key: string;
+  variant_id: string;
+  product_id: string;
+  stock: number;
+  primary_branch_id: string | null;
+  product_variants?: BranchInventoryRow["product_variants"];
 };
 
 type InventoryMovementRow = {
@@ -53,7 +61,6 @@ const InventoryPage = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkAdjust, setBulkAdjust] = useState(0);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
-  const [branchFilter, setBranchFilter] = useState<string>("all");
   const [initializing, setInitializing] = useState(false);
   const [adjustReason, setAdjustReason] = useState("");
   const [bulkReason, setBulkReason] = useState("");
@@ -103,19 +110,14 @@ const InventoryPage = () => {
   });
 
   const { data: movements, isLoading: loadingMovements } = useQuery({
-    queryKey: ["admin-inventory-movements", branchFilter],
+    queryKey: ["admin-inventory-movements"],
     queryFn: async () => {
-      let query = (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("inventory_movements")
         .select("id, branch_id, variant_id, type, quantity, before_stock, after_stock, reason, reference_type, created_at, branches(name), product_variants(size, products(name))")
         .order("created_at", { ascending: false })
         .limit(20);
 
-      if (branchFilter !== "all") {
-        query = query.eq("branch_id", branchFilter);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as InventoryMovementRow[];
     },
@@ -142,13 +144,38 @@ const InventoryPage = () => {
     ]);
   };
 
-  const visibleRows = useMemo(() => {
+  const aggregatedRows = useMemo<AggregatedInventoryRow[]>(() => {
     if (!rows) return [];
-    if (branchFilter === "all") return rows;
-    return rows.filter((row) => row.branch_id === branchFilter);
-  }, [rows, branchFilter]);
+    const grouped = new Map<string, AggregatedInventoryRow>();
 
-  const allIds = visibleRows.map((row) => row.id);
+    rows.forEach((row) => {
+      const key = row.variant_id;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          key,
+          variant_id: row.variant_id,
+          product_id: row.product_id,
+          stock: Number(row.stock ?? 0),
+          primary_branch_id: row.branch_id ?? null,
+          product_variants: row.product_variants,
+        });
+        return;
+      }
+
+      existing.stock += Number(row.stock ?? 0);
+      const currentPrimaryStock = rows.find((r) => r.branch_id === existing.primary_branch_id && r.variant_id === row.variant_id)?.stock ?? 0;
+      if (Number(row.stock ?? 0) > Number(currentPrimaryStock ?? 0)) {
+        existing.primary_branch_id = row.branch_id ?? existing.primary_branch_id;
+      }
+    });
+
+    return [...grouped.values()].sort((a, b) => b.stock - a.stock);
+  }, [rows]);
+
+  const visibleRows = aggregatedRows;
+
+  const allIds = visibleRows.map((row) => row.key);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
 
   const toggleSelectAll = (checked: boolean) => {
@@ -163,16 +190,21 @@ const InventoryPage = () => {
     setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
   };
 
-  const handleAdjustStock = async (row: BranchInventoryRow) => {
+  const handleAdjustStock = async (row: AggregatedInventoryRow) => {
     if (adjustAmount === 0) return;
     if (!adjustReason.trim()) {
       toast.error("Adjustment reason is required");
       return;
     }
 
+    if (!row.primary_branch_id) {
+      toast.error("No branch inventory row available for this variant");
+      return;
+    }
+
     const movementType = adjustAmount > 0 ? "IN" : "ADJUSTMENT";
     const { error } = await (supabase as any).rpc("apply_inventory_movement", {
-      p_branch_id: row.branch_id,
+      p_branch_id: row.primary_branch_id,
       p_variant_id: row.variant_id,
       p_type: movementType,
       p_quantity: adjustAmount,
@@ -202,12 +234,13 @@ const InventoryPage = () => {
       return;
     }
 
-    const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.id));
+    const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.key));
     const movementType = bulkAdjust > 0 ? "IN" : "ADJUSTMENT";
 
     for (const row of selectedRows) {
+      if (!row.primary_branch_id) continue;
       const { error } = await (supabase as any).rpc("apply_inventory_movement", {
-        p_branch_id: row.branch_id,
+        p_branch_id: row.primary_branch_id,
         p_variant_id: row.variant_id,
         p_type: movementType,
         p_quantity: bulkAdjust,
@@ -220,7 +253,7 @@ const InventoryPage = () => {
       }
     }
 
-    toast.success(`Adjusted stock for ${selectedRows.length} branch inventory rows`);
+    toast.success(`Adjusted stock for ${selectedRows.length} variants`);
     setBulkAdjust(0);
     setBulkReason("");
     setSelectedIds([]);
@@ -232,14 +265,12 @@ const InventoryPage = () => {
   };
 
   const exportSelectedInventory = () => {
-    const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.id));
-    const header = ["Branch", "Location", "Product", "School", "Category", "Size", "Stock", "Price"];
+    const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.key));
+    const header = ["Product", "School", "Category", "Size", "Stock", "Price"];
 
     const lines = selectedRows.map((row) => {
       const product = row.product_variants?.products;
       const values = [
-        row.branches?.name ?? "",
-        row.branches?.location ?? "",
         product?.name ?? "",
         product?.schools?.name ?? "",
         product?.category ?? "",
@@ -264,31 +295,14 @@ const InventoryPage = () => {
     <div>
       <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Inventory</h1>
-        <div className="flex gap-2 items-center w-full max-w-xl">
-          <div className="w-full max-w-xs">
-            <Select value={branchFilter} onValueChange={setBranchFilter}>
-              <SelectTrigger className="h-10 text-xs uppercase tracking-[0.12em]">
-                <SelectValue placeholder="Filter by branch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {(branches ?? []).map((branch: any) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name} · {branch.location}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            variant="outline"
-            className="h-10 text-xs tracking-[0.12em] uppercase"
-            onClick={initializeInventory}
-            disabled={initializing}
-          >
-            {initializing ? "Initializing..." : "Initialize Inventory"}
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          className="h-10 text-xs tracking-[0.12em] uppercase"
+          onClick={initializeInventory}
+          disabled={initializing}
+        >
+          {initializing ? "Initializing..." : "Initialize Inventory"}
+        </Button>
       </div>
 
       <div className="mb-4 border border-border bg-muted/30 px-4 py-3 text-xs tracking-wide uppercase flex flex-wrap gap-4">
@@ -317,7 +331,6 @@ const InventoryPage = () => {
                 <Checkbox checked={allSelected} onCheckedChange={(value) => toggleSelectAll(Boolean(value))} />
               </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
@@ -338,12 +351,11 @@ const InventoryPage = () => {
                 const stock = Number(row.stock ?? 0);
                 const threshold = Number(row.product_variants?.low_stock_threshold ?? 5);
                 return (
-                  <TableRow key={row.id}>
+                  <TableRow key={row.key}>
                     <TableCell>
-                      <Checkbox checked={selectedIds.includes(row.id)} onCheckedChange={(value) => toggleSelectOne(row.id, Boolean(value))} />
+                      <Checkbox checked={selectedIds.includes(row.key)} onCheckedChange={(value) => toggleSelectOne(row.key, Boolean(value))} />
                     </TableCell>
                     <TableCell className="text-sm">{product?.name ?? "Product"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.branches?.name ?? "Branch"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.schools?.name ?? "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.category ?? "—"}</TableCell>
                     <TableCell className="text-sm">{row.product_variants?.size ?? "default"}</TableCell>
@@ -360,7 +372,7 @@ const InventoryPage = () => {
                     </TableCell>
                     <TableCell>
                       <Dialog
-                        open={adjusting === row.id}
+                        open={adjusting === row.key}
                         onOpenChange={(open) => {
                           if (!open) {
                             setAdjusting(null);
@@ -369,14 +381,14 @@ const InventoryPage = () => {
                         }}
                       >
                         <DialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="text-xs" onClick={() => setAdjusting(row.id)}>
+                          <Button variant="outline" size="sm" className="text-xs" onClick={() => setAdjusting(row.key)}>
                             Adjust
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-sm" aria-describedby={undefined}>
                           <DialogHeader>
                             <DialogTitle className="text-sm font-light tracking-wide">
-                              Adjust Stock — {product?.name ?? "Product"} ({row.branches?.name ?? "Branch"})
+                              Adjust Stock — {product?.name ?? "Product"}
                             </DialogTitle>
                           </DialogHeader>
                           <div className="py-4">

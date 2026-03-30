@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
-import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
+import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -28,7 +28,6 @@ const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
   const [searchParams] = useSearchParams();
   const setProfile = useStudentProfile((s) => s.setProfile);
-  const { activeBranchId, activeBranch } = useStoreActiveBranch();
   const debugMode = searchParams.get("debug") === "true";
 
   const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
@@ -114,23 +113,18 @@ const ClassProductsPage = () => {
     [products]
   );
 
-  const { data: branchInventoryRows } = useQuery({
-    queryKey: ["store-class-products-branch-inventory", activeBranchId, allVariantIds.join(",")],
-    enabled: !!activeBranchId && allVariantIds.length > 0,
+  const { data: variantStockEntries } = useQuery({
+    queryKey: ["store-class-products-global-inventory", allVariantIds.join(",")],
+    enabled: allVariantIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("branch_inventory")
-        .select("variant_id, stock")
-        .eq("branch_id", activeBranchId)
-        .in("variant_id", allVariantIds);
-      if (error) throw error;
-      return (data ?? []) as Array<{ variant_id: string; stock: number }>;
+      const { stockByVariant } = await fetchGlobalStockByVariants(allVariantIds);
+      return Array.from(stockByVariant.entries());
     },
   });
 
   const branchStockByVariant = useMemo(
-    () => new Map((branchInventoryRows ?? []).map((row) => [row.variant_id, Number(row.stock ?? 0)])),
-    [branchInventoryRows]
+    () => new Map((variantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
+    [variantStockEntries]
   );
 
   const formatPrice = (price: number) =>
@@ -199,8 +193,8 @@ const ClassProductsPage = () => {
             const stockLabel = totalStock <= 0
               ? "Out of stock"
               : isLowStock
-                ? `Low stock at ${activeBranch?.name ?? "selected branch"}`
-                : `In stock at ${activeBranch?.name ?? "selected branch"}`;
+                ? "Low stock"
+                : "In stock";
 
             return (
               <motion.div

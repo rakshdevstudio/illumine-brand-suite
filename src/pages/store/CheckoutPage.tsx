@@ -7,14 +7,13 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
+import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 type CheckoutForm = {
   customer_name: string;
   email: string;
   phone: string;
   alternate_phone: string;
-  gst_number: string;
   student_name: string;
   grade: string;
   address: string;
@@ -27,7 +26,6 @@ const EMPTY_FORM: CheckoutForm = {
   email: "",
   phone: "",
   alternate_phone: "",
-  gst_number: "",
   student_name: "",
   grade: "",
   address: "",
@@ -50,22 +48,7 @@ const isMissingOrderColumnError = (error: { code?: string; message?: string } | 
     message.includes("city") ||
     message.includes("pincode") ||
     message.includes("customer_id") ||
-    message.includes("email") ||
-    message.includes("gst_number") ||
-    message.includes("is_gst_order")
-  );
-};
-
-const isMissingBranchInfraError = (error: { code?: string; message?: string } | null) => {
-  if (!error) return false;
-  const message = (error.message ?? "").toLowerCase();
-  return (
-    error.code === "42P01" ||
-    error.code === "42703" ||
-    error.code === "PGRST204" ||
-    message.includes("branch_inventory") ||
-    message.includes("branch_id") ||
-    message.includes("assigned_at")
+    message.includes("email")
   );
 };
 
@@ -74,14 +57,10 @@ const CheckoutPage = () => {
   const navigate = useNavigate();
   const studentProfile = useStudentProfile((state) => state.profile);
   const customer = useCustomerAuth((state) => state.customer);
-  const { activeBranchId } = useStoreActiveBranch();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
-  const [hasGstNumber, setHasGstNumber] = useState(false);
   const hasItemsRef = useRef(items.length > 0);
-
-  const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => {
@@ -150,61 +129,19 @@ const CheckoutPage = () => {
       return;
     }
 
-    const normalizedGst = form.gst_number.trim().toUpperCase().replace(/\s+/g, "");
-    if (hasGstNumber) {
-      if (!normalizedGst) {
-        setErrors((prev) => ({ ...prev, gst_number: "GST number is required" }));
-        toast.error("GST number is required");
-        return;
-      }
-
-      if (!GST_REGEX.test(normalizedGst)) {
-        setErrors((prev) => ({ ...prev, gst_number: "Enter a valid GST number" }));
-        toast.error("Enter a valid GST number");
-        return;
-      }
-    }
-
     if (items.length === 0) return;
 
     setLoading(true);
     try {
-      // ── Step 1: validate stock from active branch inventory ───────
+      // ── Step 1: validate global stock (merged across all branches) ───────
       const variantIds = items.map((i) => i.variantId);
-      let assignedBranchId: string | null = activeBranchId ?? null;
-      let selectedBranchRows: Array<{ branch_id: string; variant_id: string; stock: number }> = [];
-
-      if (!assignedBranchId) {
-        toast.error("Select a branch before checkout");
-        return;
-      }
-
-      const branchInventoryAttempt = await (supabase as any)
-        .from("branch_inventory")
-        .select("branch_id, variant_id, stock")
-        .eq("branch_id", assignedBranchId)
-        .in("variant_id", variantIds);
-
-      if (branchInventoryAttempt.error) {
-        if (!isMissingBranchInfraError(branchInventoryAttempt.error)) {
-          throw branchInventoryAttempt.error;
-        }
-        toast.error("Branch inventory is not configured yet");
-        return;
-      }
-
-      selectedBranchRows = (branchInventoryAttempt.data ?? []).map((row: any) => ({
-        branch_id: row.branch_id,
-        variant_id: row.variant_id,
-        stock: Number(row.stock ?? 0),
-      }));
-
-      const stockByVariant = new Map(selectedBranchRows.map((row) => [row.variant_id, row.stock]));
+      const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
       const insufficientItems = items.filter((item) => (stockByVariant.get(item.variantId) ?? 0) < item.quantity);
 
       if (insufficientItems.length > 0) {
         const names = insufficientItems.map((i) => `${i.name} (Size ${i.size})`).join(", ");
         toast.error(`Insufficient stock for: ${names}. Please update your cart.`);
+        setLoading(false);
         return;
       }
 
@@ -240,8 +177,6 @@ const CheckoutPage = () => {
         phone: orderPayload.phone,
         alternate_phone: orderPayload.alternatePhone || null,
         payment_mode: "ONLINE",
-        gst_number: hasGstNumber ? normalizedGst : null,
-        is_gst_order: hasGstNumber,
         customer_id: customer?.id ?? null,
         student_name: orderPayload.studentName,
         student_class: orderPayload.grade,
@@ -250,7 +185,6 @@ const CheckoutPage = () => {
         city: orderPayload.city,
         pincode: orderPayload.pincode,
         school_id: effectiveSchoolId,
-        branch_id: assignedBranchId,
         total_amount: total(),
         status: "PLACED",
       };
@@ -266,28 +200,16 @@ const CheckoutPage = () => {
           phone: orderPayload.phone,
           address: orderPayload.address,
           payment_mode: "ONLINE",
-          gst_number: hasGstNumber ? normalizedGst : null,
-          is_gst_order: hasGstNumber,
           school_id: effectiveSchoolId,
-          branch_id: assignedBranchId,
           total_amount: total(),
           status: "PLACED",
         },
-        (() => {
-          const { gst_number: _gstNumber, is_gst_order: _isGstOrder, ...legacyWithoutGst } = legacyOrderPayload;
-          return legacyWithoutGst;
-        })(),
-        (() => {
-          const { student_class: _studentClass, gst_number: _gstNumber, is_gst_order: _isGstOrder, ...compatWithoutGst } = legacyOrderPayload;
-          return compatWithoutGst;
-        })(),
         {
           customer_name: orderPayload.fullName,
           phone: orderPayload.phone,
           address: orderPayload.address,
           payment_mode: "ONLINE",
           school_id: effectiveSchoolId,
-          branch_id: assignedBranchId,
           total_amount: total(),
           status: "PLACED",
         },
@@ -322,7 +244,7 @@ const CheckoutPage = () => {
 
       await supabase.from("order_notes").insert({
         order_id: order.id,
-        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}${hasGstNumber ? `\nGSTIN: ${normalizedGst}` : ""}${assignedBranchId ? "\nBranch Assignment: Auto-assigned" : "\nBranch Assignment: Manual required"}`,
+        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}`,
       });
 
       // ── Step 3: insert order items ────────────────────────────────────────
@@ -337,35 +259,9 @@ const CheckoutPage = () => {
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) throw itemsErr;
 
-      // ── Step 4: deduct stock from assigned branch only ─
+      // ── Step 4: deduct stock globally across branches ─
       for (const item of items) {
-        const snapshot = selectedBranchRows.find((row) => row.variant_id === item.variantId);
-        const previous = Number(snapshot?.stock ?? 0);
-
-        const { data: movementData, error: branchUpdateError } = await (supabase as any).rpc("apply_inventory_movement", {
-          p_branch_id: assignedBranchId,
-          p_variant_id: item.variantId,
-          p_type: "OUT",
-          p_quantity: item.quantity,
-          p_reference_type: "ORDER",
-          p_reference_id: order.id,
-          p_reason: "Checkout order deduction",
-        });
-
-        if (branchUpdateError) throw branchUpdateError;
-
-        const updatedStock = Number(movementData?.after_stock ?? Math.max(0, previous - item.quantity));
-        const beforeStock = Number(movementData?.before_stock ?? previous);
-
-        await supabase.from("inventory_logs").insert({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          change_type: "order",
-          quantity_change: -item.quantity,
-          previous_stock: beforeStock,
-          new_stock: updatedStock,
-          order_id: order.id,
-        });
+        await deductStockAcrossBranches(item.variantId, item.productId, item.quantity, order.id);
       }
 
       clearCart();
@@ -472,48 +368,6 @@ const CheckoutPage = () => {
             autoComplete="tel"
           />
           {errors.alternate_phone && <p className="mt-2 text-xs text-destructive">{errors.alternate_phone}</p>}
-        </div>
-
-        <div className="space-y-3">
-          <label className="flex items-center gap-2 text-xs tracking-[0.12em] text-muted-foreground uppercase">
-            <input
-              type="checkbox"
-              checked={hasGstNumber}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setHasGstNumber(checked);
-                if (!checked) {
-                  setForm((prev) => ({ ...prev, gst_number: "" }));
-                  setErrors((prev) => ({ ...prev, gst_number: undefined }));
-                }
-              }}
-              className="h-4 w-4"
-            />
-            I have GST number
-          </label>
-
-          {hasGstNumber && (
-            <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
-                GST Number <span className="text-destructive">*</span>
-              </label>
-              <Input
-                value={form.gst_number}
-                onChange={(e) => {
-                  const nextValue = e.target.value.toUpperCase();
-                  setForm((prev) => ({ ...prev, gst_number: nextValue }));
-                  if (errors.gst_number) {
-                    setErrors((prev) => ({ ...prev, gst_number: undefined }));
-                  }
-                }}
-                className={getInputClass("gst_number")}
-                placeholder="27ABCDE1234F1Z5"
-                autoComplete="off"
-                maxLength={15}
-              />
-              {errors.gst_number && <p className="mt-2 text-xs text-destructive">{errors.gst_number}</p>}
-            </div>
-          )}
         </div>
 
         {/* Student Name */}

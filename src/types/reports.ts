@@ -10,7 +10,6 @@ export type ReportRow = {
   line_amount: number;
   discount_amount?: number;
   payment_mode?: string;
-  gst_number?: string | null;
   status: string;
   created_at: string;
 };

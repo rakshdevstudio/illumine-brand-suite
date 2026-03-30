@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +24,7 @@ import {
 } from "@/components/admin/reports/ReportUI";
 import { exportReportCsv, exportReportXlsx } from "@/lib/reports/export";
 import type { ReportExportConfig } from "@/lib/reports/export";
-import { fetchBranchOptions, fetchSalesItemReportRows, fetchSalesReportRows, fetchSchoolOptions } from "@/lib/reports/data";
+import { fetchSalesItemReportRows, fetchSalesReportRows, fetchSchoolOptions } from "@/lib/reports/data";
 import {
   PAYMENT_MODE_OPTIONS,
   ORDER_STATUS_OPTIONS,
@@ -46,7 +45,6 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const GROUP_OPTIONS: Array<{ value: SalesGroupBy; label: string }> = [
   { value: "date", label: "Date" },
-  { value: "branch", label: "Branch" },
   { value: "school", label: "School" },
 ];
 
@@ -54,10 +52,8 @@ const SalesReportPage = () => {
   const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<SalesReportFilters>({
     dateRange: getDefaultDateRange(30),
-    branchIds: [],
     schoolIds: [],
     status: "active",
-    gstOnly: false,
     paymentMode: "all",
     search: "",
   });
@@ -65,12 +61,6 @@ const SalesReportPage = () => {
   const [viewMode, setViewMode] = useState<"order" | "item">("order");
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
-
-  const { data: branches = [], error: branchesError } = useQuery({
-    queryKey: ["report-branches"],
-    queryFn: fetchBranchOptions,
-    staleTime: 5 * 60_000,
-  });
 
   const { data: schools = [], error: schoolsError } = useQuery({
     queryKey: ["report-schools"],
@@ -98,14 +88,9 @@ const SalesReportPage = () => {
       (accumulator, row) => {
         accumulator.revenue += row.total_amount;
         accumulator.orders += 1;
-        if (row.gst_number) {
-          accumulator.gstRevenue += row.total_amount;
-        } else {
-          accumulator.nonGstRevenue += row.total_amount;
-        }
         return accumulator;
       },
-      { revenue: 0, orders: 0, gstRevenue: 0, nonGstRevenue: 0 },
+      { revenue: 0, orders: 0 },
     );
 
     const totalCustomers = new Map<string, { spend: number; orders: number }>();
@@ -123,8 +108,6 @@ const SalesReportPage = () => {
       totalRevenue: totals.revenue,
       totalOrders: totals.orders,
       averageOrderValue: totals.orders > 0 ? totals.revenue / totals.orders : 0,
-      gstRevenue: totals.gstRevenue,
-      nonGstRevenue: totals.nonGstRevenue,
       repeatCustomersPct: totalCustomers.size ? (repeatCustomers / totalCustomers.size) * 100 : 0,
       averageItemsPerOrder: totals.orders ? rows.reduce((sum, row) => sum + row.total_quantity, 0) / totals.orders : 0,
       customerMap: totalCustomers,
@@ -155,15 +138,12 @@ const SalesReportPage = () => {
   const paginated = useMemo(() => paginateRows(tableRows, page), [page, tableRows]);
 
   const filtersLabel = useMemo(() => {
-    const branchLabel = filters.branchIds.length ? `${filters.branchIds.length} branches` : "All branches";
     const schoolLabel = filters.schoolIds.length ? `${filters.schoolIds.length} schools` : "All schools";
     return [
       `${filters.dateRange.from} to ${filters.dateRange.to}`,
-      branchLabel,
       schoolLabel,
       `Status: ${filters.status === "active" ? "Active Orders" : filters.status}`,
       `Payment: ${filters.paymentMode === "all" ? "All Modes" : filters.paymentMode}`,
-      filters.gstOnly ? "GST orders only" : "All GST states",
       filters.search.trim() ? `Search: ${filters.search.trim()}` : null,
     ]
       .filter(Boolean)
@@ -171,12 +151,12 @@ const SalesReportPage = () => {
   }, [filters]);
 
   const orderColumns = useMemo(
-    () => ["Order ID", "Order Date", "Customer Name", "School", "Branch", "Items", "Total Quantity", "Total Amount", "GST Number", "Order Status", "Payment Mode"],
+    () => ["Order ID", "Order Date", "Customer Name", "School", "Items", "Total Quantity", "Total Amount", "Order Status", "Payment Mode"],
     [],
   );
 
   const itemColumns = useMemo(
-    () => ["Order ID", "Date", "Customer", "Branch", "Product", "Variant", "SKU", "Qty", "Unit Price", "Line Amount", "Discount", "Payment", "GST Number"],
+    () => ["Order ID", "Date", "Customer", "Product", "Variant", "SKU", "Qty", "Unit Price", "Line Amount", "Discount", "Payment"],
     [],
   );
 
@@ -187,11 +167,9 @@ const SalesReportPage = () => {
         row.order_date,
         row.customer_name,
         row.school_name,
-        row.branch_name,
         row.items,
         row.total_quantity,
         row.total_amount,
-        row.gst_number ?? "",
         row.status,
         row.payment_mode,
       ]),
@@ -204,7 +182,6 @@ const SalesReportPage = () => {
         row.order_id_text,
         row.order_date,
         row.customer_name,
-        row.branch_name,
         row.product_name,
         row.variant_size,
         row.sku ?? "",
@@ -213,7 +190,6 @@ const SalesReportPage = () => {
         row.line_amount,
         row.discount_amount ?? 0,
         row.payment_mode,
-        row.gst_number ?? "",
       ]) ?? [],
     [itemRows],
   );
@@ -239,8 +215,6 @@ const SalesReportPage = () => {
             ["Total Revenue", metrics.totalRevenue],
             ["Total Orders", metrics.totalOrders],
             ["Average Order Value", metrics.averageOrderValue],
-            ["GST Revenue", metrics.gstRevenue],
-            ["Non-GST Revenue", metrics.nonGstRevenue],
             ["Repeat Customers %", Number.isFinite(metrics.repeatCustomersPct) ? metrics.repeatCustomersPct : 0],
             ["Avg Items / Order", metrics.averageItemsPerOrder],
           ],
@@ -264,8 +238,6 @@ const SalesReportPage = () => {
       itemColumns,
       itemExportRows,
       metrics.averageItemsPerOrder,
-      metrics.gstRevenue,
-      metrics.nonGstRevenue,
       metrics.repeatCustomersPct,
       metrics.totalOrders,
       metrics.totalRevenue,
@@ -278,31 +250,9 @@ const SalesReportPage = () => {
     if (!rows.length) return [];
     const total = metrics.totalRevenue || 1;
 
-    const byBranch = new Map<string, number>();
-    rows.forEach((row) => {
-      if (!row.branch_name) return;
-      byBranch.set(row.branch_name, (byBranch.get(row.branch_name) ?? 0) + row.total_amount);
-    });
-    const topBranch = [...byBranch.entries()].sort((a, b) => b[1] - a[1])[0];
-
-    const gstRatio = metrics.totalRevenue ? (metrics.gstRevenue / metrics.totalRevenue) * 100 : 0;
     const itemTop = itemRows.length ? [...itemRows].sort((a, b) => b.line_amount - a.line_amount)[0] : null;
 
     const messages: SmartInsight[] = [];
-    if (topBranch) {
-      messages.push({
-        id: "branch-share",
-        type: "success",
-        message: `${topBranch[0]} generated ${formatTightPercent((topBranch[1] / total) * 100)} of revenue`,
-      });
-    }
-    if (gstRatio < 10) {
-      messages.push({
-        id: "gst-gap",
-        type: "warning",
-        message: `Only ${formatTightPercent(gstRatio)} of revenue is GST-linked. Open GST report to investigate.`,
-      });
-    }
     if (metrics.repeatCustomersPct > 0) {
       messages.push({
         id: "repeat",
@@ -318,19 +268,10 @@ const SalesReportPage = () => {
       });
     }
     return messages;
-  }, [itemRows, metrics.gstRevenue, metrics.repeatCustomersPct, metrics.totalRevenue, rows]);
+  }, [itemRows, metrics.repeatCustomersPct, metrics.totalRevenue, rows]);
 
   const alerts = useMemo<ReportAlert[]>(() => {
     const items: ReportAlert[] = [];
-    const gstRatio = metrics.totalRevenue ? (metrics.gstRevenue / metrics.totalRevenue) * 100 : 0;
-    if (gstRatio < 5 && metrics.totalOrders > 5) {
-      items.push({
-        id: "alert-gst",
-        title: "GST usage is under 5% of revenue",
-        severity: "warning",
-        hint: "Enable GST toggle to avoid compliance gaps.",
-      });
-    }
     const recent = rows.slice(0, 3);
     const earlier = rows.slice(3, 9);
     const recentAvg = recent.reduce((sum, row) => sum + row.total_amount, 0) / Math.max(recent.length, 1);
@@ -340,7 +281,7 @@ const SalesReportPage = () => {
         id: "alert-revenue-drop",
         title: "Revenue dipped vs earlier in period",
         severity: "warning",
-        hint: "Check branch mix and cancellations for root cause.",
+        hint: "Check school mix and cancellations for root cause.",
       });
     }
     if (metrics.averageItemsPerOrder > 5) {
@@ -352,15 +293,13 @@ const SalesReportPage = () => {
       });
     }
     return items;
-  }, [metrics.averageItemsPerOrder, metrics.gstRevenue, metrics.totalOrders, metrics.totalRevenue, rows]);
+  }, [metrics.averageItemsPerOrder, metrics.totalOrders, metrics.totalRevenue, rows]);
 
   const resetFilters = () => {
     setFilters({
       dateRange: getDefaultDateRange(30),
-      branchIds: [],
       schoolIds: [],
       status: "active",
-      gstOnly: false,
       paymentMode: "all",
       search: "",
     });
@@ -375,14 +314,14 @@ const SalesReportPage = () => {
     );
   }
 
-  if (branchesError || schoolsError || rowsError || itemRowsError) {
+  if (schoolsError || rowsError || itemRowsError) {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
   return (
     <ReportPageFrame
       title="Sales Report"
-      description="Order-level revenue reporting with branch, school, GST, payment-mode, and customer search controls built for daily business reviews."
+      description="Order-level revenue reporting with school, payment-mode, and customer search controls built for daily business reviews."
     >
       <ReportFiltersPanel onReset={resetFilters}>
         <div className="grid gap-4 xl:grid-cols-6 md:grid-cols-2">
@@ -403,9 +342,6 @@ const SalesReportPage = () => {
               className="h-11 rounded-2xl border-black/10 bg-white"
               required
             />
-          </FilterField>
-          <FilterField label="Branches">
-            <FilterMultiSelect label="Branches" options={branches} selectedValues={filters.branchIds} onChange={(branchIds) => setFilters((current) => ({ ...current, branchIds }))} placeholder="All branches" />
           </FilterField>
           <FilterField label="Schools">
             <FilterMultiSelect label="Schools" options={schools} selectedValues={filters.schoolIds} onChange={(schoolIds) => setFilters((current) => ({ ...current, schoolIds }))} placeholder="All schools" />
@@ -446,12 +382,6 @@ const SalesReportPage = () => {
               className="h-11 rounded-2xl border-black/10 bg-white"
             />
           </FilterField>
-          <FilterField label="GST Orders">
-            <div className="flex h-11 items-center justify-between rounded-2xl border border-black/10 bg-white px-4">
-              <span className="text-sm text-foreground">GST only</span>
-              <Switch checked={filters.gstOnly} onCheckedChange={(gstOnly) => setFilters((current) => ({ ...current, gstOnly }))} />
-            </div>
-          </FilterField>
         </div>
       </ReportFiltersPanel>
 
@@ -463,8 +393,6 @@ const SalesReportPage = () => {
             <ReportMetricCard label="Total Revenue" value={formatCurrency(metrics.totalRevenue)} helper={`${formatNumber(metrics.totalOrders)} orders`} />
             <ReportMetricCard label="Total Orders" value={formatNumber(metrics.totalOrders)} helper="Filtered order count" />
             <ReportMetricCard label="Average Order Value" value={formatCurrency(metrics.averageOrderValue)} helper="Revenue / orders" />
-            <ReportMetricCard label="GST Revenue" value={formatCurrency(metrics.gstRevenue)} helper="Orders with GST number" />
-            <ReportMetricCard label="Non-GST Revenue" value={formatCurrency(metrics.nonGstRevenue)} helper="Orders without GST number" />
             <ReportMetricCard label="Repeat Customers" value={formatTightPercent(metrics.repeatCustomersPct)} helper="Based on phone matches" />
             <ReportMetricCard label="Avg Items / Order" value={metrics.averageItemsPerOrder.toFixed(2)} helper="Basket depth" />
           </>
@@ -484,7 +412,7 @@ const SalesReportPage = () => {
                 <ReportMetricSkeleton />
               </div>
             ) : trendData.length === 0 ? (
-              <ReportEmptyState title="No sales found" description="Adjust the report dates or broaden branch and school filters to see a revenue trend." />
+              <ReportEmptyState title="No sales found" description="Adjust the report dates or broaden filters to see a revenue trend." />
             ) : (
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -564,7 +492,7 @@ const SalesReportPage = () => {
             <div>
               <CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Sales {viewMode === "order" ? "Orders" : "Items"}</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                {viewMode === "order" ? "One row per order with revenue share per branch or school." : "Item view reveals SKU mix, unit pricing, and discount capture."}
+                {viewMode === "order" ? "One row per order with revenue share per school." : "Item view reveals SKU mix, unit pricing, and discount capture."}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -594,7 +522,7 @@ const SalesReportPage = () => {
             </div>
           ) : (viewMode === "order" ? rows : itemRows).length === 0 ? (
             <div className="p-5">
-              <ReportEmptyState title="No sales records match these filters" description="Try broadening the date range, clearing the search term, or including more branches and schools." />
+              <ReportEmptyState title="No sales records match these filters" description="Try broadening the date range or clearing the search term." />
             </div>
           ) : (
             <>
@@ -606,7 +534,6 @@ const SalesReportPage = () => {
                       <TableHead>Order Date</TableHead>
                       <TableHead>Customer Name</TableHead>
                       <TableHead>School</TableHead>
-                      <TableHead>Branch</TableHead>
                       {viewMode === "item" ? (
                         <>
                           <TableHead>Product</TableHead>
@@ -624,7 +551,6 @@ const SalesReportPage = () => {
                           <TableHead className="text-right">Total Amount</TableHead>
                         </>
                       )}
-                      <TableHead>GST Number</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Payment</TableHead>
                       <TableHead className="text-right">Revenue %</TableHead>
@@ -649,7 +575,6 @@ const SalesReportPage = () => {
                             {row.customer_name}
                           </TableCell>
                           <TableCell className="cursor-pointer" onClick={() => navigate(`/admin/schools/${row.school_id ?? ""}`)}>{row.school_name}</TableCell>
-                          <TableCell className="cursor-pointer" onClick={() => navigate(`/admin/branches/${row.branch_id ?? ""}`)}>{row.branch_name}</TableCell>
                           {viewMode === "item" ? (
                             <>
                               <TableCell className="cursor-pointer" onClick={() => navigate(`/admin/products/${row.product_id}`)}>{row.product_name}</TableCell>
@@ -667,7 +592,6 @@ const SalesReportPage = () => {
                               <TableCell className="text-right font-medium">{formatCurrency(row.total_amount)}</TableCell>
                             </>
                           )}
-                          <TableCell className="font-mono text-xs uppercase tracking-[0.14em]">{row.gst_number || "-"}</TableCell>
                           <TableCell>
                             <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-xs font-medium", getStatusBadgeClassName(row.status))}>
                               {row.status}

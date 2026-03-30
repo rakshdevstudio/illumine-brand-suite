@@ -20,7 +20,7 @@ import {
   ReportTableSkeleton,
   SmartInsightsPanel,
 } from "@/components/admin/reports/ReportUI";
-import { aggregateInventoryRows, fetchBranchOptions, fetchInventoryAuditRows, fetchInventoryReportRows, fetchProductOptions } from "@/lib/reports/data";
+import { aggregateInventoryRows, fetchInventoryAuditRows, fetchInventoryReportRows, fetchProductOptions } from "@/lib/reports/data";
 import { exportReportCsv, exportReportXlsx } from "@/lib/reports/export";
 import { formatDateTime, formatNumber, getDefaultDateRange, getRangeSpanDays, paginateRows } from "@/lib/reports/format";
 import type { AggregatedInventoryReportRow, InventoryReportFilters, ReportAlert, SmartInsight } from "@/lib/reports/types";
@@ -33,18 +33,11 @@ const InventoryReportPage = () => {
   const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<InventoryReportFilters>({
     dateRange: getDefaultDateRange(30),
-    branchIds: [],
     productIds: [],
     negativeOnly: false,
   });
   const [page, setPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<AggregatedInventoryReportRow | null>(null);
-
-  const { data: branches = [], error: branchesError } = useQuery({
-    queryKey: ["report-branches"],
-    queryFn: fetchBranchOptions,
-    staleTime: 5 * 60_000,
-  });
 
   const { data: products = [], error: productsError } = useQuery({
     queryKey: ["report-products"],
@@ -58,9 +51,9 @@ const InventoryReportPage = () => {
   });
 
   const { data: auditRows = [], isLoading: auditLoading, error: auditRowsError } = useQuery({
-    queryKey: ["report-inventory-audit", selectedRow?.branch_id, selectedRow?.variant_id],
+    queryKey: ["report-inventory-audit", selectedRow?.variant_id],
     enabled: Boolean(selectedRow),
-    queryFn: () => fetchInventoryAuditRows(selectedRow!.branch_id, selectedRow!.variant_id),
+    queryFn: () => fetchInventoryAuditRows(selectedRow!.variant_id),
   });
 
   useEffect(() => {
@@ -110,11 +103,9 @@ const InventoryReportPage = () => {
   }, [enrichedRows]);
 
   const filtersLabel = useMemo(() => {
-    const branchLabel = filters.branchIds.length ? `${filters.branchIds.length} branches` : "All branches";
     const productLabel = filters.productIds.length ? `${filters.productIds.length} products` : "All products";
     return [
       `${filters.dateRange.from} to ${filters.dateRange.to}`,
-      branchLabel,
       productLabel,
       filters.negativeOnly ? "Negative stock only" : "All stock states",
     ].join(" | ");
@@ -124,7 +115,6 @@ const InventoryReportPage = () => {
     () => [
       "Product",
       "Variant",
-      "Branch",
       "Opening Stock",
       "Stock In",
       "Stock Out",
@@ -143,7 +133,6 @@ const InventoryReportPage = () => {
       enrichedRows.map((row) => [
         row.product_name,
         row.variant_size,
-        row.branch_name,
         row.opening_stock,
         row.stock_in,
         row.stock_out,
@@ -197,7 +186,6 @@ const InventoryReportPage = () => {
   const resetFilters = () => {
     setFilters({
       dateRange: getDefaultDateRange(30),
-      branchIds: [],
       productIds: [],
       negativeOnly: false,
     });
@@ -213,7 +201,7 @@ const InventoryReportPage = () => {
       messages.push({
         id: "reorder",
         type: "warning",
-        message: `${mostCritical.product_name} · ${mostCritical.branch_name} needs replenishment${mostCritical.daysToStockout ? ` in ~${mostCritical.daysToStockout} days` : ""}`,
+        message: `${mostCritical.product_name} needs replenishment${mostCritical.daysToStockout ? ` in ~${mostCritical.daysToStockout} days` : ""}`,
       });
     }
     if (slowMoving) {
@@ -240,7 +228,7 @@ const InventoryReportPage = () => {
       items.push({ id: "neg", title: "Negative stock detected", severity: "warning", hint: "Audit movements to reconcile counts." });
     }
     if (summary.low > 0) {
-      items.push({ id: "low", title: `${summary.low} SKUs need reorder`, severity: "warning", hint: "Focus on branches with low days-to-stockout." });
+      items.push({ id: "low", title: `${summary.low} SKUs need reorder`, severity: "warning", hint: "Check low days-to-stockout and replenish globally." });
     }
     if (summary.dead > 0) {
       items.push({ id: "dead", title: `${summary.dead} dead-stock SKUs`, severity: "info", hint: "Plan clearance to free cash." });
@@ -256,7 +244,7 @@ const InventoryReportPage = () => {
     );
   }
 
-  if (branchesError || productsError || dailyRowsError || auditRowsError) {
+  if (productsError || dailyRowsError || auditRowsError) {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
@@ -285,9 +273,6 @@ const InventoryReportPage = () => {
               required
             />
           </FilterField>
-          <FilterField label="Branches">
-            <FilterMultiSelect label="Branches" options={branches} selectedValues={filters.branchIds} onChange={(branchIds) => setFilters((current) => ({ ...current, branchIds }))} placeholder="All branches" />
-          </FilterField>
           <FilterField label="Products">
             <FilterMultiSelect label="Products" options={products} selectedValues={filters.productIds} onChange={(productIds) => setFilters((current) => ({ ...current, productIds }))} placeholder="All products" />
           </FilterField>
@@ -305,7 +290,7 @@ const InventoryReportPage = () => {
           Array.from({ length: 5 }).map((_, index) => <ReportMetricSkeleton key={index} />)
         ) : (
           <>
-            <ReportMetricCard label="SKU / Branch Rows" value={formatNumber(enrichedRows.length)} helper="Aggregated by branch and variant" />
+            <ReportMetricCard label="SKUs" value={formatNumber(enrichedRows.length)} helper="Aggregated globally by variant" />
             <ReportMetricCard label="Opening Stock" value={formatNumber(summary.opening)} helper="At the start of selected period" />
             <ReportMetricCard label="Stock In" value={formatNumber(summary.stockIn)} helper="Inbound movement total" />
             <ReportMetricCard label="Stock Out" value={formatNumber(summary.stockOut)} helper="Outbound movement total" />
@@ -330,7 +315,7 @@ const InventoryReportPage = () => {
             </div>
           ) : rows.length === 0 ? (
             <div className="p-5">
-              <ReportEmptyState title="No inventory activity matches these filters" description="Widen the date range or remove branch and product filters to inspect more movement history." />
+              <ReportEmptyState title="No inventory activity matches these filters" description="Widen the date range or remove product filters to inspect more movement history." />
             </div>
           ) : (
             <>
@@ -358,7 +343,6 @@ const InventoryReportPage = () => {
                       <TableRow key={row.key}>
                         <TableCell>{row.product_name}</TableCell>
                         <TableCell>{row.variant_size}</TableCell>
-                        <TableCell>{row.branch_name}</TableCell>
                         <TableCell className="text-right">{formatNumber(row.opening_stock)}</TableCell>
                         <TableCell className="text-right text-emerald-700">{formatNumber(row.stock_in)}</TableCell>
                         <TableCell className="text-right text-rose-700">{formatNumber(row.stock_out)}</TableCell>
@@ -409,7 +393,7 @@ const InventoryReportPage = () => {
       </Card>
 
       <ReportExportPanel
-        description="Exports preserve filter state, include summary rows, and keep the branch-by-variant inventory rollup ready for audit review."
+        description="Exports preserve filter state, include summary rows, and keep the global inventory rollup ready for audit review."
         onExportCsv={() => exportReportCsv(exportConfig)}
         onExportXlsx={() => exportReportXlsx(exportWorkbook)}
       />
@@ -418,7 +402,7 @@ const InventoryReportPage = () => {
         <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>
-              {selectedRow ? `${selectedRow.product_name} · ${selectedRow.variant_size} · ${selectedRow.branch_name}` : "Inventory Audit Trail"}
+              {selectedRow ? `${selectedRow.product_name} · ${selectedRow.variant_size}` : "Inventory Audit Trail"}
             </DialogTitle>
           </DialogHeader>
           {selectedRow ? (
@@ -444,7 +428,7 @@ const InventoryReportPage = () => {
               {auditLoading ? (
                 <ReportTableSkeleton columns={5} rows={6} />
               ) : auditRows.length === 0 ? (
-                <ReportEmptyState title="No audit movements found" description="This branch and variant combination has no movement history available to show right now." />
+                <ReportEmptyState title="No audit movements found" description="This variant has no movement history available to show right now." />
               ) : (
                 <div className="max-h-[420px] space-y-4 overflow-auto rounded-2xl border border-border/70 p-4">
                   {auditRows.map((row) => (

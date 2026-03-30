@@ -9,7 +9,7 @@ import { ArrowLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
-import { useStoreActiveBranch } from "@/hooks/use-store-active-branch";
+import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -25,7 +25,6 @@ const ProductPage = () => {
   const mobileAddButtonRef = useRef<HTMLDivElement | null>(null);
   const desktopAddControls = useAnimationControls();
   const mobileAddControls = useAnimationControls();
-  const { activeBranchId, activeBranch } = useStoreActiveBranch();
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
@@ -40,23 +39,20 @@ const ProductPage = () => {
     },
   });
 
-  const { data: branchInventoryRows } = useQuery({
-    queryKey: ["store-product-branch-inventory", id, activeBranchId],
-    enabled: !!id && !!activeBranchId,
+  const variantIds = useMemo(() => (product?.product_variants ?? []).map((variant: any) => variant.id), [product]);
+
+  const { data: variantStockEntries } = useQuery({
+    queryKey: ["store-product-global-inventory", variantIds.join(",")],
+    enabled: variantIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("branch_inventory")
-        .select("variant_id, stock")
-        .eq("branch_id", activeBranchId)
-        .eq("product_id", id);
-      if (error) throw error;
-      return (data ?? []) as Array<{ variant_id: string; stock: number }>;
+      const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
+      return Array.from(stockByVariant.entries());
     },
   });
 
   const branchStockByVariant = useMemo(
-    () => new Map((branchInventoryRows ?? []).map((row) => [row.variant_id, Number(row.stock ?? 0)])),
-    [branchInventoryRows]
+    () => new Map((variantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
+    [variantStockEntries]
   );
 
   const formatPrice = (price: number) =>
@@ -245,7 +241,7 @@ const ProductPage = () => {
             </div>
             {selectedVariant && selectedVariantStock > 0 && selectedVariantStock <= LOW_STOCK_THRESHOLD && (
               <p className="text-red-500 text-sm mt-2">
-                ⚠ Only {selectedVariantStock} left in stock at {activeBranch?.name ?? "selected branch"}
+                ⚠ Only {selectedVariantStock} left in stock
               </p>
             )}
             {selectedVariant && selectedVariantStock <= 0 && (
@@ -286,10 +282,10 @@ const ProductPage = () => {
           >
             <Button
               onClick={() => triggerAddToCartInteraction(desktopAddButtonRef, desktopAddControls)}
-              disabled={!selectedVariant || selectedVariantStock <= 0 || !activeBranchId}
+              disabled={!selectedVariant || selectedVariantStock <= 0}
               className="w-full h-12 text-xs tracking-[0.2em] uppercase md:inline-flex"
             >
-              {!activeBranchId ? "Select Branch" : selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
+              {selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
             </Button>
           </motion.div>
 
@@ -330,10 +326,10 @@ const ProductPage = () => {
         >
           <Button
             onClick={() => triggerAddToCartInteraction(mobileAddButtonRef, mobileAddControls)}
-            disabled={!selectedVariant || selectedVariantStock <= 0 || !activeBranchId}
+            disabled={!selectedVariant || selectedVariantStock <= 0}
             className="w-full h-12 text-xs tracking-[0.2em] uppercase"
           >
-            {!activeBranchId ? "Select Branch" : selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
+            {selectedVariantStock <= 0 ? "Out of Stock" : "Add to Bag"}
           </Button>
         </motion.div>
       </div>

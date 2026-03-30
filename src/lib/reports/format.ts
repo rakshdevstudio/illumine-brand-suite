@@ -142,19 +142,9 @@ export const toGroupedRevenuePoints = (rows: SalesReportRow[], groupBy: SalesGro
   const map = new Map<string, GroupedRevenuePoint>();
 
   rows.forEach((row) => {
-    const key =
-      groupBy === "branch"
-        ? row.branch_id || "unassigned-branch"
-        : groupBy === "school"
-          ? row.school_id || "unassigned-school"
-          : row.order_date;
+    const key = groupBy === "school" ? row.school_id || "unassigned-school" : row.order_date;
 
-    const label =
-      groupBy === "branch"
-        ? row.branch_name
-        : groupBy === "school"
-          ? row.school_name
-          : formatDisplayDate(row.order_date);
+    const label = groupBy === "school" ? row.school_name : formatDisplayDate(row.order_date);
 
     const current = map.get(key) ?? { key, label, revenue: 0, orders: 0 };
     current.revenue += Number(row.total_amount || 0);

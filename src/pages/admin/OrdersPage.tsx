@@ -139,7 +139,7 @@ const OrderStatusBadge = ({ status }: { status: string }) => {
 const getLifecycleAction = (status: OrderStatus) => {
   switch (status) {
     case "PLACED":
-      return { next: "ASSIGNED" as OrderStatus, label: "Assign Branch" };
+      return { next: "ASSIGNED" as OrderStatus, label: "Mark Assigned" };
     case "ASSIGNED":
       return { next: "PACKED" as OrderStatus, label: "Mark Packed" };
     case "PACKED":
@@ -215,33 +215,19 @@ const OrdersPage = () => {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [gstFilter, setGstFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [noteInput, setNoteInput] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  const { data: branches } = useQuery({
-    queryKey: ["admin-branches-filter"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("branches")
-        .select("id, name, location, is_active")
-        .order("name");
-      if (error) throw error;
-      return data as Array<{ id: string; name: string; location: string | null; is_active: boolean }>;
-    },
-  });
-
   const { data: orders, isLoading } = useQuery({
     queryKey: ["admin-all-orders"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("*, branches(name, location), order_items(*, products(name, school_id, schools(name)), product_variants(size))")
+        .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -294,16 +280,8 @@ const OrdersPage = () => {
     let filtered = orders as any[];
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
-    if (branchFilter !== "all") {
-      filtered = filtered.filter((order) => order.branch_id === branchFilter);
-    }
-
     if (statusFilter !== "all") {
       filtered = filtered.filter((order) => normalizeOrderStatus(order.status) === statusFilter);
-    }
-
-    if (gstFilter === "gst_only") {
-      filtered = filtered.filter((order) => Boolean(order.is_gst_order));
     }
 
     if (normalizedSearch) {
@@ -317,7 +295,7 @@ const OrdersPage = () => {
     filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
 
     return filtered;
-  }, [orders, branchFilter, statusFilter, gstFilter, searchQuery, dateFilter]);
+  }, [orders, statusFilter, searchQuery, dateFilter]);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -325,14 +303,6 @@ const OrdersPage = () => {
   const updateOrderStatus = async (orderId: string, status: string) => {
     if (!isOrderStatus(status)) {
       toast.error("Invalid order status");
-      return;
-    }
-
-    const currentOrder = (orders as any[] | undefined)?.find((entry) => entry.id === orderId);
-    const hasAssignedBranch = Boolean(currentOrder?.branch_id);
-
-    if (status !== "PLACED" && status !== "CANCELLED" && !hasAssignedBranch) {
-      toast.error("Assign a branch before moving lifecycle forward");
       return;
     }
 
@@ -403,104 +373,20 @@ const OrdersPage = () => {
     }
   };
 
-  const assignOrderBranch = async (orderId: string, branchId: string | null) => {
-    const currentOrder = (orders as any[] | undefined)?.find((entry) => entry.id === orderId);
-    const currentStatus = normalizeOrderStatus(currentOrder?.status);
-
-    if (!branchId && !["PLACED", "CANCELLED"].includes(currentStatus)) {
-      toast.error("Cannot clear branch after lifecycle has started");
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const patch: Record<string, any> = { branch_id: branchId, updated_at: now };
-    if (branchId && currentStatus === "PLACED") {
-      patch.status = "ASSIGNED";
-      patch.assigned_at = now;
-    }
-
-    const legacyPatch: Record<string, any> = {
-      branch_id: branchId,
-      dispatch_status: branchId ? "assigned" : "pending",
-      updated_at: now,
-      ...(branchId && currentStatus === "PLACED" ? { status: "confirmed" } : {}),
-    };
-
-    const legacyStatusOnlyPatch: Record<string, any> = {
-      branch_id: branchId,
-      updated_at: now,
-      ...(branchId && currentStatus === "PLACED" ? { status: "confirmed" } : {}),
-    };
-
-    const { updated_at: _patchUpdatedAt, ...patchWithoutUpdatedAt } = patch;
-    const branchOnlyWithUpdatedAt = { branch_id: branchId, updated_at: now };
-    const branchOnly = { branch_id: branchId };
-
-    const lifecycleAttempts: Array<Record<string, any>> = [
-      patch,
-      patchWithoutUpdatedAt,
-      branchOnlyWithUpdatedAt,
-      branchOnly,
-    ];
-
-    let error: any = null;
-
-    for (const attemptPayload of lifecycleAttempts) {
-      const attempt = await (supabase as any)
-        .from("orders")
-        .update(attemptPayload)
-        .eq("id", orderId);
-
-      error = attempt.error;
-      if (!error) break;
-    }
-
-    if (error && shouldTryLegacyFallback(error as any)) {
-      const { updated_at: _legacyUpdatedAt, ...legacyNoUpdatedAt } = legacyPatch;
-      const { updated_at: _legacyStatusOnlyUpdatedAt, ...legacyStatusOnlyNoUpdatedAt } = legacyStatusOnlyPatch;
-      const legacyAttempts = [legacyPatch, legacyNoUpdatedAt, legacyStatusOnlyPatch, legacyStatusOnlyNoUpdatedAt];
-
-      for (const attemptPayload of legacyAttempts) {
-        const legacyAttempt = await (supabase as any)
-          .from("orders")
-          .update(attemptPayload)
-          .eq("id", orderId);
-
-        error = legacyAttempt.error;
-        if (!error) break;
-        if (isDispatchStatusMissingError(error)) {
-          continue;
-        }
-      }
-    }
-
-    if (error) {
-      toast.error(`Failed to assign branch: ${summarizeSupabaseError(error)}`);
-      return;
-    }
-
-    toast.success(branchId ? "Branch assigned" : "Branch cleared");
-    queryClient.invalidateQueries({ queryKey: ["admin-all-orders"] });
-    queryClient.invalidateQueries({ queryKey: ["order-meta", orderId] });
-  };
-
   const exportSelectedOrders = () => {
     const selectedOrders = processedOrders;
     if (selectedOrders.length === 0) return;
 
-    const header = ["Order ID", "Customer", "Phone", "School", "Branch", "Items", "Total", "Status", "GST Order", "GST Number", "Date"];
+    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Date"];
     const lines = selectedOrders.map((order) => {
       const row = [
         order.id,
         order.customer_name,
         order.phone,
         getOrderSchools(order).join(" | "),
-        order.branches?.name ?? "",
         getItemSummary(order),
         order.total_amount,
         normalizeOrderStatus(order.status),
-        order.is_gst_order ? "Yes" : "No",
-        order.gst_number ?? "",
         order.created_at,
       ];
       return row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
@@ -580,8 +466,6 @@ const OrdersPage = () => {
     const schoolNames = getOrderSchools(order);
     const itemSummary = getItemSummary(order);
     const unifiedStatus = normalizeOrderStatus(order.status);
-    const hasAssignedBranch = Boolean(order.branch_id);
-    const branchValue = order.branch_id ?? "__unassigned__";
     const lifecycleAction = getLifecycleAction(unifiedStatus);
 
     return (
@@ -590,30 +474,9 @@ const OrdersPage = () => {
         <TableCell className="text-sm">
           <div className="flex items-center gap-2">
             <span>{order.customer_name}</span>
-            {order.is_gst_order && (
-              <Badge className="bg-emerald-100 text-emerald-900 border-transparent">GST</Badge>
-            )}
           </div>
         </TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
-        <TableCell>
-          <Select
-            value={branchValue}
-            onValueChange={(value) => assignOrderBranch(order.id, value === "__unassigned__" ? null : value)}
-          >
-            <SelectTrigger className="w-48 h-8 text-xs">
-              <SelectValue placeholder="Assign Branch" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__unassigned__">Assign Branch</SelectItem>
-              {(branches ?? []).map((branch) => (
-                <SelectItem key={branch.id} value={branch.id}>
-                  {branch.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </TableCell>
         <TableCell className="text-sm max-w-[200px] truncate" title={itemSummary}>
           {itemSummary || "—"}
         </TableCell>
@@ -624,7 +487,6 @@ const OrdersPage = () => {
             <Select
               value={unifiedStatus}
               onValueChange={(value) => updateOrderStatus(order.id, value)}
-              disabled={!hasAssignedBranch}
             >
               <SelectTrigger className="w-36 h-8 text-xs">
                 <SelectValue />
@@ -668,14 +530,7 @@ const OrdersPage = () => {
                 variant="outline"
                 size="sm"
                 className="text-xs"
-                disabled={lifecycleAction.next !== "CANCELLED" && lifecycleAction.next !== "PLACED" && !hasAssignedBranch}
-                onClick={() => {
-                  if (lifecycleAction.next === "ASSIGNED" && !order.branch_id) {
-                    toast.error("Select branch first, then use Assign Branch");
-                    return;
-                  }
-                  updateOrderStatus(order.id, lifecycleAction.next);
-                }}
+                onClick={() => updateOrderStatus(order.id, lifecycleAction.next)}
               >
                 {lifecycleAction.label}
               </Button>
@@ -719,36 +574,6 @@ const OrdersPage = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Branch</span>
-            <Select value={branchFilter} onValueChange={setBranchFilter}>
-              <SelectTrigger className="w-52 h-9 text-xs">
-                <SelectValue placeholder="All Branches" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {(branches ?? []).map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">GST</span>
-            <Select value={gstFilter} onValueChange={setGstFilter}>
-              <SelectTrigger className="w-44 h-9 text-xs">
-                <SelectValue placeholder="All Orders" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Orders</SelectItem>
-                <SelectItem value="gst_only">GST Orders Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Date</span>
             <Select value={dateFilter} onValueChange={setDateFilter}>
               <SelectTrigger className="w-40 h-9 text-xs">
@@ -783,7 +608,6 @@ const OrdersPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Branch</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Items</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Amount</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
@@ -831,10 +655,6 @@ const OrdersPage = () => {
                   <p>{selected.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Branch</p>
-                  <p>{selected.branches?.name || "Unassigned"}</p>
-                </div>
-                <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Student Name</p>
                   <p>{selectedStudentName}</p>
                 </div>
@@ -845,10 +665,6 @@ const OrdersPage = () => {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Phone</p>
                   <p>{selected.phone}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">GST</p>
-                  <p>{selected.is_gst_order ? `GST Order${selected.gst_number ? ` · ${selected.gst_number}` : ""}` : "Non-GST Order"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Alternate Phone</p>

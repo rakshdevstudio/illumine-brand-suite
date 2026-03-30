@@ -38,13 +38,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/portal-dashboard";
+import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 type PaymentMethod = "cash" | "upi";
 
 type SchoolRow = Database["public"]["Tables"]["schools"]["Row"];
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
 type ClassRow = Database["public"]["Tables"]["classes"]["Row"];
-type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 
 type SellableProduct = {
   productId: string;
@@ -80,7 +80,6 @@ const PAYMENT_OPTIONS: Array<{ id: PaymentMethod; label: string; icon: typeof Wa
 ];
 
 const POS_LAST_SCHOOL_KEY = "illume-pos-last-school";
-const POS_LAST_BRANCH_KEY = "illume-pos-last-branch";
 const POS_LAST_CUSTOMER_KEY = "illume-pos-last-customer";
 const POS_CUSTOMER_CONTEXT_KEY = "illume-pos-customer-context";
 const WALK_IN_CUSTOMER_KEY = "__walk_in_customer__";
@@ -177,7 +176,6 @@ const PosDashboard = () => {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [cart, setCart] = useState<PosCartItem[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(() => readLocalStorageValue(POS_LAST_SCHOOL_KEY));
-  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(() => readLocalStorageValue(POS_LAST_BRANCH_KEY));
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(() => readPersistedCustomerSelection()?.key ?? null);
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -206,37 +204,6 @@ const PosDashboard = () => {
       return (data ?? []) as SchoolRow[];
     },
     staleTime: 60_000,
-  });
-
-  const { data: branches, isLoading: branchesLoading } = useQuery({
-    queryKey: ["pos-branches"],
-    enabled: isAuthorized,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("branches")
-        .select("id, name, location, is_active")
-        .eq("is_active", true)
-        .order("name");
-
-      if (error) throw error;
-      return (data ?? []) as BranchRow[];
-    },
-    staleTime: 60_000,
-  });
-
-  const { data: profile } = useQuery({
-    queryKey: ["pos-profile-branch", user?.id],
-    enabled: isAuthorized && !!user?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, branch_id")
-        .eq("id", user!.id)
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
   });
 
   const { data: customers } = useQuery({
@@ -308,11 +275,6 @@ const PosDashboard = () => {
     [schools, selectedSchoolId],
   );
 
-  const selectedBranch = useMemo(
-    () => (branches ?? []).find((branch) => branch.id === selectedBranchId) ?? null,
-    [branches, selectedBranchId],
-  );
-
   const availableCustomers = useMemo(() => {
     if (!selectedSchoolId) return [];
 
@@ -349,6 +311,25 @@ const PosDashboard = () => {
       .filter((product): product is SellableProduct => Boolean(product));
   }, [products]);
 
+  const variantIds = useMemo(
+    () => sellableProducts.map((product) => product.variantId),
+    [sellableProducts],
+  );
+
+  const { data: globalVariantStockEntries } = useQuery({
+    queryKey: ["pos-global-stock", variantIds.join(",")],
+    enabled: isAuthorized && variantIds.length > 0,
+    queryFn: async () => {
+      const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
+      return Array.from(stockByVariant.entries());
+    },
+  });
+
+  const stockByVariant = useMemo(
+    () => new Map((globalVariantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
+    [globalVariantStockEntries],
+  );
+
   const filteredProducts = useMemo(() => {
     if (!selectedSchoolId) return [];
 
@@ -357,12 +338,17 @@ const PosDashboard = () => {
       return assignedProductIds.has(product.productId);
     });
 
-    if (!deferredSearch) return scopedProducts;
+    const withGlobalStock = scopedProducts.map((product) => ({
+      ...product,
+      stock: Number(stockByVariant.get(product.variantId) ?? 0),
+    }));
 
-    return scopedProducts.filter((product) =>
+    if (!deferredSearch) return withGlobalStock;
+
+    return withGlobalStock.filter((product) =>
       [product.name, product.category, product.size].join(" ").toLowerCase().includes(deferredSearch),
     );
-  }, [assignedProductIds, deferredSearch, selectedSchoolId, sellableProducts]);
+  }, [assignedProductIds, deferredSearch, selectedSchoolId, sellableProducts, stockByVariant]);
 
   const cartCount = useMemo(
     () => cart.reduce((sum, item) => sum + item.quantity, 0),
@@ -388,7 +374,6 @@ const PosDashboard = () => {
   const hasResolvedCustomer = selectedCustomerKey === WALK_IN_CUSTOMER_KEY || Boolean(selectedCustomer);
   const isContextReady = Boolean(
     selectedSchoolId &&
-      selectedBranchId &&
       selectedCustomerKey &&
       hasResolvedCustomer &&
       studentName.trim().length > 0 &&
@@ -396,14 +381,12 @@ const PosDashboard = () => {
   );
 
   const missingSchool = showValidation && !selectedSchoolId;
-  const missingBranch = showValidation && !selectedBranchId;
   const missingCustomer = showValidation && !selectedCustomerKey;
   const missingStudentName = showValidation && Boolean(selectedCustomerKey) && studentName.trim().length === 0;
   const missingStudentClass = showValidation && Boolean(selectedCustomerKey) && studentClass.trim().length === 0;
 
   const contextChecklist = [
     !selectedSchoolId ? "select a school" : null,
-    !selectedBranchId ? "select a branch" : null,
     !selectedCustomerKey ? "choose a customer" : null,
     selectedCustomerKey && studentName.trim().length === 0 ? "enter student name" : null,
     selectedCustomerKey && studentClass.trim().length === 0 ? "enter class" : null,
@@ -430,11 +413,6 @@ const PosDashboard = () => {
     setShowValidation(false);
     setSchoolPickerOpen(false);
     setCustomerPickerOpen(false);
-  };
-
-  const selectBranch = (branchId: string) => {
-    setSelectedBranchId(branchId);
-    setShowValidation(false);
   };
 
   const selectCustomer = (customerKey: string) => {
@@ -504,7 +482,7 @@ const PosDashboard = () => {
     setShowValidation(true);
 
     if (!isContextReady) {
-      toast.error("Select a school, branch, customer, and student details before placing an order.");
+      toast.error("Select a school, customer, and student details before placing an order.");
       return;
     }
 
@@ -517,19 +495,7 @@ const PosDashboard = () => {
 
     try {
       const variantIds = cart.map((item) => item.variantId);
-      let stockMap = new Map<string, number>();
-
-      const branchStockAttempt = await (supabase as any)
-        .from("branch_inventory")
-        .select("id, variant_id, stock")
-        .eq("branch_id", selectedBranchId)
-        .in("variant_id", variantIds);
-
-      if (branchStockAttempt.error) {
-        throw branchStockAttempt.error;
-      }
-
-      stockMap = new Map((branchStockAttempt.data ?? []).map((row: any) => [row.variant_id, Number(row.stock ?? 0)]));
+      const { stockByVariant: stockMap } = await fetchGlobalStockByVariants(variantIds);
 
       const insufficientItem = cart.find((item) => (stockMap.get(item.variantId) ?? 0) < item.quantity);
 
@@ -552,7 +518,6 @@ const PosDashboard = () => {
         grade: studentClass.trim(),
         address: `POS Counter - ${selectedSchool?.name ?? "School Billing"}`,
         school_id: selectedSchoolId,
-        branch_id: selectedBranchId,
         total_amount: totalAmount,
         status: "ASSIGNED",
       };
@@ -578,32 +543,7 @@ const PosDashboard = () => {
       if (itemsError) throw itemsError;
 
       for (const item of cart) {
-        const previousStock = stockMap.get(item.variantId) ?? 0;
-        const { data: movementData, error: updateError } = await (supabase as any).rpc("apply_inventory_movement", {
-          p_branch_id: selectedBranchId,
-          p_variant_id: item.variantId,
-          p_type: "OUT",
-          p_quantity: item.quantity,
-          p_reference_type: "ORDER",
-          p_reference_id: order.id,
-          p_reason: "POS order deduction",
-        });
-
-        if (updateError) throw updateError;
-        const newStock = Number(movementData?.after_stock ?? Math.max(0, previousStock - item.quantity));
-        const beforeStock = Number(movementData?.before_stock ?? previousStock);
-
-        const { error: logError } = await supabase.from("inventory_logs").insert({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          change_type: "order",
-          quantity_change: -item.quantity,
-          previous_stock: beforeStock,
-          new_stock: newStock,
-          order_id: order.id,
-        });
-
-        if (logError) throw logError;
+        await deductStockAcrossBranches(item.variantId, item.productId, item.quantity, order.id);
       }
 
       await supabase.from("order_notes").insert({
@@ -611,7 +551,6 @@ const PosDashboard = () => {
         note: [
           "Order Source: POS",
           `School: ${selectedSchool?.name ?? "Unknown School"}`,
-          `Branch: ${selectedBranch?.name ?? "Unknown Branch"}`,
           `Customer: ${customerName}`,
           `Payment Method: ${paymentMethod.toUpperCase()}`,
           `Student Name: ${studentName.trim()}`,
@@ -637,6 +576,7 @@ const PosDashboard = () => {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pos-products"] }),
+        queryClient.invalidateQueries({ queryKey: ["pos-global-stock"] }),
         queryClient.invalidateQueries({ queryKey: ["vendor-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["school-dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["school-portal"] }),
@@ -725,24 +665,6 @@ const PosDashboard = () => {
   }, [selectedSchoolId]);
 
   useEffect(() => {
-    if (selectedBranchId) {
-      writeLocalStorageValue(POS_LAST_BRANCH_KEY, selectedBranchId);
-    }
-  }, [selectedBranchId]);
-
-  useEffect(() => {
-    if (!branches?.length) return;
-    if (selectedBranchId && branches.some((branch) => branch.id === selectedBranchId)) return;
-    setSelectedBranchId(branches[0].id);
-  }, [branches, selectedBranchId]);
-
-  useEffect(() => {
-    if (role !== "branch_staff") return;
-    if (!profile?.branch_id) return;
-    setSelectedBranchId(profile.branch_id);
-  }, [profile?.branch_id, role]);
-
-  useEffect(() => {
     if (!selectedCustomerKey || selectedCustomerKey === WALK_IN_CUSTOMER_KEY) return;
     if (availableCustomers.some((customer) => customer.id === selectedCustomerKey)) return;
 
@@ -789,7 +711,7 @@ const PosDashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5 pt-1">
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="grid gap-4 xl:grid-cols-2">
             <div className="space-y-2">
               <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">School</p>
               <Popover open={schoolPickerOpen} onOpenChange={setSchoolPickerOpen}>
@@ -843,28 +765,6 @@ const PosDashboard = () => {
                   </Command>
                 </PopoverContent>
               </Popover>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Branch</p>
-              <Select
-                value={selectedBranchId ?? ""}
-                onValueChange={(value) => selectBranch(value)}
-                disabled={branchesLoading || (role === "branch_staff" && Boolean(profile?.branch_id))}
-              >
-                <SelectTrigger className={fieldClassName(missingBranch)}>
-                  <SelectValue
-                    placeholder={branchesLoading ? "Loading branches..." : "Select branch"}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {(branches ?? []).map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.location ? `${branch.name} · ${branch.location}` : branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="space-y-2">

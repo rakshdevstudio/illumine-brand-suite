@@ -70,8 +70,6 @@ type InvoiceOrder = {
   alternate_phone: string | null;
   student_name: string | null;
   grade: string | null;
-  gst_number: string | null;
-  is_gst_order: boolean;
   address: string;
   city: string;
   pincode: string;
@@ -90,7 +88,7 @@ const InvoicePage = () => {
     queryKey: ["admin-invoice", orderId],
     enabled: !!orderId,
     queryFn: async () => {
-      const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, gst_number, is_gst_order, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
+    const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
       const legacyFields = "id, customer_name, phone, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
       const client = supabase as any;
 
@@ -118,8 +116,6 @@ const InvoicePage = () => {
                 alternate_phone: null,
                 student_name: null,
                 grade: null,
-                gst_number: null,
-                is_gst_order: false,
               }
             : null;
 
@@ -139,9 +135,7 @@ const InvoicePage = () => {
   const grade = order?.grade || noteDerivedStudent.grade || "-";
   const alternatePhoneRaw = order?.alternate_phone || noteDerivedStudent.alternatePhone || "";
   const alternatePhone = alternatePhoneRaw && alternatePhoneRaw !== "—" ? alternatePhoneRaw : "-";
-  const gstNumber = (order?.gst_number ?? "").trim();
-  const isGstOrder = Boolean(order?.is_gst_order) && !!gstNumber;
-  const invoiceTypeLabel = isGstOrder ? "TAX INVOICE" : "RETAIL INVOICE";
+  const invoiceTypeLabel = "INVOICE";
 
   const invoiceNumber = useMemo(() => {
     if (!order?.id) return "ILLUME-PREVIEW";
@@ -252,14 +246,8 @@ const InvoicePage = () => {
     draw(`Alternate Phone: ${alternatePhone}`, 40, 620, 10);
     draw(`Student Name: ${studentName}`, 40, 604, 10);
     draw(`Grade: ${grade}`, 40, 588, 10);
-    if (isGstOrder) {
-      draw(`GSTIN: ${gstNumber}`, 40, 572, 10, "medium");
-      draw(order.address || "-", 40, 556, 10);
-      draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 540, 10);
-    } else {
-      draw(order.address || "-", 40, 572, 10);
-      draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
-    }
+    draw(order.address || "-", 40, 572, 10);
+    draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
 
     line(538);
 
@@ -388,7 +376,6 @@ const InvoicePage = () => {
           <p>Alternate Phone: {alternatePhone}</p>
           <p>Student Name: {studentName}</p>
           <p>Grade: {grade}</p>
-          {isGstOrder && <p>GSTIN: {gstNumber}</p>}
           <p>{order.address || "-"}</p>
           <p>{`${order.city || "-"} ${order.pincode || ""}`.trim()}</p>
         </section>

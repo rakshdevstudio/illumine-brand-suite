@@ -193,7 +193,7 @@ const DashboardPage = () => {
         () =>
           supabase
             .from("branch_inventory")
-            .select("id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
+            .select("id, stock, product_variants(size, low_stock_threshold, products(name))")
             .order("stock", { ascending: true })
             .limit(100),
         "admin-dashboard/low-stock"
@@ -399,7 +399,7 @@ const DashboardPage = () => {
                 >
                   <span className="truncate text-red-800">
                     {v.product_variants?.products?.name ?? "Product"}{" "}
-                    <span className="text-red-400 text-xs">· {v.product_variants?.size} · {v.branches?.name ?? "Branch"}</span>
+                    <span className="text-red-400 text-xs">· {v.product_variants?.size}</span>
                   </span>
                   <span className="text-red-500 font-medium ml-2 shrink-0">{v.stock} left</span>
                 </div>

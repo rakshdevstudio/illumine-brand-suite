@@ -12,7 +12,7 @@ export function getRoleRedirectPath(role: AppRole): string {
     case "super_admin":
     case "admin":
     case "staff":       return "/admin/dashboard";
-    case "branch_staff": return "/branch/dashboard";
+    case "branch_staff": return "/admin/dashboard";
     case "vendor":       return "/vendor/dashboard";
     case "school_user":  return "/school/dashboard";
     default:             return "/admin/dashboard";
