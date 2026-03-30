@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { isLowStock } from "@/lib/inventory";
+import { safeQuery } from "@/lib/safeQuery";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { IndianRupee, ShoppingBag, TrendingUp, AlertTriangle, ArrowRight, Medal } from "lucide-react";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -111,49 +114,55 @@ const KpiCard = ({ label, value, icon, sub }: KpiCardProps) => (
 // ── main ─────────────────────────────────────────────────────────────────────
 
 const DashboardPage = () => {
+  const { isChecking } = useRequireAuth();
+
   // Today's orders
-  const { data: todayOrders } = useQuery({
+  const { data: todayOrders, error: todayOrdersError, isLoading: todayOrdersLoading } = useQuery({
     queryKey: ["dash-today-orders"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, total_amount")
-        .gte("created_at", todayStart())
-        .neq("status", "CANCELLED");
-      if (error) throw error;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("orders")
+            .select("id, total_amount")
+            .gte("created_at", todayStart())
+            .neq("status", "CANCELLED"),
+        "admin-dashboard/today-orders"
+      );
       return data ?? [];
     },
   });
 
   // This month's orders
-  const { data: monthOrders } = useQuery({
+  const { data: monthOrders, error: monthOrdersError, isLoading: monthOrdersLoading } = useQuery({
     queryKey: ["dash-month-orders"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, total_amount")
-        .gte("created_at", monthStart())
-        .neq("status", "CANCELLED");
-      if (error) throw error;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("orders")
+            .select("id, total_amount")
+            .gte("created_at", monthStart())
+            .neq("status", "CANCELLED"),
+        "admin-dashboard/month-orders"
+      );
       return data ?? [];
     },
   });
 
   // Recent 5 orders
-  const { data: recentOrders } = useQuery({
+  const { data: recentOrders, error: recentOrdersError, isLoading: recentOrdersLoading } = useQuery({
     queryKey: ["dash-recent-orders"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, customer_name, phone, total_amount, status, created_at, order_notes(note, created_at)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (error) {
-        console.error("Supabase error:", error.message);
-        throw error;
-      }
-
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("orders")
+            .select("id, customer_name, phone, total_amount, status, created_at, order_notes(note, created_at)")
+            .order("created_at", { ascending: false })
+            .limit(5),
+        "admin-dashboard/recent-orders"
+      );
       return (data ?? []).map((order: any) => ({
         ...order,
         ...parseStudentFieldsFromNotes(order.order_notes),
@@ -162,32 +171,47 @@ const DashboardPage = () => {
   });
 
   // Top selling products via order_items
-  const { data: orderItems } = useQuery({
+  const { data: orderItems, error: orderItemsError, isLoading: orderItemsLoading } = useQuery({
     queryKey: ["dash-order-items-top"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("order_items")
-        .select("quantity, product_id, products(id, name)");
-      if (error) throw error;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("order_items")
+            .select("quantity, product_id, products(id, name)"),
+        "admin-dashboard/order-items"
+      );
       return data ?? [];
     },
   });
 
   // Low stock
-  const { data: lowStockVariants } = useQuery({
+  const { data: lowStockVariants, error: lowStockError, isLoading: lowStockLoading } = useQuery({
     queryKey: ["dash-low-stock"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("branch_inventory")
-        .select("id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
-        .order("stock", { ascending: true })
-        .limit(100);
-      if (error) throw error;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("branch_inventory")
+            .select("id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
+            .order("stock", { ascending: true })
+            .limit(100),
+        "admin-dashboard/low-stock"
+      );
       return (data ?? []).filter((v: any) =>
         isLowStock(v.stock, v.product_variants?.low_stock_threshold)
       );
     },
   });
+
+  const hasError = Boolean(todayOrdersError || monthOrdersError || recentOrdersError || orderItemsError || lowStockError);
+  const isLoading =
+    isChecking ||
+    todayOrdersLoading ||
+    monthOrdersLoading ||
+    recentOrdersLoading ||
+    orderItemsLoading ||
+    lowStockLoading;
 
   // ── computed ──
 
@@ -214,6 +238,18 @@ const DashboardPage = () => {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5);
   }, [orderItems]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   return (
     <div className="space-y-10">

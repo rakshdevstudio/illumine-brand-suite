@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { safeQuery } from "@/lib/safeQuery";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 export type AppRole = "super_admin" | "admin" | "staff" | "branch_staff" | "vendor" | "school_user" | null;
 
@@ -18,62 +20,60 @@ export function getRoleRedirectPath(role: AppRole): string {
 }
 
 export function useAuth() {
+  const { session, isChecking } = useRequireAuth();
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<AppRole>(null);
-  const [loading, setLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(true);
 
   const checkRole = async (userId: string) => {
-    const { data } = await supabase.rpc("get_user_role", { _user_id: userId });
+    const { data } = await safeQuery(() => supabase.rpc("get_user_role", { _user_id: userId }), "useAuth/checkRole");
     return (data as AppRole) || null;
   };
 
   useEffect(() => {
     let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!mounted) return;
-        const currentUser = session?.user ?? null;
-        setUser(currentUser);
-        if (currentUser) {
-          try {
-            const r = await checkRole(currentUser.id);
-            if (mounted) setRole(r);
-          } catch {
-            if (mounted) setRole(null);
-          }
-        } else {
+    const resolveRole = async () => {
+      if (isChecking) return;
+      console.log("SESSION:", session);
+
+      const currentUser = session?.user ?? null;
+      if (mounted) setUser(currentUser);
+
+      if (!currentUser) {
+        if (mounted) {
+          setRole(null);
+          setRoleLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const resolvedRole = await checkRole(currentUser.id);
+        if (mounted) {
+          setRole(resolvedRole);
+        }
+      } catch {
+        if (mounted) {
           setRole(null);
         }
-        if (mounted) setLoading(false);
-      }
-    );
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          const r = await checkRole(currentUser.id);
-          if (mounted) setRole(r);
-        } catch {
-          if (mounted) setRole(null);
+      } finally {
+        if (mounted) {
+          setRoleLoading(false);
         }
       }
-      if (mounted) setLoading(false);
-    });
+    };
 
-    const timeout = setTimeout(() => {
-      if (mounted) setLoading(false);
-    }, 5000);
+    if (mounted) {
+      setRoleLoading(true);
+    }
+
+    void resolveRole();
 
     return () => {
       mounted = false;
-      clearTimeout(timeout);
-      subscription.unsubscribe();
     };
-  }, []);
+  }, [isChecking, session]);
 
   const isAdmin = role === "super_admin" || role === "admin";
   const isSuperAdmin = role === "super_admin";
@@ -87,6 +87,8 @@ export function useAuth() {
     setUser(null);
     setRole(null);
   };
+
+  const loading = isChecking || roleLoading;
 
   return { user, role, isAdmin, isSuperAdmin, isStaff, isVendor, isSchoolUser, hasAccess, loading, signOut };
 }

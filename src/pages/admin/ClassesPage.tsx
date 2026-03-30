@@ -8,32 +8,38 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { safeQuery } from "@/lib/safeQuery";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const ClassesPage = () => {
+  const { isChecking } = useRequireAuth();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: "", school_id: "", code: "", sort_order: "0" });
   const [schoolFilter, setSchoolFilter] = useState("all");
 
-  const { data: classes, isLoading } = useQuery({
+  const { data: classes, isLoading, error: classesError } = useQuery({
     queryKey: ["admin-classes"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("classes")
-        .select("*, schools(name)")
-        .order("sort_order");
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("classes")
+            .select("*, schools(name)")
+            .order("sort_order"),
+        "admin-classes/list"
+      );
+      return data ?? [];
     },
   });
 
-  const { data: schools } = useQuery({
+  const { data: schools, error: schoolsError } = useQuery({
     queryKey: ["admin-schools-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("id, name").order("name");
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(() => supabase.from("schools").select("id, name").order("name"), "admin-classes/schools");
+      return data ?? [];
     },
   });
 
@@ -54,6 +60,18 @@ const ClassesPage = () => {
     });
     return Object.entries(groups).sort(([, a], [, b]) => a.schoolName.localeCompare(b.schoolName));
   }, [filteredClasses]);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading classes...</p>
+      </div>
+    );
+  }
+
+  if (classesError || schoolsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   const handleSave = async () => {
     if (!form.name || !form.school_id || !form.code) {

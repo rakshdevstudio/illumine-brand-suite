@@ -37,8 +37,11 @@ import {
 import type { BranchReportFilters, ReportAlert, SmartInsight } from "@/lib/reports/types";
 import type { ReportExportConfig } from "@/types/reports";
 import { cn } from "@/lib/utils";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const BranchPerformanceReportPage = () => {
+  const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<BranchReportFilters>({
     dateRange: getDefaultDateRange(30),
     branchIds: [],
@@ -49,24 +52,24 @@ const BranchPerformanceReportPage = () => {
 
   const previousRange = useMemo(() => getPreviousDateRange(filters.dateRange), [filters.dateRange]);
 
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], error: branchesError } = useQuery({
     queryKey: ["report-branches"],
     queryFn: fetchBranchOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: currentRows = [], isLoading: currentLoading } = useQuery({
+  const { data: currentRows = [], isLoading: currentLoading, error: currentRowsError } = useQuery({
     queryKey: ["report-branches-current", filters],
     queryFn: () => fetchBranchDailyRows(filters),
   });
 
-  const { data: previousRows = [], isLoading: previousLoading } = useQuery({
+  const { data: previousRows = [], isLoading: previousLoading, error: previousRowsError } = useQuery({
     queryKey: ["report-branches-previous", previousRange, filters.branchIds, filters.status, showComparison],
     enabled: showComparison,
     queryFn: () => fetchBranchDailyRows({ ...filters, dateRange: previousRange }),
   });
 
-  const { data: topProductRows = [], isLoading: topProductsLoading } = useQuery({
+  const { data: topProductRows = [], isLoading: topProductsLoading, error: topProductRowsError } = useQuery({
     queryKey: ["report-branches-top-products", filters],
     queryFn: () => fetchBranchTopProductRows(filters),
   });
@@ -216,6 +219,18 @@ const BranchPerformanceReportPage = () => {
       status: "active",
     });
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading report...</p>
+      </div>
+    );
+  }
+
+  if (branchesError || currentRowsError || previousRowsError || topProductRowsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   return (
     <ReportPageFrame

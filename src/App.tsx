@@ -1,9 +1,13 @@
+import { useEffect, useRef, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import type { Session } from "@supabase/supabase-js";
 import NotFound from "./pages/NotFound";
+import { supabase } from "@/integrations/supabase/client";
+import { isAuthError, redirectToLogin } from "@/lib/safeQuery";
 
 // Store
 import StoreLayout from "./components/store/StoreLayout";
@@ -54,10 +58,107 @@ import PosLoginPage from "./pages/pos/PosLoginPage";
 import PosDashboard from "./pages/pos/PosDashboard";
 import BranchDashboardPage from "./pages/branch/BranchDashboardPage";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (isAuthError(error)) {
+        void supabase.auth.signOut().finally(() => redirectToLogin());
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      if (isAuthError(error)) {
+        void supabase.auth.signOut().finally(() => redirectToLogin());
+      }
+    },
+  }),
+});
+
+const isProtectedPath = (path: string) =>
+  path.startsWith("/admin") ||
+  path.startsWith("/vendor") ||
+  path.startsWith("/school") ||
+  path.startsWith("/pos") ||
+  path.startsWith("/branch");
+
+const AppSessionLifecycle = () => {
+  const appQueryClient = useQueryClient();
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const hydratedRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const hydrateSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted) return;
+        setSession(data?.session ?? null);
+      } finally {
+        if (!mounted) return;
+        hydratedRef.current = true;
+        setIsHydrated(true);
+      }
+    };
+
+    void hydrateSession();
+
+    const { data: authSubscription } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("AUTH EVENT:", event);
+      console.log("SESSION:", session);
+      setSession(session ?? null);
+
+      if (event === "TOKEN_REFRESHED") {
+        void appQueryClient.invalidateQueries();
+      }
+
+      if (event === "SIGNED_OUT" && hydratedRef.current && isProtectedPath(window.location.pathname)) {
+        redirectToLogin();
+        return;
+      }
+    });
+
+    const onFocus = async () => {
+      if (!hydratedRef.current) return;
+      if (!isProtectedPath(window.location.pathname)) return;
+      const { data } = await supabase.auth.getSession();
+      if (!data?.session) {
+        redirectToLogin();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      mounted = false;
+      authSubscription.subscription.unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [appQueryClient]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!session && isProtectedPath(window.location.pathname)) {
+      redirectToLogin();
+    }
+  }, [isHydrated, session]);
+
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-elevated">
+        <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase animate-pulse">Loading...</p>
+      </div>
+    );
+  }
+
+  return null;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <AppSessionLifecycle />
     <TooltipProvider>
       <Toaster />
       <Sonner />

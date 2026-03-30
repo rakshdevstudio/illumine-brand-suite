@@ -26,8 +26,11 @@ import { formatDateTime, formatNumber, getDefaultDateRange, getRangeSpanDays, pa
 import type { AggregatedInventoryReportRow, InventoryReportFilters, ReportAlert, SmartInsight } from "@/lib/reports/types";
 import type { ReportExportConfig } from "@/types/reports";
 import { cn } from "@/lib/utils";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const InventoryReportPage = () => {
+  const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<InventoryReportFilters>({
     dateRange: getDefaultDateRange(30),
     branchIds: [],
@@ -37,24 +40,24 @@ const InventoryReportPage = () => {
   const [page, setPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<AggregatedInventoryReportRow | null>(null);
 
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], error: branchesError } = useQuery({
     queryKey: ["report-branches"],
     queryFn: fetchBranchOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: products = [] } = useQuery({
+  const { data: products = [], error: productsError } = useQuery({
     queryKey: ["report-products"],
     queryFn: fetchProductOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: dailyRows = [], isLoading } = useQuery({
+  const { data: dailyRows = [], isLoading, error: dailyRowsError } = useQuery({
     queryKey: ["report-inventory", filters],
     queryFn: () => fetchInventoryReportRows(filters),
   });
 
-  const { data: auditRows = [], isLoading: auditLoading } = useQuery({
+  const { data: auditRows = [], isLoading: auditLoading, error: auditRowsError } = useQuery({
     queryKey: ["report-inventory-audit", selectedRow?.branch_id, selectedRow?.variant_id],
     enabled: Boolean(selectedRow),
     queryFn: () => fetchInventoryAuditRows(selectedRow!.branch_id, selectedRow!.variant_id),
@@ -244,6 +247,18 @@ const InventoryReportPage = () => {
     }
     return items;
   }, [summary.dead, summary.low, summary.negativeFlags]);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading report...</p>
+      </div>
+    );
+  }
+
+  if (branchesError || productsError || dailyRowsError || auditRowsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   return (
     <ReportPageFrame

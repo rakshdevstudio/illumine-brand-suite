@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { safeQuery } from "@/lib/safeQuery";
 import type {
   AggregatedBranchReportRow,
   AggregatedInventoryReportRow,
@@ -156,9 +157,7 @@ async function fetchAllRows<T>(buildQuery: (from: number, to: number) => Promise
   const rows: T[] = [];
 
   while (true) {
-    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-
+    const { data } = await safeQuery<T[]>(() => buildQuery(from, from + PAGE_SIZE - 1), "reports/fetchAllRows");
     const batch = data ?? [];
     rows.push(...batch);
 
@@ -230,20 +229,17 @@ const buildSalesRowFromOrder = (order: any): SalesReportRow => {
 };
 
 export const fetchBranchOptions = async (): Promise<DimensionOption[]> => {
-  const { data, error } = await db.from("branches").select("id, name, location").order("name");
-  if (error) throw error;
+  const { data } = await safeQuery<any[]>(() => db.from("branches").select("id, name, location").order("name"), "reports/fetchBranchOptions");
   return (data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name), secondary: row.location || null }));
 };
 
 export const fetchSchoolOptions = async (): Promise<DimensionOption[]> => {
-  const { data, error } = await db.from("schools").select("id, name, code").order("name");
-  if (error) throw error;
+  const { data } = await safeQuery<any[]>(() => db.from("schools").select("id, name, code").order("name"), "reports/fetchSchoolOptions");
   return (data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name), secondary: row.code || null }));
 };
 
 export const fetchProductOptions = async (): Promise<DimensionOption[]> => {
-  const { data, error } = await db.from("products").select("id, name, category").order("name");
-  if (error) throw error;
+  const { data } = await safeQuery<any[]>(() => db.from("products").select("id, name, category").order("name"), "reports/fetchProductOptions");
   return (data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name), secondary: row.category || null }));
 };
 
@@ -284,17 +280,19 @@ export const fetchSalesReportRows = async (filters: SalesReportFilters): Promise
     if (!isRelationMissingError(error)) throw error;
 
     // Fallback: derive rows directly from orders/order_items when the view is unavailable.
-    const { data, error: ordersError } = await db
-      .from("orders")
-      .select(
-        "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, is_gst_order, status, payment_mode, " +
-          "order_items(id, product_id, quantity, price, product_variants(size), products(name)), schools(name), branches(name)"
-      )
-      .gte("created_at", `${filters.dateRange.from}T00:00:00`)
-      .lte("created_at", `${filters.dateRange.to}T23:59:59`)
-      .order("created_at", { ascending: false });
-
-    if (ordersError) throw ordersError;
+    const { data } = await safeQuery<any[]>(
+      () =>
+        db
+          .from("orders")
+          .select(
+            "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, is_gst_order, status, payment_mode, " +
+              "order_items(id, product_id, quantity, price, product_variants(size), products(name)), schools(name), branches(name)"
+          )
+          .gte("created_at", `${filters.dateRange.from}T00:00:00`)
+          .lte("created_at", `${filters.dateRange.to}T23:59:59`)
+          .order("created_at", { ascending: false }),
+      "reports/fetchSalesReportRows/fallback"
+    );
 
     let rows = (data ?? []).map(buildSalesRowFromOrder);
 
@@ -348,17 +346,19 @@ export const fetchSalesItemReportRows = async (filters: SalesReportFilters): Pro
   } catch (error: any) {
     if (!isRelationMissingError(error)) throw error;
 
-    const { data, error: ordersError } = await db
-      .from("orders")
-      .select(
-        "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, is_gst_order, status, payment_mode, " +
-          "order_items(id, product_id, variant_id, quantity, price, discount, product_variants(size, sku), products(name)), schools(name), branches(name)"
-      )
-      .gte("created_at", `${filters.dateRange.from}T00:00:00`)
-      .lte("created_at", `${filters.dateRange.to}T23:59:59`)
-      .order("created_at", { ascending: false });
-
-    if (ordersError) throw ordersError;
+    const { data } = await safeQuery<any[]>(
+      () =>
+        db
+          .from("orders")
+          .select(
+            "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, is_gst_order, status, payment_mode, " +
+              "order_items(id, product_id, variant_id, quantity, price, discount, product_variants(size, sku), products(name)), schools(name), branches(name)"
+          )
+          .gte("created_at", `${filters.dateRange.from}T00:00:00`)
+          .lte("created_at", `${filters.dateRange.to}T23:59:59`)
+          .order("created_at", { ascending: false }),
+      "reports/fetchSalesItemReportRows/fallback"
+    );
 
     let rows: SalesItemReportRow[] = [];
 
@@ -435,18 +435,20 @@ export const fetchGstReportRows = async (filters: GstReportFilters): Promise<Gst
   } catch (error: any) {
     if (!isRelationMissingError(error)) throw error;
 
-    const { data, error: ordersError } = await db
-      .from("orders")
-      .select(
-        "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, status, payment_mode, " +
-          "order_items(quantity, price), schools(name), branches(name)"
-      )
-      .not("gst_number", "is", null)
-      .gte("created_at", `${filters.dateRange.from}T00:00:00`)
-      .lte("created_at", `${filters.dateRange.to}T23:59:59`)
-      .order("created_at", { ascending: false });
-
-    if (ordersError) throw ordersError;
+    const { data } = await safeQuery<any[]>(
+      () =>
+        db
+          .from("orders")
+          .select(
+            "id, created_at, customer_name, phone, school_id, branch_id, total_amount, gst_number, status, payment_mode, " +
+              "order_items(quantity, price), schools(name), branches(name)"
+          )
+          .not("gst_number", "is", null)
+          .gte("created_at", `${filters.dateRange.from}T00:00:00`)
+          .lte("created_at", `${filters.dateRange.to}T23:59:59`)
+          .order("created_at", { ascending: false }),
+      "reports/fetchGstReportRows/fallback"
+    );
 
     let rows = (data ?? []).map((order: any) => {
       const taxable = Number(order.total_amount || 0) / 1.18;

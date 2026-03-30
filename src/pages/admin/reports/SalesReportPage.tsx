@@ -41,6 +41,8 @@ import {
 import type { ReportAlert, SalesGroupBy, SalesItemReportRow, SalesReportFilters, SalesReportRow } from "@/lib/reports/types";
 import type { SmartInsight } from "@/types/reports";
 import { cn } from "@/lib/utils";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const GROUP_OPTIONS: Array<{ value: SalesGroupBy; label: string }> = [
   { value: "date", label: "Date" },
@@ -49,6 +51,7 @@ const GROUP_OPTIONS: Array<{ value: SalesGroupBy; label: string }> = [
 ];
 
 const SalesReportPage = () => {
+  const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<SalesReportFilters>({
     dateRange: getDefaultDateRange(30),
     branchIds: [],
@@ -63,24 +66,24 @@ const SalesReportPage = () => {
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
 
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], error: branchesError } = useQuery({
     queryKey: ["report-branches"],
     queryFn: fetchBranchOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: schools = [] } = useQuery({
+  const { data: schools = [], error: schoolsError } = useQuery({
     queryKey: ["report-schools"],
     queryFn: fetchSchoolOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, error: rowsError } = useQuery({
     queryKey: ["report-sales", filters],
     queryFn: () => fetchSalesReportRows(filters),
   });
 
-  const { data: itemRows = [], isLoading: itemsLoading } = useQuery({
+  const { data: itemRows = [], isLoading: itemsLoading, error: itemRowsError } = useQuery({
     queryKey: ["report-sales-items", filters],
     enabled: viewMode === "item",
     queryFn: () => fetchSalesItemReportRows(filters),
@@ -363,6 +366,18 @@ const SalesReportPage = () => {
     });
     setGroupBy("date");
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading report...</p>
+      </div>
+    );
+  }
+
+  if (branchesError || schoolsError || rowsError || itemRowsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   return (
     <ReportPageFrame

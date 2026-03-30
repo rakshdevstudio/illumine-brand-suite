@@ -22,8 +22,11 @@ import { fetchBranchOptions, fetchGstReportRows, fetchSchoolOptions } from "@/li
 import { formatCurrency, formatDisplayDate, formatNumber, formatTightPercent, getDefaultDateRange, paginateRows } from "@/lib/reports/format";
 import type { GstReportFilters, ReportAlert, SmartInsight } from "@/lib/reports/types";
 import type { ReportExportConfig } from "@/types/reports";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const GstReportPage = () => {
+  const { isChecking } = useRequireAuth();
   const [filters, setFilters] = useState<GstReportFilters>({
     dateRange: getDefaultDateRange(30),
     branchIds: [],
@@ -31,19 +34,19 @@ const GstReportPage = () => {
   });
   const [page, setPage] = useState(1);
 
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], error: branchesError } = useQuery({
     queryKey: ["report-branches"],
     queryFn: fetchBranchOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: schools = [] } = useQuery({
+  const { data: schools = [], error: schoolsError } = useQuery({
     queryKey: ["report-schools"],
     queryFn: fetchSchoolOptions,
     staleTime: 5 * 60_000,
   });
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, error: rowsError } = useQuery({
     queryKey: ["report-gst", filters],
     queryFn: () => fetchGstReportRows(filters),
   });
@@ -180,6 +183,18 @@ const GstReportPage = () => {
       schoolIds: [],
     });
   };
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading report...</p>
+      </div>
+    );
+  }
+
+  if (branchesError || schoolsError || rowsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   return (
     <ReportPageFrame

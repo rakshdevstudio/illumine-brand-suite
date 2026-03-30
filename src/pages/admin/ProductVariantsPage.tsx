@@ -8,8 +8,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Minus } from "lucide-react";
+import { safeQuery } from "@/lib/safeQuery";
+import { ErrorState } from "@/components/ui/error-state";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const ProductVariantsPage = () => {
+  const { isChecking } = useRequireAuth();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -22,42 +26,48 @@ const ProductVariantsPage = () => {
   const [classFilter, setClassFilter] = useState("all");
   const [productFilter, setProductFilter] = useState("all");
 
-  const { data: variants, isLoading } = useQuery({
+  const { data: variants, isLoading, error: variantsError } = useQuery({
     queryKey: ["admin-variants"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_variants")
-        .select("*, products(name, price, school_id, class_id, schools(name), classes(name))")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(
+        () =>
+          supabase
+            .from("product_variants")
+            .select("*, products(name, price, school_id, class_id, schools(name), classes(name))")
+            .order("created_at", { ascending: false }),
+        "admin-product-variants/list"
+      );
+      return data ?? [];
     },
   });
 
-  const { data: schools } = useQuery({
+  const { data: schools, error: schoolsError } = useQuery({
     queryKey: ["admin-schools-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("id, name").order("name");
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(() => supabase.from("schools").select("id, name").order("name"), "admin-product-variants/schools");
+      return data ?? [];
     },
   });
 
-  const { data: classes } = useQuery({
+  const { data: classes, error: classesError } = useQuery({
     queryKey: ["admin-classes-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order");
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(
+        () => supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order"),
+        "admin-product-variants/classes"
+      );
+      return data ?? [];
     },
   });
 
-  const { data: products } = useQuery({
+  const { data: products, error: productsError } = useQuery({
     queryKey: ["admin-products-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, name, school_id, class_id, schools(name)").order("name");
-      if (error) throw error;
-      return data;
+      const { data } = await safeQuery(
+        () => supabase.from("products").select("id, name, school_id, class_id, schools(name)").order("name"),
+        "admin-product-variants/products"
+      );
+      return data ?? [];
     },
   });
 
@@ -84,6 +94,18 @@ const ProductVariantsPage = () => {
     if (productFilter !== "all") filtered = filtered.filter((v) => v.product_id === productFilter);
     return filtered;
   }, [variants, schoolFilter, classFilter, productFilter]);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-[220px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading variants...</p>
+      </div>
+    );
+  }
+
+  if (variantsError || schoolsError || classesError || productsError) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
