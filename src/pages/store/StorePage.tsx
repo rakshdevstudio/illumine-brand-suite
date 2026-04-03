@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent, memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AnimatePresence,
@@ -321,6 +321,8 @@ const StorePage = () => {
       if (error) throw error;
       return data as unknown as SchoolWithClasses[];
     },
+    staleTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -1034,4 +1036,4 @@ const StorePage = () => {
   );
 };
 
-export default StorePage;
+export default memo(StorePage);

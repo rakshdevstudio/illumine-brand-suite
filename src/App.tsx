@@ -21,6 +21,9 @@ import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
 import OrderDetailsPage from "./pages/store/OrderDetailsPage";
 import TrackOrderPage from "./pages/store/TrackOrderPage";
+import SchoolCodePage from "./pages/store/SchoolCodePage";
+import RequireSchoolContext from "./components/store/RequireSchoolContext";
+import ShopBySchoolPage from "./pages/store/ShopBySchoolPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
@@ -53,6 +56,7 @@ import SchoolOrdersPage from "./pages/school/SchoolOrdersPage";
 // POS
 import PosLoginPage from "./pages/pos/PosLoginPage";
 import PosDashboard from "./pages/pos/PosDashboard";
+import { useSchoolContext } from "./lib/school-context";
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -78,6 +82,12 @@ const isProtectedPath = (path: string) =>
   path.startsWith("/pos") ||
   path.startsWith("/branch");
 
+const sessionsEqual = (a: Session | null, b: Session | null) => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.access_token === b.access_token && a.refresh_token === b.refresh_token;
+};
+
 const AppSessionLifecycle = () => {
   const appQueryClient = useQueryClient();
   const [isHydrated, setIsHydrated] = useState(false);
@@ -91,7 +101,8 @@ const AppSessionLifecycle = () => {
       try {
         const { data } = await supabase.auth.getSession();
         if (!mounted) return;
-        setSession(data?.session ?? null);
+        const next = data?.session ?? null;
+        setSession((prev) => (sessionsEqual(prev, next) ? prev : next));
       } finally {
         if (!mounted) return;
         hydratedRef.current = true;
@@ -102,9 +113,7 @@ const AppSessionLifecycle = () => {
     void hydrateSession();
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("AUTH EVENT:", event);
-      console.log("SESSION:", session);
-      setSession(session ?? null);
+      setSession((prev) => (sessionsEqual(prev, session ?? null) ? prev : session ?? null));
 
       if (event === "TOKEN_REFRESHED") {
         void appQueryClient.invalidateQueries();
@@ -152,6 +161,12 @@ const AppSessionLifecycle = () => {
   return null;
 };
 
+const StoreIndexRedirect = () => {
+  const school = useSchoolContext((s) => s.school);
+  if (!school) return <Navigate to="/shop-by-school" replace />;
+  return <Navigate to={`/store/school/${school.slug}`} replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AppSessionLifecycle />
@@ -160,11 +175,22 @@ const App = () => (
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/" element={<Navigate to="/store" replace />} />
-
-          {/* Store Routes */}
-          <Route path="/store" element={<StoreLayout />}>
+          {/* Public homepage (marketing) */}
+          <Route path="/" element={<StoreLayout />}>
             <Route index element={<StorePage />} />
+          </Route>
+
+          {/* Public entry landing */}
+          <Route path="/shop-by-school" element={<StoreLayout />}>
+            <Route index element={<ShopBySchoolPage />} />
+          </Route>
+
+          {/* Code entry page */}
+          <Route path="/store/enter-school" element={<SchoolCodePage />} />
+
+          {/* Store Routes (protected) */}
+          <Route path="/store" element={<RequireSchoolContext><StoreLayout /></RequireSchoolContext>}>
+            <Route index element={<StoreIndexRedirect />} />
             <Route path="school/:slug" element={<SchoolPage />} />
             <Route path="school/:slug/class/:classSlug" element={<ClassGenderPage />} />
             <Route path="school/:slug/class/:classSlug/gender/:gender" element={<ClassProductsPage />} />
@@ -175,7 +201,7 @@ const App = () => (
             <Route path="order/:orderId" element={<OrderDetailsPage />} />
           </Route>
 
-          <Route path="/track-order" element={<StoreLayout />}>
+          <Route path="/track-order" element={<RequireSchoolContext><StoreLayout /></RequireSchoolContext>}>
             <Route index element={<TrackOrderPage />} />
           </Route>
 

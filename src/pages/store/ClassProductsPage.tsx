@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
+import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -29,27 +30,31 @@ const ClassProductsPage = () => {
   const [searchParams] = useSearchParams();
   const setProfile = useStudentProfile((s) => s.setProfile);
   const debugMode = searchParams.get("debug") === "true";
+  const ctxSchool = useSchoolContext((s) => s.school);
+  const schoolId = ctxSchool?.id ?? null;
 
   const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
   const genderDb = gender === "boys" ? "Male" : gender === "girls" ? "Female" : "Unisex";
 
   const { data: school } = useQuery({
-    queryKey: ["school", slug],
+    queryKey: ["school", schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("schools").select("*").eq("slug", slug!).single();
+      const id = requireSchoolId();
+      const { data, error } = await supabase.from("schools").select("*").eq("id", id).single();
       if (error) throw error;
       return data;
     },
   });
 
   const { data: cls } = useQuery({
-    queryKey: ["class", school?.id, classSlug],
-    enabled: !!school?.id,
+    queryKey: ["class", schoolId, classSlug],
+    enabled: !!schoolId,
     queryFn: async () => {
+      const id = requireSchoolId();
       const { data, error } = await supabase
         .from("classes")
         .select("*")
-        .eq("school_id", school!.id)
+        .eq("school_id", id)
         .eq("slug", classSlug!)
         .single();
       if (error) throw error;
@@ -75,30 +80,34 @@ const ClassProductsPage = () => {
   }, [school, cls, slug, classSlug, gender, setProfile]);
 
   const { data: products, isLoading } = useQuery({
-    queryKey: ["class-products", school?.id, cls?.id, genderDb],
-    enabled: !!school?.id && !!cls?.id,
+    queryKey: ["class-products", schoolId, cls?.id, genderDb],
+    enabled: !!schoolId && !!cls?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_assignments")
+      const id = requireSchoolId();
+      const db = supabase as any; // bypass generated types until schema file is updated
+      const { data, error } = await db
+        .from("school_products")
         .select(`
           id,
-          display_order,
-          is_required,
-          gender,
+          price,
+          custom_name,
+          custom_image,
+          is_active,
+          product_id,
           products!inner(*, product_variants(*), product_images(*))
         `)
-        .eq("school_id", school!.id)
-        .eq("class_id", cls!.id)
-        .in("gender", [genderDb, "Unisex"])
-        .eq("products.status", "active")
-        .order("display_order", { ascending: true });
+        .eq("school_id", id)
+        .eq("is_active", true)
+        .eq("products.status", "active");
+
       if (error) throw error;
-      return (data ?? []).map((assignment: any) => ({
-        ...(assignment.products ?? {}),
-        assignment_id: assignment.id,
-        assignment_gender: assignment.gender,
-        is_required: assignment.is_required,
-        display_order: assignment.display_order,
+      // TODO: filter by class & gender once schema includes mapping; keep fail-closed by school scope.
+      return (data ?? []).map((row: any) => ({
+        ...(row.products ?? {}),
+        school_product_id: row.id,
+        price: row.price,
+        custom_name: row.custom_name,
+        custom_image: row.custom_image,
       }));
     },
   });

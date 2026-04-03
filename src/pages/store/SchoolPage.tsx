@@ -2,31 +2,32 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft } from "lucide-react";
+import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 
 const SchoolPage = () => {
   const { slug } = useParams<{ slug: string }>();
+  const ctxSchool = useSchoolContext((s) => s.school);
+  const schoolId = ctxSchool?.id ?? null;
 
   const { data: school } = useQuery({
-    queryKey: ["school", slug],
+    queryKey: ["school", schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("schools")
-        .select("*")
-        .eq("slug", slug!)
-        .single();
+      const id = requireSchoolId();
+      const { data, error } = await supabase.from("schools").select("*").eq("id", id).single();
       if (error) throw error;
       return data;
     },
   });
 
   const { data: classes, isLoading } = useQuery({
-    queryKey: ["school-classes", school?.id],
-    enabled: !!school?.id,
+    queryKey: ["school-classes", schoolId],
+    enabled: !!schoolId,
     queryFn: async () => {
+      const id = requireSchoolId();
       const { data, error } = await supabase
         .from("classes")
         .select("*")
-        .eq("school_id", school!.id)
+        .eq("school_id", id)
         .eq("status", "active")
         .order("sort_order");
       if (error) throw error;

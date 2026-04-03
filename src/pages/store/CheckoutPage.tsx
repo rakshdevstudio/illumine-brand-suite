@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
+import { requireSchoolId } from "@/lib/school-context";
 
 type CheckoutForm = {
   customer_name: string;
@@ -146,18 +147,26 @@ const CheckoutPage = () => {
       }
 
       // ── Step 2: create order ──────────────────────────────────────────────
-      const productIds = Array.from(new Set(items.map((item) => item.productId)));
-      const { data: productSchools } = await supabase
-        .from("products")
-        .select("id, school_id")
-        .in("id", productIds);
+    const effectiveSchoolId = requireSchoolId();
 
-      const resolvedSchoolIds = Array.from(
-        new Set((productSchools ?? []).map((row) => row.school_id).filter(Boolean))
-      ) as string[];
+    // Enforce price from school_products (fail closed)
+    const productIds = Array.from(new Set(items.map((item) => item.productId)));
+    const { data: pricedRows, error: priceError } = await (supabase as any)
+      .from("school_products")
+      .select("product_id, price, is_active")
+      .eq("school_id", effectiveSchoolId)
+      .in("product_id", productIds)
+      .eq("is_active", true);
+    if (priceError) throw priceError;
+    const priceByProduct = new Map<string, number>((pricedRows ?? []).map((row: any) => [row.product_id, Number(row.price)]));
 
-      const fallbackSchoolId = resolvedSchoolIds.length === 1 ? resolvedSchoolIds[0] : null;
-      const effectiveSchoolId = studentProfile?.schoolId ?? customer?.child_school_id ?? fallbackSchoolId ?? null;
+    // Validate that every item has a school-scoped price; fail closed otherwise
+    const missingPrices = items.filter((item) => !priceByProduct.has(item.productId));
+    if (missingPrices.length > 0) {
+      toast.error("Some items are not available for this school. Please refresh your cart.");
+      setLoading(false);
+      return;
+    }
 
       const orderPayload = {
         fullName: form.customer_name,
@@ -253,7 +262,7 @@ const CheckoutPage = () => {
         product_id: item.productId,
         variant_id: item.variantId,
         quantity: item.quantity,
-        price: item.price,
+        price: priceByProduct.get(item.productId)!,
       }));
 
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);

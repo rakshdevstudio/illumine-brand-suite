@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
+import { requireSchoolId } from "@/lib/school-context";
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -29,13 +30,24 @@ const ProductPage = () => {
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
-        .eq("id", id!)
+      const schoolId = requireSchoolId();
+      const { data, error } = await (supabase as any)
+        .from("school_products")
+        .select("id, price, custom_name, custom_image, products!inner(*, product_variants(*), schools(*), product_images(*), classes(name))")
+        .eq("school_id", schoolId)
+        .eq("product_id", id!)
+        .eq("is_active", true)
         .single();
       if (error) throw error;
-      return data;
+      if (!data) throw new Error("Product not available for this school");
+      const base = data.products ?? {};
+      return {
+        ...base,
+        name: data.custom_name ?? base.name,
+        image_url: data.custom_image ?? base.image_url,
+        price: data.price,
+        school_product_id: data.id,
+      };
     },
   });
 
@@ -63,7 +75,7 @@ const ProductPage = () => {
   );
   const selectedVariantStock = selectedVariant ? Number(branchStockByVariant.get(selectedVariant.id) ?? 0) : 0;
   const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariantStock)) : 1;
-  const basePrice = (product as any)?.base_price ?? product?.price ?? 0;
+  const basePrice = product?.price ?? 0;
 
   // Build image gallery
   const galleryImages: string[] = [];

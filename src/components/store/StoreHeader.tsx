@@ -76,6 +76,12 @@ const StoreHeader = () => {
 
         <div className="flex items-center gap-6">
           <Link
+            to="/shop-by-school"
+            className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+          >
+            Shop by School
+          </Link>
+          <Link
             to="/track-order"
             className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
           >

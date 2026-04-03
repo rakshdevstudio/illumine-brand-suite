@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 
 type OrderItem = {
   quantity: number;
@@ -110,6 +111,7 @@ const TrackOrderPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<TrackedOrder | null>(null);
+  const school = useSchoolContext((s) => s.school);
 
   const subtotal = useMemo(
     () => (order?.order_items ?? []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
@@ -158,6 +160,7 @@ const TrackOrderPage = () => {
     setError(null);
     setOrder(null);
 
+    const schoolId = requireSchoolId();
     const SELECT_FIELDS = "id, customer_name, phone, address, city, pincode, total_amount, status, created_at, order_items(quantity, price, product_variants(size, products(name)), products(name)), order_timeline(event_type, description, created_at)";
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedOrderId);
 
@@ -170,6 +173,7 @@ const TrackOrderPage = () => {
         .select(SELECT_FIELDS)
         .eq("id", trimmedOrderId)
         .eq("phone", trimmedPhone)
+        .eq("school_id", schoolId)
         .single();
       if (!fetchError && data) matched = data as unknown as TrackedOrder;
     } else {
@@ -178,7 +182,8 @@ const TrackOrderPage = () => {
       const { data, error: fetchError } = await supabase
         .from("orders")
         .select(SELECT_FIELDS)
-        .eq("phone", trimmedPhone);
+        .eq("phone", trimmedPhone)
+        .eq("school_id", schoolId);
       if (!fetchError && data) {
         const shortLower = trimmedOrderId.toLowerCase();
         matched = (data as unknown as TrackedOrder[]).find(

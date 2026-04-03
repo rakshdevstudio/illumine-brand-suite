@@ -1,31 +1,32 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 
 const ClassGenderPage = () => {
   const { slug, classSlug } = useParams<{ slug: string; classSlug: string }>();
+  const ctxSchool = useSchoolContext((s) => s.school);
+  const schoolId = ctxSchool?.id ?? null;
 
   const { data: school } = useQuery({
-    queryKey: ["school", slug],
+    queryKey: ["school", schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("schools")
-        .select("*")
-        .eq("slug", slug!)
-        .single();
+      const id = requireSchoolId();
+      const { data, error } = await supabase.from("schools").select("*").eq("id", id).single();
       if (error) throw error;
       return data;
     },
   });
 
   const { data: cls } = useQuery({
-    queryKey: ["class", school?.id, classSlug],
-    enabled: !!school?.id,
+    queryKey: ["class", schoolId, classSlug],
+    enabled: !!schoolId,
     queryFn: async () => {
+      const id = requireSchoolId();
       const { data, error } = await supabase
         .from("classes")
         .select("*")
-        .eq("school_id", school!.id)
+        .eq("school_id", id)
         .eq("slug", classSlug!)
         .single();
       if (error) throw error;

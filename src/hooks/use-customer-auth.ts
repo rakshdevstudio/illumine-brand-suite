@@ -39,6 +39,12 @@ type CustomerAuthState = {
 
 let _subscription: { unsubscribe: () => void } | null = null;
 
+const sessionsEqual = (a: Session | null, b: Session | null) => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.access_token === b.access_token && a.refresh_token === b.refresh_token;
+};
+
 export const useCustomerAuth = create<CustomerAuthState>((set, get) => ({
   user: null,
   session: null,
@@ -58,7 +64,7 @@ export const useCustomerAuth = create<CustomerAuthState>((set, get) => ({
 
     // Restore existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
+      if (session && !sessionsEqual(get().session, session)) {
         set({ session, user: session.user });
         await get().refreshCustomer();
       }
@@ -66,9 +72,12 @@ export const useCustomerAuth = create<CustomerAuthState>((set, get) => ({
     });
 
     // Subscribe to future auth changes
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-      set({ session, user: session?.user ?? null });
-      if (session) {
+    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const nextSession = session ?? null;
+      if (!sessionsEqual(get().session, nextSession)) {
+        set({ session: nextSession, user: nextSession?.user ?? null });
+      }
+      if (nextSession) {
         await get().refreshCustomer();
       } else {
         set({ customer: null, loading: false });
