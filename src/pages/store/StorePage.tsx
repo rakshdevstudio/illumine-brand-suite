@@ -349,19 +349,8 @@ const StorePage = () => {
     return () => observer.disconnect();
   }, [schools]);
 
-  useEffect(() => {
-    if (isTestimonialHovered) return;
-    const waitMs = testimonialPauseUntil - Date.now();
-    if (waitMs > 0) {
-      const resumeTimer = setTimeout(() => setTestimonialPauseUntil(0), waitMs);
-      return () => clearTimeout(resumeTimer);
-    }
-
-    const timer = setInterval(() => {
-      setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
-    }, 7000);
-    return () => clearInterval(timer);
-  }, [isTestimonialHovered, testimonialPauseUntil]);
+  // Disable auto-rotation to prevent periodic page re-renders (avoids hero flicker)
+  useEffect(() => {}, []);
 
   const pauseTestimonialRotation = () => {
     setTestimonialPauseUntil(Date.now() + 7000);

@@ -6,6 +6,7 @@ import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
 import illumeLogo from "@/assets/logo.png";
 import { STORE_ADD_TO_CART_EVENT, StoreAddToCartDetail } from "@/lib/store-interactions";
+import { useSchoolContext } from "@/lib/school-context";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -26,6 +27,8 @@ const StoreHeader = () => {
   const cartLinkRef = useRef<HTMLAnchorElement | null>(null);
   const cartControls = useAnimationControls();
   const [flyingItem, setFlyingItem] = useState<FlyingCartItem | null>(null);
+  const school = useSchoolContext((s) => s.school);
+  const clearSchool = useSchoolContext((s) => s.clearSchool);
 
   useEffect(() => {
     const handleAddToCart = (event: Event) => {
@@ -75,12 +78,25 @@ const StoreHeader = () => {
         </Link>
 
         <div className="flex items-center gap-6">
-          <Link
-            to="/shop-by-school"
-            className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
-          >
-            Shop by School
-          </Link>
+          {school ? (
+            <button
+              onClick={() => {
+                clearSchool();
+                window.location.href = "/shop-by-school";
+              }}
+              className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors flex items-center gap-2"
+            >
+              <span className="truncate max-w-[140px]">{school.name}</span>
+              <span className="text-[10px] uppercase opacity-70">Change</span>
+            </button>
+          ) : (
+            <Link
+              to="/shop-by-school"
+              className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+            >
+              Shop by School
+            </Link>
+          )}
           <Link
             to="/track-order"
             className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"

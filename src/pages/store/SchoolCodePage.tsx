@@ -5,8 +5,19 @@ import { useSchoolContext } from "@/lib/school-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useEffect } from "react";
 
 const SchoolCodePage = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate("/shop-by-school", { replace: true });
+  }, [navigate]);
+  return null;
+};
+
+export default SchoolCodePage;
+
+/* Legacy code retained below for reference; now redirected to /shop-by-school
   const navigate = useNavigate();
   const location = useLocation();
   const school = useSchoolContext((s) => s.school);
@@ -106,3 +117,4 @@ const SchoolCodePage = () => {
 };
 
 export default SchoolCodePage;
+*/
