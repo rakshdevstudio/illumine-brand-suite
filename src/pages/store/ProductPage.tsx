@@ -31,14 +31,31 @@ const ProductPage = () => {
     queryKey: ["product", id],
     queryFn: async () => {
       const schoolId = requireSchoolId();
-      const { data, error } = await (supabase as any)
+      const client = supabase as any;
+      const { data, error } = await client
         .from("school_products")
         .select("id, price, custom_name, custom_image, products!inner(*, product_variants(*), schools(*), product_images(*), classes(name))")
         .eq("school_id", schoolId)
         .eq("product_id", id!)
         .eq("is_active", true)
         .single();
-      if (error) throw error;
+      if (error) {
+        const msg = (error as any)?.message?.toLowerCase?.() ?? "";
+        if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
+          // Fallback: respect school scope using base products table
+          const { data: fallback, error: fbErr } = await client
+            .from("products")
+            .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
+            .eq("id", id!)
+            .eq("status", "active")
+            .eq("school_id", schoolId)
+            .single();
+          if (fbErr) throw fbErr;
+          if (!fallback) throw new Error("Product not available for this school");
+          return fallback;
+        }
+        throw error;
+      }
       if (!data) throw new Error("Product not available for this school");
       const base = data.products ?? {};
       return {

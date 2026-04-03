@@ -100,7 +100,14 @@ const ClassProductsPage = () => {
         .eq("is_active", true)
         .eq("products.status", "active");
 
-      if (error) throw error;
+      if (error) {
+        const msg = (error as any)?.message?.toLowerCase?.() ?? "";
+        if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
+          // Table not deployed yet; fail closed but do not crash UI
+          return [];
+        }
+        throw error;
+      }
       // TODO: filter by class & gender once schema includes mapping; keep fail-closed by school scope.
       return (data ?? []).map((row: any) => ({
         ...(row.products ?? {}),
