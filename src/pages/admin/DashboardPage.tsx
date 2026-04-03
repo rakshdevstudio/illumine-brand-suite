@@ -32,7 +32,7 @@ const todayStart = () => {
 
 const monthStart = () => {
   const d = new Date();
-  d.setDate(1);
+  d.setDate(d.getDate() - 30); // rolling 30-day window to keep prior-month revenue visible early in month
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
 };
@@ -274,7 +274,7 @@ const DashboardPage = () => {
           icon={<ShoppingBag className="h-4 w-4" strokeWidth={1.5} />}
         />
         <KpiCard
-          label="Revenue This Month"
+          label="Revenue (Last 30 Days)"
           value={fmt(monthRevenue)}
           icon={<TrendingUp className="h-4 w-4" strokeWidth={1.5} />}
           sub={`${monthOrders?.length ?? 0} orders`}
