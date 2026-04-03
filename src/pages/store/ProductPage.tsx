@@ -11,6 +11,7 @@ import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
+import { isSchoolProductsUnavailable, markSchoolProductsUnavailable } from "@/lib/school-products-feature";
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -32,39 +33,42 @@ const ProductPage = () => {
     queryFn: async () => {
       const schoolId = requireSchoolId();
       const client = supabase as any;
-      const { data, error } = await client
-        .from("school_products")
-        .select("id, price, custom_name, custom_image, products!inner(*, product_variants(*), schools(*), product_images(*), classes(name))")
-        .eq("school_id", schoolId)
-        .eq("product_id", id!)
-        .eq("is_active", true)
-        .single();
-      if (error) {
+      if (!isSchoolProductsUnavailable()) {
+        const { data, error } = await client
+          .from("school_products")
+          .select("id, price, custom_name, custom_image, products!inner(*, product_variants(*), schools(*), product_images(*), classes(name))")
+          .eq("school_id", schoolId)
+          .eq("product_id", id!)
+          .eq("is_active", true)
+          .single();
+        if (!error && data) {
+          const base = data.products ?? {};
+          return {
+            ...base,
+            name: data.custom_name ?? base.name,
+            image_url: data.custom_image ?? base.image_url,
+            price: data.price,
+            school_product_id: data.id,
+          };
+        }
         const msg = (error as any)?.message?.toLowerCase?.() ?? "";
         if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
-          // Fallback: respect school scope using base products table
-          const { data: fallback, error: fbErr } = await client
-            .from("products")
-            .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
-            .eq("id", id!)
-            .eq("status", "active")
-            .eq("school_id", schoolId)
-            .single();
-          if (fbErr) throw fbErr;
-          if (!fallback) throw new Error("Product not available for this school");
-          return fallback;
+          markSchoolProductsUnavailable();
+        } else if (error) {
+          throw error;
         }
-        throw error;
       }
-      if (!data) throw new Error("Product not available for this school");
-      const base = data.products ?? {};
-      return {
-        ...base,
-        name: data.custom_name ?? base.name,
-        image_url: data.custom_image ?? base.image_url,
-        price: data.price,
-        school_product_id: data.id,
-      };
+      // Fallback: respect school scope using base products table
+      const { data: fallback, error: fbErr } = await client
+        .from("products")
+        .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
+        .eq("id", id!)
+        .eq("status", "active")
+        .eq("school_id", schoolId)
+        .single();
+      if (fbErr) throw fbErr;
+      if (!fallback) throw new Error("Product not available for this school");
+      return fallback;
     },
   });
 

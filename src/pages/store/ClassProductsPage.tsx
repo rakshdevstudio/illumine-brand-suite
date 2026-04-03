@@ -7,6 +7,7 @@ import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
+import { isSchoolProductsUnavailable, markSchoolProductsUnavailable } from "@/lib/school-products-feature";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -83,6 +84,7 @@ const ClassProductsPage = () => {
     queryKey: ["class-products", schoolId, cls?.id, genderDb],
     enabled: !!schoolId && !!cls?.id,
     queryFn: async () => {
+      if (isSchoolProductsUnavailable()) return [];
       const id = requireSchoolId();
       const db = supabase as any; // bypass generated types until schema file is updated
       const { data, error } = await db
@@ -104,6 +106,7 @@ const ClassProductsPage = () => {
         const msg = (error as any)?.message?.toLowerCase?.() ?? "";
         if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
           // Table not deployed yet; fail closed but do not crash UI
+          markSchoolProductsUnavailable();
           return [];
         }
         throw error;
