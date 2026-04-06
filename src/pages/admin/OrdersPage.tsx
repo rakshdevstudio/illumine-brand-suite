@@ -13,13 +13,12 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 
-type OrderStatus = "PLACED" | "ASSIGNED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
+type OrderStatus = "PLACED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
 
-const ORDER_STATUSES: OrderStatus[] = ["PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"];
+const ORDER_STATUSES: OrderStatus[] = ["PLACED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"];
 
 const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
   PLACED: "bg-gray-200 text-gray-900 border-transparent",
-  ASSIGNED: "bg-blue-200 text-blue-900 border-transparent",
   PACKED: "bg-yellow-200 text-yellow-900 border-transparent",
   DISPATCHED: "bg-purple-200 text-purple-900 border-transparent",
   DELIVERED: "bg-green-200 text-green-900 border-transparent",
@@ -28,7 +27,6 @@ const STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   PLACED: "Placed",
-  ASSIGNED: "Assigned",
   PACKED: "Packed",
   DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
@@ -37,7 +35,6 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 
 const TIMELINE_EVENT_LABELS: Record<string, string> = {
   ORDER_PLACED: "Order Placed",
-  ASSIGNED: "Assigned",
   PACKED: "Packed",
   DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
@@ -52,7 +49,6 @@ const normalizeOrderStatus = (value: string | null | undefined): OrderStatus => 
   const status = String(value ?? "").toUpperCase();
   switch (status) {
     case "PLACED":
-    case "ASSIGNED":
     case "PACKED":
     case "DISPATCHED":
     case "DELIVERED":
@@ -61,7 +57,7 @@ const normalizeOrderStatus = (value: string | null | undefined): OrderStatus => 
     case "PENDING":
       return "PLACED";
     case "CONFIRMED":
-      return "ASSIGNED";
+      return "PACKED";
     case "SHIPPED":
       return "DISPATCHED";
     default:
@@ -72,8 +68,6 @@ const normalizeOrderStatus = (value: string | null | undefined): OrderStatus => 
 const toDbOrderUpdate = (status: OrderStatus): Record<string, any> => {
   const now = new Date().toISOString();
   switch (status) {
-    case "ASSIGNED":
-      return { status, assigned_at: now };
     case "PACKED":
       return { status, packed_at: now };
     case "DISPATCHED":
@@ -89,8 +83,6 @@ const toDbOrderUpdate = (status: OrderStatus): Record<string, any> => {
 
 const toLegacyOrderUpdate = (status: OrderStatus): { status: string; dispatch_status: string } => {
   switch (status) {
-    case "ASSIGNED":
-      return { status: "confirmed", dispatch_status: "assigned" };
     case "PACKED":
       return { status: "packed", dispatch_status: "packed" };
     case "DISPATCHED":
@@ -111,7 +103,6 @@ const shouldTryLegacyFallback = (error: { message?: string; code?: string; statu
   return (
     error.status === 404 ||
     error.code === "PGRST204" ||
-    message.includes("assigned_at") ||
     message.includes("packed_at") ||
     message.includes("dispatched_at") ||
     message.includes("delivered_at") ||
@@ -139,8 +130,6 @@ const OrderStatusBadge = ({ status }: { status: string }) => {
 const getLifecycleAction = (status: OrderStatus) => {
   switch (status) {
     case "PLACED":
-      return { next: "ASSIGNED" as OrderStatus, label: "Mark Assigned" };
-    case "ASSIGNED":
       return { next: "PACKED" as OrderStatus, label: "Mark Packed" };
     case "PACKED":
       return { next: "DISPATCHED" as OrderStatus, label: "Dispatch" };
@@ -720,7 +709,7 @@ const OrdersPage = () => {
                             <span className="absolute left-[8px] top-4 h-[calc(100%+8px)] w-px bg-border" />
                           )}
                           <span className={`absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 ${
-                            ["ORDER_PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "NOTE_ADDED"].includes(event.event_type)
+                            ["ORDER_PLACED", "PACKED", "DISPATCHED", "DELIVERED", "NOTE_ADDED"].includes(event.event_type)
                               ? "bg-green-500 border-green-500"
                               : "bg-gray-300 border-gray-300"
                           }`} />

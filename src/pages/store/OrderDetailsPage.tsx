@@ -38,7 +38,6 @@ type Order = {
 
 const STATUS_LABELS: Record<string, string> = {
   PLACED: "Placed",
-  ASSIGNED: "Assigned",
   PACKED: "Packed",
   DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
@@ -64,6 +63,26 @@ const formatDate = (iso: string) =>
     month: "long",
     year: "numeric",
   });
+
+const normalizeOrderStatus = (value: string) => {
+  const status = String(value || "").toUpperCase();
+  switch (status) {
+    case "PLACED":
+    case "PACKED":
+    case "DISPATCHED":
+    case "DELIVERED":
+    case "CANCELLED":
+      return status;
+    case "PENDING":
+      return "PLACED";
+    case "CONFIRMED":
+      return "PACKED";
+    case "SHIPPED":
+      return "DISPATCHED";
+    default:
+      return "PLACED";
+  }
+};
 
 const OrderDetailsPage = () => {
   const { orderId } = useParams<{ orderId: string }>();
@@ -217,7 +236,7 @@ const OrderDetailsPage = () => {
             Status
           </p>
           <span className="inline-block text-[10px] tracking-[0.15em] uppercase border border-border px-3 py-1">
-            {STATUS_LABELS[order.status] ?? order.status}
+            {STATUS_LABELS[normalizeOrderStatus(order.status)] ?? order.status}
           </span>
         </div>
       </div>

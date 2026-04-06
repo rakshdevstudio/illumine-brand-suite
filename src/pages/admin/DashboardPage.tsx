@@ -39,7 +39,6 @@ const monthStart = () => {
 
 type OrderStatus =
   | "PLACED"
-  | "ASSIGNED"
   | "PACKED"
   | "DISPATCHED"
   | "DELIVERED"
@@ -47,7 +46,6 @@ type OrderStatus =
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
   PLACED: "bg-gray-100 text-gray-700",
-  ASSIGNED: "bg-blue-100 text-blue-700",
   PACKED: "bg-yellow-100 text-yellow-700",
   DISPATCHED: "bg-purple-100 text-purple-700",
   DELIVERED: "bg-green-100 text-green-700",
@@ -56,7 +54,7 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 
 const statusStyle = (value: string) => {
   const status = String(value || "").toUpperCase();
-  const normalized = status === "PENDING" ? "PLACED" : status === "CONFIRMED" ? "ASSIGNED" : status === "SHIPPED" ? "DISPATCHED" : status;
+  const normalized = status === "PENDING" ? "PLACED" : status === "CONFIRMED" ? "PACKED" : status === "SHIPPED" ? "DISPATCHED" : status;
   return STATUS_STYLES[(normalized as OrderStatus)] ?? "bg-gray-100 text-gray-700";
 };
 

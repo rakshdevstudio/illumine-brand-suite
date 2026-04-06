@@ -32,7 +32,7 @@ const TIME_FILTER_OPTIONS: Array<{ value: SchoolTimeFilter; label: string; descr
 
 const STATUS_SECTIONS = [
   { key: "PLACED", label: "Placed", icon: Clock3 },
-  { key: "ASSIGNED", label: "Assigned", icon: BadgeCheck },
+  { key: "PACKED", label: "Packed", icon: Package },
   { key: "DISPATCHED", label: "Dispatched", icon: Truck },
   { key: "CANCELLED", label: "Cancelled", icon: XCircle },
 ] as const;
@@ -139,7 +139,7 @@ const SchoolDashboard = () => {
   const statusBreakdown = useMemo(() => {
     const counts: Record<string, number> = {
       PLACED: 0,
-      ASSIGNED: 0,
+      PACKED: 0,
       DISPATCHED: 0,
       CANCELLED: 0,
     };

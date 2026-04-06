@@ -36,7 +36,7 @@ alter table public.orders
 
 alter table public.orders
   add constraint orders_dispatch_status_check
-  check (dispatch_status in ('pending', 'assigned', 'packed', 'dispatched', 'delivered'));
+  check (dispatch_status in ('pending', 'packed', 'dispatched', 'delivered'));
 
 create index if not exists orders_branch_id_idx
   on public.orders (branch_id);

@@ -147,35 +147,16 @@ const CheckoutPage = () => {
       }
 
       // ── Step 2: create order ──────────────────────────────────────────────
-    const effectiveSchoolId = requireSchoolId();
+      const effectiveSchoolId = requireSchoolId();
 
-    // Enforce variant-level pricing (override if present, else base_price)
-    const { data: variantRows, error: variantErr } = await supabase
-      .from("product_variants")
-      .select("id, base_price")
-      .in("id", variantIds);
-    if (variantErr) throw variantErr;
+      const missingSnapshotPrices = items.filter((item) => !Number.isFinite(Number(item.price)));
+      if (missingSnapshotPrices.length > 0) {
+        toast.error("Some cart items are missing snapshot prices. Please refresh your cart.");
+        setLoading(false);
+        return;
+      }
 
-    const { data: overrideRows, error: overrideErr } = await supabase
-      .from("school_product_variants")
-      .select("variant_id, override_price")
-      .eq("school_id", effectiveSchoolId)
-      .in("variant_id", variantIds);
-    if (overrideErr) throw overrideErr;
-
-    const overrideMap = new Map<string, number>((overrideRows ?? []).map((r) => [r.variant_id, Number(r.override_price)]));
-    const priceByVariant = new Map<string, number>(
-      (variantRows ?? []).map((v) => [v.id, overrideMap.get(v.id) ?? Number(v.base_price ?? 0)])
-    );
-
-    const missingPrices = items.filter((item) => !priceByVariant.has(item.variantId));
-    if (missingPrices.length > 0) {
-      toast.error("Some items are not available for this school. Please refresh your cart.");
-      setLoading(false);
-      return;
-    }
-
-    const orderTotal = items.reduce((sum, item) => sum + Number(priceByVariant.get(item.variantId) ?? 0) * item.quantity, 0);
+      const orderTotal = items.reduce((sum, item) => sum + Number(item.price ?? 0) * item.quantity, 0);
 
       const orderPayload = {
         fullName: form.customer_name,
@@ -271,7 +252,7 @@ const CheckoutPage = () => {
         product_id: item.productId,
         variant_id: item.variantId,
         quantity: item.quantity,
-        price: priceByVariant.get(item.variantId)!,
+        price: Number(item.price ?? 0),
       }));
 
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);

@@ -60,17 +60,15 @@ const formatDateTime = (iso: string) =>
 
 const PUBLIC_TIMELINE_STEPS = [
   { key: "ORDER_PLACED", label: "Order Placed" },
-  { key: "ASSIGNED", label: "Assigned" },
   { key: "PACKED", label: "Packed" },
   { key: "DISPATCHED", label: "Dispatched" },
   { key: "DELIVERED", label: "Delivered" },
 ] as const;
 
-const STATUS_STEPS = ["PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED"] as const;
+const STATUS_STEPS = ["PLACED", "PACKED", "DISPATCHED", "DELIVERED"] as const;
 
 const STATUS_LABELS: Record<(typeof STATUS_STEPS)[number], string> = {
   PLACED: "Order Placed",
-  ASSIGNED: "Assigned",
   PACKED: "Packed",
   DISPATCHED: "Dispatched",
   DELIVERED: "Delivered",
@@ -78,17 +76,15 @@ const STATUS_LABELS: Record<(typeof STATUS_STEPS)[number], string> = {
 
 const STATUS_INDEX: Record<string, number> = {
   PLACED: 0,
-  ASSIGNED: 1,
-  PACKED: 2,
-  DISPATCHED: 3,
-  DELIVERED: 4,
+  PACKED: 1,
+  DISPATCHED: 2,
+  DELIVERED: 3,
 };
 
 const normalizeOrderStatus = (value: string | null | undefined) => {
   const status = String(value ?? "").toUpperCase();
   switch (status) {
     case "PLACED":
-    case "ASSIGNED":
     case "PACKED":
     case "DISPATCHED":
     case "DELIVERED":
@@ -97,7 +93,7 @@ const normalizeOrderStatus = (value: string | null | undefined) => {
     case "PENDING":
       return "PLACED";
     case "CONFIRMED":
-      return "ASSIGNED";
+      return "PACKED";
     case "SHIPPED":
       return "DISPATCHED";
     default:
@@ -135,7 +131,7 @@ const TrackOrderPage = () => {
       .forEach((event) => {
         const normalizedEventType =
           event.event_type === "PAYMENT_CONFIRMED"
-            ? "ASSIGNED"
+            ? "PACKED"
             : event.event_type === "SHIPPED"
               ? "DISPATCHED"
               : event.event_type;

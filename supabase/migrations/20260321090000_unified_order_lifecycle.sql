@@ -1,5 +1,5 @@
 -- Unified order lifecycle system
--- Final flow: PLACED -> ASSIGNED -> PACKED -> DISPATCHED -> DELIVERED (or CANCELLED)
+-- Final flow: PLACED -> PACKED -> DISPATCHED -> DELIVERED (or CANCELLED)
 
 DO $$
 BEGIN
@@ -12,7 +12,6 @@ BEGIN
   ) THEN
     CREATE TYPE public.order_lifecycle_status AS ENUM (
       'PLACED',
-      'ASSIGNED',
       'PACKED',
       'DISPATCHED',
       'DELIVERED',
@@ -45,11 +44,11 @@ BEGIN
         WHEN lower(coalesce(o.dispatch_status, '')) = 'delivered' THEN 'DELIVERED'
         WHEN lower(coalesce(o.dispatch_status, '')) = 'dispatched' THEN 'DISPATCHED'
         WHEN lower(coalesce(o.dispatch_status, '')) = 'packed' THEN 'PACKED'
-        WHEN lower(coalesce(o.dispatch_status, '')) = 'assigned' THEN 'ASSIGNED'
         WHEN lower(coalesce(o.status, '')) IN ('delivered') THEN 'DELIVERED'
         WHEN lower(coalesce(o.status, '')) IN ('shipped') THEN 'DISPATCHED'
         WHEN lower(coalesce(o.status, '')) IN ('packed') THEN 'PACKED'
-        WHEN lower(coalesce(o.status, '')) IN ('confirmed') THEN 'ASSIGNED'
+        WHEN lower(coalesce(o.dispatch_status, '')) = 'packed' THEN 'PACKED'
+        WHEN lower(coalesce(o.status, '')) IN ('confirmed') THEN 'PACKED'
         WHEN lower(coalesce(o.status, '')) IN ('cancelled', 'refunded') THEN 'CANCELLED'
         ELSE 'PLACED'
       END
@@ -60,7 +59,7 @@ BEGIN
       WHEN lower(coalesce(o.status, '')) IN ('delivered') THEN 'DELIVERED'
       WHEN lower(coalesce(o.status, '')) IN ('shipped') THEN 'DISPATCHED'
       WHEN lower(coalesce(o.status, '')) IN ('packed') THEN 'PACKED'
-      WHEN lower(coalesce(o.status, '')) IN ('confirmed') THEN 'ASSIGNED'
+      WHEN lower(coalesce(o.status, '')) IN ('confirmed') THEN 'PACKED'
       WHEN lower(coalesce(o.status, '')) IN ('cancelled', 'refunded') THEN 'CANCELLED'
       ELSE 'PLACED'
     END;
@@ -79,7 +78,7 @@ ALTER TABLE public.orders
 
 UPDATE public.orders
 SET
-  assigned_at = COALESCE(assigned_at, CASE WHEN status IN ('ASSIGNED', 'PACKED', 'DISPATCHED', 'DELIVERED') THEN updated_at ELSE NULL END),
+  assigned_at = COALESCE(assigned_at, CASE WHEN status IN ('PACKED', 'DISPATCHED', 'DELIVERED') THEN updated_at ELSE NULL END),
   packed_at = COALESCE(packed_at, CASE WHEN status IN ('PACKED', 'DISPATCHED', 'DELIVERED') THEN updated_at ELSE NULL END),
   dispatched_at = COALESCE(dispatched_at, CASE WHEN status IN ('DISPATCHED', 'DELIVERED') THEN updated_at ELSE NULL END),
   delivered_at = COALESCE(delivered_at, CASE WHEN status = 'DELIVERED' THEN updated_at ELSE NULL END);
@@ -108,23 +107,16 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   IF NEW.status IS DISTINCT FROM OLD.status THEN
-    IF NEW.status = 'ASSIGNED' AND NEW.assigned_at IS NULL THEN
-      NEW.assigned_at := now();
-    END IF;
-
     IF NEW.status = 'PACKED' THEN
-      IF NEW.assigned_at IS NULL THEN NEW.assigned_at := now(); END IF;
       IF NEW.packed_at IS NULL THEN NEW.packed_at := now(); END IF;
     END IF;
 
     IF NEW.status = 'DISPATCHED' THEN
-      IF NEW.assigned_at IS NULL THEN NEW.assigned_at := now(); END IF;
       IF NEW.packed_at IS NULL THEN NEW.packed_at := now(); END IF;
       IF NEW.dispatched_at IS NULL THEN NEW.dispatched_at := now(); END IF;
     END IF;
 
     IF NEW.status = 'DELIVERED' THEN
-      IF NEW.assigned_at IS NULL THEN NEW.assigned_at := now(); END IF;
       IF NEW.packed_at IS NULL THEN NEW.packed_at := now(); END IF;
       IF NEW.dispatched_at IS NULL THEN NEW.dispatched_at := now(); END IF;
       IF NEW.delivered_at IS NULL THEN NEW.delivered_at := now(); END IF;
@@ -147,12 +139,11 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   CASE upper(coalesce(order_status, ''))
-    WHEN 'ASSIGNED' THEN RETURN QUERY SELECT 'ASSIGNED', 'Order assigned to branch';
     WHEN 'PACKED' THEN RETURN QUERY SELECT 'PACKED', 'Order packed';
     WHEN 'DISPATCHED' THEN RETURN QUERY SELECT 'DISPATCHED', 'Order dispatched';
     WHEN 'DELIVERED' THEN RETURN QUERY SELECT 'DELIVERED', 'Order delivered';
     WHEN 'CANCELLED' THEN RETURN QUERY SELECT 'CANCELLED', 'Order cancelled';
-    WHEN 'CONFIRMED' THEN RETURN QUERY SELECT 'ASSIGNED', 'Order assigned to branch';
+    WHEN 'CONFIRMED' THEN RETURN QUERY SELECT 'PACKED', 'Order packed';
     WHEN 'SHIPPED' THEN RETURN QUERY SELECT 'DISPATCHED', 'Order dispatched';
     WHEN 'REFUNDED' THEN RETURN QUERY SELECT 'CANCELLED', 'Order cancelled';
     ELSE RETURN;

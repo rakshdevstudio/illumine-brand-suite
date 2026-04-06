@@ -32,7 +32,6 @@ type Order = {
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   PLACED: { bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-700" },
-  ASSIGNED: { bg: "bg-blue-50 border-blue-200", text: "text-blue-700" },
   PACKED: { bg: "bg-purple-50 border-purple-200", text: "text-purple-700" },
   DISPATCHED: { bg: "bg-indigo-50 border-indigo-200", text: "text-indigo-700" },
   DELIVERED: { bg: "bg-green-50 border-green-200", text: "text-green-700" },
@@ -45,6 +44,14 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   cancelled:  { bg: "bg-red-50 border-red-200",       text: "text-red-700"    },
 };
 
+const normalizeOrderStatus = (status: string) => {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "CONFIRMED") return "PACKED";
+  if (normalized === "PENDING") return "PLACED";
+  if (normalized === "SHIPPED") return "DISPATCHED";
+  return normalized;
+};
+
 const formatPrice = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 
@@ -52,10 +59,11 @@ const formatDate = (d: string) =>
   new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const c = STATUS_COLORS[status] ?? STATUS_COLORS.pending;
+  const normalizedStatus = normalizeOrderStatus(status);
+  const c = STATUS_COLORS[normalizedStatus] ?? STATUS_COLORS.pending;
   return (
     <span className={`inline-flex items-center px-2 py-0.5 text-[10px] tracking-[0.12em] uppercase border rounded-sm font-medium ${c.bg} ${c.text}`}>
-      {status}
+      {normalizedStatus}
     </span>
   );
 };

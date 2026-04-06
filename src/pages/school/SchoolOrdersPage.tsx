@@ -15,7 +15,7 @@ import { ORDER_STATUS_STYLES, formatCurrency, useResolvedSchoolScope } from "@/l
 import { fetchSchoolPortalData } from "@/lib/school-portal";
 import { toast } from "sonner";
 
-const ORDER_STATUS_OPTIONS = ["all", "PLACED", "ASSIGNED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"] as const;
+const ORDER_STATUS_OPTIONS = ["all", "PLACED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"] as const;
 
 const SectionEmpty = ({ title, description }: { title: string; description: string }) => (
   <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[22px] border border-dashed border-black/10 bg-stone-50/70 px-6 py-10 text-center">

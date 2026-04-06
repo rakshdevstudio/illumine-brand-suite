@@ -519,7 +519,7 @@ const PosDashboard = () => {
         address: `POS Counter - ${selectedSchool?.name ?? "School Billing"}`,
         school_id: selectedSchoolId,
         total_amount: totalAmount,
-        status: "ASSIGNED",
+        status: "PACKED",
       };
 
       const { data: order, error: orderError } = await (supabase as any)

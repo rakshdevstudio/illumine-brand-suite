@@ -7,7 +7,6 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "active", label: "Active Orders" },
   { value: "all", label: "All Statuses" },
   { value: "PLACED", label: "Placed" },
-  { value: "ASSIGNED", label: "Assigned" },
   { value: "PACKED", label: "Packed" },
   { value: "DISPATCHED", label: "Dispatched" },
   { value: "DELIVERED", label: "Delivered" },
@@ -110,6 +109,9 @@ export const buildReportFilename = (reportName: string, extension: "csv" | "xlsx
 
 export const normalizeStatusLabel = (status: string) => {
   const normalized = String(status || "").toUpperCase();
+  if (normalized === "CONFIRMED") return "Packed";
+  if (normalized === "PENDING") return "Placed";
+  if (normalized === "SHIPPED") return "Dispatched";
   return normalized.charAt(0) + normalized.slice(1).toLowerCase();
 };
 
@@ -122,8 +124,6 @@ export const getStatusBadgeClassName = (status: string) => {
       return "border-violet-200 bg-violet-50 text-violet-700";
     case "PACKED":
       return "border-amber-200 bg-amber-50 text-amber-700";
-    case "ASSIGNED":
-      return "border-sky-200 bg-sky-50 text-sky-700";
     case "CANCELLED":
       return "border-rose-200 bg-rose-50 text-rose-700";
     default:

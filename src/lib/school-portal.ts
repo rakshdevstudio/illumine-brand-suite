@@ -74,7 +74,6 @@ const normalizeOrderStatus = (value: unknown) => {
   const status = String(value ?? "").toUpperCase();
   switch (status) {
     case "PLACED":
-    case "ASSIGNED":
     case "PACKED":
     case "DISPATCHED":
     case "DELIVERED":
@@ -83,7 +82,7 @@ const normalizeOrderStatus = (value: unknown) => {
     case "PENDING":
       return "PLACED";
     case "CONFIRMED":
-      return "ASSIGNED";
+      return "PACKED";
     case "SHIPPED":
       return "DISPATCHED";
     default:

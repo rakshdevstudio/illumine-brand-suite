@@ -66,9 +66,6 @@ DECLARE
 BEGIN
   IF NEW.status IS DISTINCT FROM OLD.status THEN
     CASE upper(coalesce(NEW.status::TEXT, ''))
-      WHEN 'ASSIGNED' THEN
-        v_event_type := 'ASSIGNED';
-        v_event_description := 'Order assigned to branch';
       WHEN 'PACKED' THEN
         v_event_type := 'PACKED';
         v_event_description := 'Order packed';
@@ -85,8 +82,8 @@ BEGIN
         v_event_type := 'ORDER_PLACED';
         v_event_description := 'Order placed';
       WHEN 'CONFIRMED' THEN
-        v_event_type := 'ASSIGNED';
-        v_event_description := 'Order assigned to branch';
+        v_event_type := 'PACKED';
+        v_event_description := 'Order packed';
       WHEN 'SHIPPED' THEN
         v_event_type := 'DISPATCHED';
         v_event_description := 'Order dispatched';

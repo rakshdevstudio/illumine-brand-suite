@@ -11,7 +11,7 @@ export type DimensionOption = {
   secondary?: string | null;
 };
 
-export type ReportStatusFilter = "active" | "all" | "PLACED" | "ASSIGNED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
+export type ReportStatusFilter = "active" | "all" | "PLACED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
 export type PaymentModeFilter = "all" | "ONLINE" | "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "UNKNOWN";
 export type SalesGroupBy = "date" | "school";
 export type SalesViewMode = "order" | "item";
