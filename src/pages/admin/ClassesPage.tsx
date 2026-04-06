@@ -151,8 +151,16 @@ const ClassesPage = () => {
         return;
       }
 
-      const { error } = await supabase.from("classes").delete().eq("id", deleteTarget.id);
+      const { data: deletedRow, error } = await supabase
+        .from("classes")
+        .delete()
+        .eq("id", deleteTarget.id)
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!deletedRow?.id) {
+        throw new Error("Delete was blocked by database policy. Apply latest migrations.");
+      }
 
       await logActivity({
         actionType: "CLASS_DELETED",
