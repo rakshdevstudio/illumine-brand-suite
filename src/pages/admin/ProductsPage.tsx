@@ -23,6 +23,7 @@ import { getDisplayImage } from "@/lib/product-images";
 import ProductImageUploader from "@/components/admin/ProductImageUploader";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
+import { archiveProduct, hardDeleteProduct, restoreProduct } from "@/lib/product-lifecycle";
 
 const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
@@ -40,14 +41,17 @@ const fieldLabels: Record<string, string> = {
 
 const ProductsPage = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
   const [bulkActionLabel, setBulkActionLabel] = useState("");
-  const [bulkMode, setBulkMode] = useState<"activate" | "deactivate" | "price" | null>(null);
+  const [bulkMode, setBulkMode] = useState<"restore" | "archive" | "price" | null>(null);
   const [bulkPrice, setBulkPrice] = useState("");
+  const [archiveTarget, setArchiveTarget] = useState<any>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [form, setForm] = useState({
     name: "",
     category: "",
@@ -59,11 +63,12 @@ const ProductsPage = () => {
   });
 
   const { data: products, isLoading } = useQuery({
-    queryKey: ["admin-products-list"],
+    queryKey: ["admin-products-list", viewMode],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
         .select("*, schools(name, slug), classes(name), product_images(*)")
+        .eq("is_active", viewMode === "active")
         .order("name");
       if (error) throw error;
       return data;
@@ -241,22 +246,43 @@ const ProductsPage = () => {
     }
   };
 
-  const handleStatusToggle = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === "active" ? "inactive" : "active";
-    await supabase.from("products").update({ status: newStatus }).eq("id", id);
-    const product = (products ?? []).find((p) => p.id === id);
-    await logActivity({
-      actionType: newStatus === "active" ? "PRODUCT_ENABLED" : "PRODUCT_DISABLED",
-      entityType: "product",
-      entityId: id,
-      description: `Status updated for ${product?.name ?? id}: ${String(currentStatus || "active").toUpperCase()} → ${newStatus.toUpperCase()}`,
-      performedBy: user?.id,
-      fieldChanged: "status",
-      oldValue: String(currentStatus || "active").toUpperCase(),
-      newValue: newStatus.toUpperCase(),
-    });
-    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
-    toast.success(`Product ${newStatus === "active" ? "enabled" : "disabled"}`);
+  const handleArchiveConfirm = async () => {
+    if (!archiveTarget || !user?.id) {
+      toast.error("Authenticated admin user is required");
+      return;
+    }
+
+    try {
+      if (archiveTarget.is_active) {
+        await archiveProduct({ productId: archiveTarget.id, actorId: user.id });
+        toast.success("Product archived");
+      } else {
+        await restoreProduct({ productId: archiveTarget.id, actorId: user.id });
+        toast.success("Product restored");
+      }
+      setArchiveTarget(null);
+      await refreshProductAndLogQueries();
+    } catch (err: any) {
+      console.error("Failed to update product lifecycle", err);
+      toast.error(err?.message || "Failed to update product");
+    }
+  };
+
+  const handleHardDeleteConfirm = async () => {
+    if (!hardDeleteTarget || !user?.id) {
+      toast.error("Authenticated admin user is required");
+      return;
+    }
+
+    try {
+      await hardDeleteProduct({ productId: hardDeleteTarget.id, actorId: user.id });
+      toast.success("Product deleted permanently");
+      setHardDeleteTarget(null);
+      await refreshProductAndLogQueries();
+    } catch (err: any) {
+      console.error("Failed to hard delete product", err);
+      toast.error(err?.message || "Failed to permanently delete product");
+    }
   };
 
   const openEdit = (product: any) => {
@@ -303,7 +329,7 @@ const ProductsPage = () => {
     setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
   };
 
-  const openBulkConfirm = (mode: "activate" | "deactivate" | "price", label: string) => {
+  const openBulkConfirm = (mode: "restore" | "archive" | "price", label: string) => {
     setBulkMode(mode);
     setBulkActionLabel(label);
     setBulkConfirmOpen(true);
@@ -312,14 +338,25 @@ const ProductsPage = () => {
   const runBulkAction = async () => {
     if (selectedIds.length === 0 || !bulkMode) return;
 
-    if (bulkMode === "activate" || bulkMode === "deactivate") {
-      const status = bulkMode === "activate" ? "active" : "inactive";
-      const { error } = await supabase.from("products").update({ status }).in("id", selectedIds);
-      if (error) {
-        toast.error("Bulk update failed");
+    if (bulkMode === "restore" || bulkMode === "archive") {
+      if (!user?.id) {
+        toast.error("Authenticated admin user is required");
         return;
       }
-      toast.success(`Updated ${selectedIds.length} products`);
+      try {
+        await Promise.all(
+          selectedIds.map((productId) =>
+            bulkMode === "archive"
+              ? archiveProduct({ productId, actorId: user.id })
+              : restoreProduct({ productId, actorId: user.id })
+          )
+        );
+        toast.success(`${bulkMode === "archive" ? "Archived" : "Restored"} ${selectedIds.length} products`);
+      } catch (err: any) {
+        console.error("Bulk lifecycle action failed", err);
+        toast.error(err?.message || "Bulk update failed");
+        return;
+      }
     }
 
     if (bulkMode === "price") {
@@ -342,7 +379,7 @@ const ProductsPage = () => {
     setBulkConfirmOpen(false);
     setBulkMode(null);
     setSelectedIds([]);
-    queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
+    await refreshProductAndLogQueries();
   };
 
   const exportSelectedProducts = () => {
@@ -374,9 +411,33 @@ const ProductsPage = () => {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Products</h1>
-        <Button onClick={openCreate} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
-          <Plus className="h-3 w-3 mr-2" /> Add Product
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-lg border border-border bg-white p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedIds([]);
+                setViewMode("active");
+              }}
+              className={`h-8 px-3 text-xs tracking-[0.16em] uppercase transition-colors ${viewMode === "active" ? "bg-black text-white" : "text-muted-foreground"}`}
+            >
+              Active
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedIds([]);
+                setViewMode("archived");
+              }}
+              className={`h-8 px-3 text-xs tracking-[0.16em] uppercase transition-colors ${viewMode === "archived" ? "bg-black text-white" : "text-muted-foreground"}`}
+            >
+              Archived
+            </button>
+          </div>
+          <Button onClick={openCreate} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
+            <Plus className="h-3 w-3 mr-2" /> Add Product
+          </Button>
+        </div>
       </div>
 
       <div className="border border-border">
@@ -439,20 +500,34 @@ const ProductsPage = () => {
                   <TableCell className="text-sm">{formatPrice((product as any).base_price ?? product.price)}</TableCell>
                   <TableCell>
                     <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                      product.status === "inactive"
-                        ? "border-destructive text-destructive"
+                      product.is_active === false
+                        ? "border-amber-200 text-amber-700"
                         : "border-border text-foreground"
                     }`}>
-                      {product.status || "active"}
+                      {product.is_active === false ? "archived" : "active"}
                     </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(product)}>Edit</Button>
-                      <Button variant="outline" size="sm" className="text-xs"
-                        onClick={() => handleStatusToggle(product.id, product.status || "active")}>
-                        {product.status === "inactive" ? "Enable" : "Disable"}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => setArchiveTarget(product)}
+                      >
+                        {product.is_active === false ? "Restore" : "Archive"}
                       </Button>
+                      {product.is_active === false && isSuperAdmin && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs text-destructive border-destructive/30 hover:text-destructive"
+                          onClick={() => setHardDeleteTarget(product)}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -465,8 +540,14 @@ const ProductsPage = () => {
       {selectedIds.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-black text-white rounded-lg px-4 py-3 shadow-lg flex flex-wrap items-center gap-2">
           <span className="text-xs tracking-wide mr-2">{selectedIds.length} items selected</span>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openBulkConfirm("activate", "Activate Products")}>Activate</Button>
-          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => openBulkConfirm("deactivate", "Deactivate Products")}>Deactivate</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={() => openBulkConfirm(viewMode === "active" ? "archive" : "restore", viewMode === "active" ? "Archive Products" : "Restore Products")}
+          >
+            {viewMode === "active" ? "Archive" : "Restore"}
+          </Button>
           <Input
             placeholder="Price"
             value={bulkPrice}
@@ -490,6 +571,40 @@ const ProductsPage = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={runBulkAction}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => { if (!open) setArchiveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{archiveTarget?.is_active === false ? "Restore Product" : "Archive Product"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {archiveTarget?.is_active === false
+                ? "This will restore the product, its variants, and school mappings."
+                : "Are you sure you want to archive this product?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchiveConfirm}>
+              {archiveTarget?.is_active === false ? "Restore" : "Archive"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={Boolean(hardDeleteTarget)} onOpenChange={(open) => { if (!open) setHardDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Permanently</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the product and related variant catalog data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleHardDeleteConfirm}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -602,3 +717,9 @@ const ProductsPage = () => {
 };
 
 export default ProductsPage;
+  const refreshProductAndLogQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-products-list"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+    ]);
+  };
