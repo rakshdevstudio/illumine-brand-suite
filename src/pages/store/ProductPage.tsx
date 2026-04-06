@@ -11,7 +11,6 @@ import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
-import { isSchoolProductsUnavailable, markSchoolProductsUnavailable } from "@/lib/school-products-feature";
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -33,60 +32,30 @@ const ProductPage = () => {
     queryFn: async () => {
       const schoolId = requireSchoolId();
       const client = supabase as any;
-      if (!isSchoolProductsUnavailable()) {
-        const { data, error } = await client
-          .from("school_products")
-          .select(`
-            id,
-            custom_name,
-            custom_image,
-            products!inner(*, product_variants(id, size, base_price, sku, is_active), schools(*), product_images(*), classes(name)),
-            school_product_variants(override_price, variant_id)
-          `)
-          .eq("school_id", schoolId)
-          .eq("product_id", id!)
-          .eq("is_active", true)
-          .single();
-        if (!error && data) {
-          const base = data.products ?? {};
-          const overrideMap = new Map(
-            (data.school_product_variants ?? []).map((o: any) => [o.variant_id, o.override_price])
-          );
-          const variants = (base.product_variants ?? []).map((v: any) => ({
-            ...v,
-            price: overrideMap.get(v.id) ?? v.base_price,
-          }));
-          return {
-            ...base,
-            name: data.custom_name ?? base.name,
-            image_url: data.custom_image ?? base.image_url,
-            school_product_id: data.id,
-            product_variants: variants,
-          };
-        }
-        const msg = (error as any)?.message?.toLowerCase?.() ?? "";
-        if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
-          markSchoolProductsUnavailable();
-        } else if (error) {
-          throw error;
-        }
-      }
-      // Fallback: respect school scope using base products table
+
       const { data: fallback, error: fbErr } = await client
         .from("products")
-        .select("*, product_variants(id, size, base_price, sku, is_active), schools(*), product_images(*), classes(name)")
+        .select("*, product_variants!inner(id, size, base_price, sku, is_active, status), schools(*), product_images(*), classes(name)")
         .eq("id", id!)
-        .eq("is_active", true)
         .eq("school_id", schoolId)
         .single();
       if (fbErr) throw fbErr;
+
+      const fallbackIsActive = String(fallback?.status ?? "").toLowerCase() === "active";
+      if (!fallbackIsActive) {
+        throw new Error("Product not available for this school");
+      }
+
       if (!fallback) throw new Error("Product not available for this school");
       return {
         ...fallback,
-        product_variants: (fallback as any).product_variants?.map((v: any) => ({
-          ...v,
-          price: v.base_price,
-        })) ?? [],
+        product_variants:
+          (fallback as any).product_variants
+            ?.filter((v: any) => String(v.status ?? "").toLowerCase() === "active")
+            .map((v: any) => ({
+              ...v,
+              price: v.base_price,
+            })) ?? [],
       };
     },
   });
