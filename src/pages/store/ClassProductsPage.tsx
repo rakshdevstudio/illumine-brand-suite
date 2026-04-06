@@ -91,12 +91,10 @@ const ClassProductsPage = () => {
         .from("school_products")
         .select(`
           id,
-          price,
-          custom_name,
-          custom_image,
           is_active,
           product_id,
-          products!inner(*, product_variants(*), product_images(*))
+          products!inner(*, product_variants(id, size, base_price, is_active, sku), product_images(*)),
+          school_product_variants(override_price, variant_id)
         `)
         .eq("school_id", id)
         .eq("is_active", true)
@@ -112,13 +110,20 @@ const ClassProductsPage = () => {
         throw error;
       }
       // TODO: filter by class & gender once schema includes mapping; keep fail-closed by school scope.
-      return (data ?? []).map((row: any) => ({
-        ...(row.products ?? {}),
-        school_product_id: row.id,
-        price: row.price,
-        custom_name: row.custom_name,
-        custom_image: row.custom_image,
-      }));
+      return (data ?? []).map((row: any) => {
+        const overrideMap = new Map(
+          (row.school_product_variants ?? []).map((o: any) => [o.variant_id, o.override_price])
+        );
+        const variantsWithPrice = (row.products?.product_variants ?? []).map((v: any) => ({
+          ...v,
+          price: overrideMap.get(v.id) ?? v.base_price,
+        }));
+        return {
+          ...(row.products ?? {}),
+          school_product_id: row.id,
+          product_variants: variantsWithPrice,
+        };
+      });
     },
   });
 
@@ -214,6 +219,11 @@ const ClassProductsPage = () => {
               : isLowStock
                 ? "Low stock"
                 : "In stock";
+            const minPrice = Math.min(
+              ...(product.product_variants ?? [])
+                .map((v: any) => Number(v.price ?? v.base_price ?? 0))
+                .filter((n: number) => Number.isFinite(n) && n >= 0)
+            );
 
             return (
               <motion.div
@@ -342,7 +352,9 @@ const ClassProductsPage = () => {
                       <h3 className="text-[15px] font-medium tracking-wide leading-snug">
                         {product.name}
                       </h3>
-                      <p className="text-lg font-normal tracking-wide">{formatPrice((product as any).base_price ?? product.price)}</p>
+                      {Number.isFinite(minPrice) && (
+                        <p className="text-lg font-normal tracking-wide">{formatPrice(minPrice)}</p>
+                      )}
                       <p className={`text-xs ${isLowStock ? "text-red-500" : "text-muted-foreground"}`}>
                         {stockLabel}
                       </p>

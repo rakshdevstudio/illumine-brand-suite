@@ -149,24 +149,33 @@ const CheckoutPage = () => {
       // ── Step 2: create order ──────────────────────────────────────────────
     const effectiveSchoolId = requireSchoolId();
 
-    // Enforce price from school_products (fail closed)
-    const productIds = Array.from(new Set(items.map((item) => item.productId)));
-    const { data: pricedRows, error: priceError } = await (supabase as any)
-      .from("school_products")
-      .select("product_id, price, is_active")
-      .eq("school_id", effectiveSchoolId)
-      .in("product_id", productIds)
-      .eq("is_active", true);
-    if (priceError) throw priceError;
-    const priceByProduct = new Map<string, number>((pricedRows ?? []).map((row: any) => [row.product_id, Number(row.price)]));
+    // Enforce variant-level pricing (override if present, else base_price)
+    const { data: variantRows, error: variantErr } = await supabase
+      .from("product_variants")
+      .select("id, base_price")
+      .in("id", variantIds);
+    if (variantErr) throw variantErr;
 
-    // Validate that every item has a school-scoped price; fail closed otherwise
-    const missingPrices = items.filter((item) => !priceByProduct.has(item.productId));
+    const { data: overrideRows, error: overrideErr } = await supabase
+      .from("school_product_variants")
+      .select("variant_id, override_price")
+      .eq("school_id", effectiveSchoolId)
+      .in("variant_id", variantIds);
+    if (overrideErr) throw overrideErr;
+
+    const overrideMap = new Map<string, number>((overrideRows ?? []).map((r) => [r.variant_id, Number(r.override_price)]));
+    const priceByVariant = new Map<string, number>(
+      (variantRows ?? []).map((v) => [v.id, overrideMap.get(v.id) ?? Number(v.base_price ?? 0)])
+    );
+
+    const missingPrices = items.filter((item) => !priceByVariant.has(item.variantId));
     if (missingPrices.length > 0) {
       toast.error("Some items are not available for this school. Please refresh your cart.");
       setLoading(false);
       return;
     }
+
+    const orderTotal = items.reduce((sum, item) => sum + Number(priceByVariant.get(item.variantId) ?? 0) * item.quantity, 0);
 
       const orderPayload = {
         fullName: form.customer_name,
@@ -194,7 +203,7 @@ const CheckoutPage = () => {
         city: orderPayload.city,
         pincode: orderPayload.pincode,
         school_id: effectiveSchoolId,
-        total_amount: total(),
+        total_amount: orderTotal,
         status: "PLACED",
       };
 
@@ -210,7 +219,7 @@ const CheckoutPage = () => {
           address: orderPayload.address,
           payment_mode: "ONLINE",
           school_id: effectiveSchoolId,
-          total_amount: total(),
+          total_amount: orderTotal,
           status: "PLACED",
         },
         {
@@ -219,7 +228,7 @@ const CheckoutPage = () => {
           address: orderPayload.address,
           payment_mode: "ONLINE",
           school_id: effectiveSchoolId,
-          total_amount: total(),
+          total_amount: orderTotal,
           status: "PLACED",
         },
       ];
@@ -262,7 +271,7 @@ const CheckoutPage = () => {
         product_id: item.productId,
         variant_id: item.variantId,
         quantity: item.quantity,
-        price: priceByProduct.get(item.productId)!,
+        price: priceByVariant.get(item.variantId)!,
       }));
 
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);

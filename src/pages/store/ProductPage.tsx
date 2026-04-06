@@ -36,19 +36,32 @@ const ProductPage = () => {
       if (!isSchoolProductsUnavailable()) {
         const { data, error } = await client
           .from("school_products")
-          .select("id, price, custom_name, custom_image, products!inner(*, product_variants(*), schools(*), product_images(*), classes(name))")
+          .select(`
+            id,
+            custom_name,
+            custom_image,
+            products!inner(*, product_variants(id, size, base_price, sku, is_active), schools(*), product_images(*), classes(name)),
+            school_product_variants(override_price, variant_id)
+          `)
           .eq("school_id", schoolId)
           .eq("product_id", id!)
           .eq("is_active", true)
           .single();
         if (!error && data) {
           const base = data.products ?? {};
+          const overrideMap = new Map(
+            (data.school_product_variants ?? []).map((o: any) => [o.variant_id, o.override_price])
+          );
+          const variants = (base.product_variants ?? []).map((v: any) => ({
+            ...v,
+            price: overrideMap.get(v.id) ?? v.base_price,
+          }));
           return {
             ...base,
             name: data.custom_name ?? base.name,
             image_url: data.custom_image ?? base.image_url,
-            price: data.price,
             school_product_id: data.id,
+            product_variants: variants,
           };
         }
         const msg = (error as any)?.message?.toLowerCase?.() ?? "";
@@ -61,14 +74,20 @@ const ProductPage = () => {
       // Fallback: respect school scope using base products table
       const { data: fallback, error: fbErr } = await client
         .from("products")
-        .select("*, product_variants(*), schools(*), product_images(*), classes(name)")
+        .select("*, product_variants(id, size, base_price, sku, is_active), schools(*), product_images(*), classes(name)")
         .eq("id", id!)
         .eq("status", "active")
         .eq("school_id", schoolId)
         .single();
       if (fbErr) throw fbErr;
       if (!fallback) throw new Error("Product not available for this school");
-      return fallback;
+      return {
+        ...fallback,
+        product_variants: (fallback as any).product_variants?.map((v: any) => ({
+          ...v,
+          price: v.base_price,
+        })) ?? [],
+      };
     },
   });
 
@@ -96,7 +115,13 @@ const ProductPage = () => {
   );
   const selectedVariantStock = selectedVariant ? Number(branchStockByVariant.get(selectedVariant.id) ?? 0) : 0;
   const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariantStock)) : 1;
-  const basePrice = product?.price ?? 0;
+  const fallbackMinPrice = useMemo(() => {
+    const prices = (product?.product_variants ?? [])
+      .map((v: any) => Number(v.price ?? v.base_price ?? 0))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+    return prices.length ? Math.min(...prices) : 0;
+  }, [product]);
+  const basePrice = selectedVariant?.price ?? selectedVariant?.base_price ?? fallbackMinPrice;
 
   // Build image gallery
   const galleryImages: string[] = [];
