@@ -127,11 +127,15 @@ const ClassProductsPage = () => {
     },
   });
 
-  const allVariantIds = useMemo(
+  const allVariantIds = useMemo<string[]>(
     () =>
       Array.from(
         new Set(
-          (products ?? []).flatMap((product: any) => (product.product_variants ?? []).map((variant: any) => variant.id))
+          (products ?? []).flatMap((product: any) =>
+            (product.product_variants ?? [])
+              .map((variant: any) => variant.id)
+              .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+          )
         )
       ),
     [products]
