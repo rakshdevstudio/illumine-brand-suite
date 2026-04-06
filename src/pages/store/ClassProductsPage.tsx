@@ -84,46 +84,81 @@ const ClassProductsPage = () => {
     queryKey: ["class-products", schoolId, cls?.id, genderDb],
     enabled: !!schoolId && !!cls?.id,
     queryFn: async () => {
-      if (isSchoolProductsUnavailable()) return [];
       const id = requireSchoolId();
       const db = supabase as any; // bypass generated types until schema file is updated
-      const { data, error } = await db
-        .from("school_products")
-        .select(`
-          id,
-          is_active,
-          product_id,
-          products!inner(*, product_variants(id, size, base_price, is_active, sku), product_images(*)),
-          school_product_variants(override_price, variant_id)
-        `)
-        .eq("school_id", id)
-        .eq("is_active", true)
-        .eq("products.status", "active");
 
-      if (error) {
-        const msg = (error as any)?.message?.toLowerCase?.() ?? "";
-        if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
-          // Table not deployed yet; fail closed but do not crash UI
-          markSchoolProductsUnavailable();
-          return [];
+      const fetchFallbackProducts = async () => {
+        let fallbackQuery = db
+          .from("products")
+          .select("*, product_variants(id, size, base_price, is_active, status, sku), product_images(*)")
+          .eq("school_id", id)
+          .eq("class_id", cls!.id)
+          .eq("is_active", true);
+
+        if (genderDb === "Unisex") {
+          fallbackQuery = fallbackQuery.eq("gender", "Unisex");
+        } else {
+          fallbackQuery = fallbackQuery.in("gender", [genderDb, "Unisex"]);
         }
-        throw error;
-      }
-      // TODO: filter by class & gender once schema includes mapping; keep fail-closed by school scope.
-      return (data ?? []).map((row: any) => {
-        const overrideMap = new Map(
-          (row.school_product_variants ?? []).map((o: any) => [o.variant_id, o.override_price])
-        );
-        const variantsWithPrice = (row.products?.product_variants ?? []).map((v: any) => ({
-          ...v,
-          price: overrideMap.get(v.id) ?? v.base_price,
+
+        const { data: fallbackProducts, error: fallbackError } = await fallbackQuery.order("name");
+        if (fallbackError) throw fallbackError;
+
+        return (fallbackProducts ?? []).map((product: any) => ({
+          ...product,
+          school_product_id: null,
+          product_variants: (product.product_variants ?? [])
+            .filter((v: any) => v.is_active !== false && v.status !== "inactive")
+            .map((v: any) => ({ ...v, price: v.base_price })),
         }));
-        return {
-          ...(row.products ?? {}),
-          school_product_id: row.id,
-          product_variants: variantsWithPrice,
-        };
-      });
+      };
+
+      if (!isSchoolProductsUnavailable()) {
+        const { data, error } = await db
+          .from("school_products")
+          .select(`
+            id,
+            is_active,
+            product_id,
+            products!inner(*, product_variants(id, size, base_price, is_active, status, sku), product_images(*)),
+            school_product_variants(override_price, variant_id)
+          `)
+          .eq("school_id", id)
+          .eq("is_active", true)
+          .eq("products.is_active", true);
+
+        if (!error) {
+          const mapped = (data ?? []).map((row: any) => {
+            const overrideMap = new Map(
+              (row.school_product_variants ?? []).map((o: any) => [o.variant_id, o.override_price])
+            );
+            const variantsWithPrice = (row.products?.product_variants ?? [])
+              .filter((v: any) => v.is_active !== false && v.status !== "inactive")
+              .map((v: any) => ({
+                ...v,
+                price: overrideMap.get(v.id) ?? v.base_price,
+              }));
+            return {
+              ...(row.products ?? {}),
+              school_product_id: row.id,
+              product_variants: variantsWithPrice,
+            };
+          });
+
+          if (mapped.length > 0) {
+            return mapped;
+          }
+        } else {
+          const msg = (error as any)?.message?.toLowerCase?.() ?? "";
+          if ((error as any)?.code === "PGRST404" || msg.includes("not found") || msg.includes("does not exist")) {
+            markSchoolProductsUnavailable();
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      return fetchFallbackProducts();
     },
   });
 

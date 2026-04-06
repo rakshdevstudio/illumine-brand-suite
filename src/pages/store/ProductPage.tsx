@@ -76,7 +76,7 @@ const ProductPage = () => {
         .from("products")
         .select("*, product_variants(id, size, base_price, sku, is_active), schools(*), product_images(*), classes(name)")
         .eq("id", id!)
-        .eq("status", "active")
+        .eq("is_active", true)
         .eq("school_id", schoolId)
         .single();
       if (fbErr) throw fbErr;
