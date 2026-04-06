@@ -42,7 +42,9 @@ export const fetchActivityLogs = async (): Promise<ActivityLogRow[]> => {
     .select("id, full_name, email")
     .in("id", userIds as string[]);
 
-  if (profilesError) throw profilesError;
+  if (profilesError) {
+    console.error("Failed to load activity log profiles:", profilesError);
+  }
 
   const profileMap = new Map(
     (profiles ?? []).map((profile) => [

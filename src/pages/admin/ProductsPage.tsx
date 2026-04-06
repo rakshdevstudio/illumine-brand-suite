@@ -24,6 +24,7 @@ import ProductImageUploader from "@/components/admin/ProductImageUploader";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 import { archiveProduct, hardDeleteProduct, restoreProduct } from "@/lib/product-lifecycle";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
@@ -41,7 +42,8 @@ const fieldLabels: Record<string, string> = {
 
 const ProductsPage = () => {
   const queryClient = useQueryClient();
-  const { user, isSuperAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { session } = useRequireAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -62,16 +64,17 @@ const ProductsPage = () => {
     gender: "Unisex",
   });
 
-  const { data: products, isLoading } = useQuery({
+  const { data: products, isLoading } = useQuery<any[]>({
     queryKey: ["admin-products-list", viewMode],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const client = supabase as any;
+      const { data, error } = await client
         .from("products")
         .select("*, schools(name, slug), classes(name), product_images(*)")
         .eq("is_active", viewMode === "active")
         .order("name");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
 
@@ -124,11 +127,20 @@ const ProductsPage = () => {
     return value ?? "—";
   };
 
+  const refreshProductAndLogQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-products-list"] }),
+      queryClient.invalidateQueries({ queryKey: ["products"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+    ]);
+  };
+
   const handleSave = async () => {
     if (!form.name || !form.category || !form.price) {
       toast.error("Please fill all required fields");
       return;
     }
+
     const parsedPrice = parseFloat(form.price);
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       toast.error("Please enter a valid base price");
@@ -147,6 +159,7 @@ const ProductsPage = () => {
         description: form.description.trim() || null,
         is_universal: true,
       };
+
       let savedProductId: string | null = editing?.id ?? null;
 
       if (editing) {
@@ -185,6 +198,7 @@ const ProductsPage = () => {
           .insert(payload)
           .select("id")
           .single();
+
         if (error) throw error;
         savedProductId = created?.id ?? null;
 
@@ -232,7 +246,7 @@ const ProductsPage = () => {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
+      await refreshProductAndLogQueries();
       queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
       queryClient.invalidateQueries({ queryKey: ["admin-inventory-alerts"] });
       queryClient.invalidateQueries({ queryKey: ["admin-low-stock-alerts"] });
@@ -247,17 +261,16 @@ const ProductsPage = () => {
   };
 
   const handleArchiveConfirm = async () => {
-    if (!archiveTarget || !user?.id) {
-      toast.error("Authenticated admin user is required");
+    if (!archiveTarget) {
       return;
     }
 
     try {
       if (archiveTarget.is_active) {
-        await archiveProduct({ productId: archiveTarget.id, actorId: user.id });
+        await archiveProduct({ productId: archiveTarget.id });
         toast.success("Product archived");
       } else {
-        await restoreProduct({ productId: archiveTarget.id, actorId: user.id });
+        await restoreProduct({ productId: archiveTarget.id });
         toast.success("Product restored");
       }
       setArchiveTarget(null);
@@ -269,13 +282,24 @@ const ProductsPage = () => {
   };
 
   const handleHardDeleteConfirm = async () => {
-    if (!hardDeleteTarget || !user?.id) {
+    if (!hardDeleteTarget) {
+      return;
+    }
+
+    if (!session?.user?.id) {
       toast.error("Authenticated admin user is required");
       return;
     }
 
     try {
-      await hardDeleteProduct({ productId: hardDeleteTarget.id, actorId: user.id });
+      await hardDeleteProduct({ productId: hardDeleteTarget.id });
+      await logActivity({
+        actionType: "PRODUCT_DELETED",
+        entityType: "products",
+        entityId: hardDeleteTarget.id,
+        description: `Product ${hardDeleteTarget.name} deleted permanently`,
+        performedBy: session.user.id,
+      });
       toast.success("Product deleted permanently");
       setHardDeleteTarget(null);
       await refreshProductAndLogQueries();
@@ -314,6 +338,8 @@ const ProductsPage = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-products-list"] });
   };
 
+  const canDelete = isAdmin || isSuperAdmin;
+
   const allIds = (products ?? []).map((p) => p.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
 
@@ -339,16 +365,12 @@ const ProductsPage = () => {
     if (selectedIds.length === 0 || !bulkMode) return;
 
     if (bulkMode === "restore" || bulkMode === "archive") {
-      if (!user?.id) {
-        toast.error("Authenticated admin user is required");
-        return;
-      }
       try {
         await Promise.all(
           selectedIds.map((productId) =>
             bulkMode === "archive"
-              ? archiveProduct({ productId, actorId: user.id })
-              : restoreProduct({ productId, actorId: user.id })
+              ? archiveProduct({ productId })
+              : restoreProduct({ productId })
           )
         );
         toast.success(`${bulkMode === "archive" ? "Archived" : "Restored"} ${selectedIds.length} products`);
@@ -518,7 +540,7 @@ const ProductsPage = () => {
                       >
                         {product.is_active === false ? "Restore" : "Archive"}
                       </Button>
-                      {product.is_active === false && isSuperAdmin && (
+                      {canDelete && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -717,9 +739,3 @@ const ProductsPage = () => {
 };
 
 export default ProductsPage;
-  const refreshProductAndLogQueries = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-products-list"] }),
-      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
-    ]);
-  };

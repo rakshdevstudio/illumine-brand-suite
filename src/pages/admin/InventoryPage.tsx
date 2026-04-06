@@ -224,6 +224,7 @@ const InventoryPage = () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
     ]);
   };
 
@@ -261,6 +262,7 @@ const InventoryPage = () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
     ]);
   };
 

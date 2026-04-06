@@ -5,18 +5,32 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { safeQuery } from "@/lib/safeQuery";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useAuth } from "@/hooks/use-auth";
+import { logActivity } from "@/lib/activity-log";
 
 const ClassesPage = () => {
-  const { isChecking } = useRequireAuth();
+  const { session, isChecking } = useRequireAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [form, setForm] = useState({ name: "", school_id: "", code: "", sort_order: "0" });
   const [schoolFilter, setSchoolFilter] = useState("all");
 
@@ -73,6 +87,8 @@ const ClassesPage = () => {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
+  const canDelete = isAdmin || isSuperAdmin;
+
   const handleSave = async () => {
     if (!form.name || !form.school_id || !form.code) {
       toast.error("Please fill all required fields");
@@ -108,6 +124,54 @@ const ClassesPage = () => {
     await supabase.from("classes").update({ status: newStatus }).eq("id", id);
     queryClient.invalidateQueries({ queryKey: ["admin-classes"] });
     toast.success(`Class ${newStatus === "active" ? "enabled" : "disabled"}`);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || !session?.user?.id) {
+      toast.error("Authenticated admin user is required");
+      return;
+    }
+
+    try {
+      const { data: linkedProducts, error: linkedError } = await supabase
+        .from("products")
+        .select("id, status, is_active")
+        .eq("class_id", deleteTarget.id);
+
+      if (linkedError) throw linkedError;
+
+      const hasActiveProducts = (linkedProducts ?? []).some((product: any) => {
+        const activeByStatus = product.status ? product.status === "active" : true;
+        const activeByFlag = typeof product.is_active === "boolean" ? product.is_active : true;
+        return activeByStatus && activeByFlag;
+      });
+
+      if (hasActiveProducts) {
+        toast.error("Cannot delete class with active products");
+        return;
+      }
+
+      const { error } = await supabase.from("classes").delete().eq("id", deleteTarget.id);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: "CLASS_DELETED",
+        entityType: "classes",
+        entityId: deleteTarget.id,
+        description: `Class ${deleteTarget.name} deleted`,
+        performedBy: session.user.id,
+      });
+
+      setDeleteTarget(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-classes"] }),
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+      ]);
+      toast.success("Class deleted");
+    } catch (error: any) {
+      console.error("Failed to delete class", error);
+      toast.error(error?.message || "Failed to delete class");
+    }
   };
 
   const openEdit = (cls: any) => {
@@ -200,6 +264,16 @@ const ClassesPage = () => {
                             onClick={() => handleStatusToggle(cls.id, cls.status)}>
                             {cls.status === "inactive" ? "Enable" : "Disable"}
                           </Button>
+                          {canDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs text-destructive border-destructive/30 hover:text-destructive"
+                              onClick={() => setDeleteTarget(cls)}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -250,6 +324,21 @@ const ClassesPage = () => {
           </Button>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Class</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

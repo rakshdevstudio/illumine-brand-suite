@@ -5,17 +5,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const SchoolsPage = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
+  const { session } = useRequireAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
 
   const { data: schools, isLoading, error: fetchError } = useQuery({
@@ -106,6 +119,55 @@ const SchoolsPage = () => {
     toast.success(`School ${newStatus === "active" ? "enabled" : "disabled"}`);
   };
 
+  const canDelete = isAdmin || isSuperAdmin;
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || !session?.user?.id) {
+      toast.error("Authenticated admin user is required");
+      return;
+    }
+
+    try {
+      const { count: classCount, error: classError } = await supabase
+        .from("classes")
+        .select("id", { head: true, count: "exact" })
+        .eq("school_id", deleteTarget.id);
+      if (classError) throw classError;
+
+      const { count: productCount, error: productError } = await supabase
+        .from("products")
+        .select("id", { head: true, count: "exact" })
+        .eq("school_id", deleteTarget.id);
+      if (productError) throw productError;
+
+      if ((classCount ?? 0) > 0 || (productCount ?? 0) > 0) {
+        toast.error("Cannot delete school with active classes or products");
+        return;
+      }
+
+      const { error } = await supabase.from("schools").delete().eq("id", deleteTarget.id);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: "SCHOOL_DELETED",
+        entityType: "schools",
+        entityId: deleteTarget.id,
+        description: `School ${deleteTarget.name} deleted`,
+        performedBy: session.user.id,
+      });
+
+      setDeleteTarget(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-schools"] }),
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+      ]);
+      toast.success("School deleted");
+    } catch (error: any) {
+      console.error("Failed to delete school", error);
+      toast.error(error?.message || "Failed to delete school");
+    }
+  };
+
   const openEdit = (school: any) => {
     setEditing(school);
     setForm({ name: school.name, code: school.code || "", slug: school.slug, status: school.status || "active" });
@@ -186,6 +248,16 @@ const SchoolsPage = () => {
                       >
                         {(school as any).status === "inactive" ? "Enable" : "Disable"}
                       </Button>
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs text-destructive border-destructive/30 hover:text-destructive"
+                          onClick={() => setDeleteTarget(school)}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -233,6 +305,21 @@ const SchoolsPage = () => {
           </Button>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete School</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

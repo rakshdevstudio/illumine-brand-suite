@@ -11,6 +11,18 @@ type ActivityLogInput = {
   newValue?: string | null;
 };
 
+const ensureProfileExists = async (userId: string) => {
+  const { error } = await supabase.from("profiles").upsert(
+    { id: userId },
+    { onConflict: "id" }
+  );
+
+  if (error) {
+    console.error("Failed to ensure profile exists for activity log:", error);
+    throw error;
+  }
+};
+
 export const logActivity = async ({
   actionType,
   entityType,
@@ -21,6 +33,10 @@ export const logActivity = async ({
   oldValue,
   newValue,
 }: ActivityLogInput) => {
+  if (performedBy) {
+    await ensureProfileExists(performedBy);
+  }
+
   const { error } = await supabase.from("activity_logs").insert({
     action_type: actionType,
     entity_type: entityType,
@@ -34,5 +50,6 @@ export const logActivity = async ({
 
   if (error) {
     console.error("Failed to log activity:", error);
+    throw error;
   }
 };

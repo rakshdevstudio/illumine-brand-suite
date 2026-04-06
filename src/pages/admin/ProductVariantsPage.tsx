@@ -5,19 +5,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Minus } from "lucide-react";
 import { safeQuery } from "@/lib/safeQuery";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { logActivity } from "@/lib/activity-log";
+import { useAuth } from "@/hooks/use-auth";
 
 const ProductVariantsPage = () => {
-  const { isChecking } = useRequireAuth();
+  const { session, isChecking } = useRequireAuth();
+  const { isAdmin, isSuperAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [adjusting, setAdjusting] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [form, setForm] = useState({ product_id: "", size: "", stock: "0", price_override: "" });
 
@@ -110,6 +124,15 @@ const ProductVariantsPage = () => {
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
+  const refreshVariantQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+    ]);
+  };
+
+  const canDelete = isAdmin || isSuperAdmin;
+
   const handleSave = async () => {
     if (!form.product_id || !form.size) {
       toast.error("Product and size are required");
@@ -124,18 +147,90 @@ const ProductVariantsPage = () => {
       if (form.price_override) payload.price_override = parseFloat(form.price_override);
       
       if (editing) {
-        await supabase.from("product_variants").update(payload).eq("id", editing.id);
+        const { error } = await supabase.from("product_variants").update(payload).eq("id", editing.id);
+        if (error) throw error;
+
+        const selectedProduct = (products ?? []).find((p: any) => p.id === payload.product_id);
+        const currentPriceOverride = editing.price_override ?? null;
+        const nextPriceOverride = payload.price_override ?? null;
+        const changes = [
+          {
+            field: "product_id",
+            oldValue: editing.product_id ?? null,
+            newValue: payload.product_id ?? null,
+            oldLabel: editing.products?.name ?? "Unknown product",
+            newLabel: selectedProduct?.name ?? "Unknown product",
+          },
+          {
+            field: "size",
+            oldValue: editing.size ?? null,
+            newValue: payload.size ?? null,
+            oldLabel: editing.size ?? "-",
+            newLabel: payload.size ?? "-",
+          },
+          {
+            field: "price_override",
+            oldValue: currentPriceOverride,
+            newValue: nextPriceOverride,
+            oldLabel: currentPriceOverride === null ? "base price" : formatPrice(Number(currentPriceOverride)),
+            newLabel: nextPriceOverride === null ? "base price" : formatPrice(Number(nextPriceOverride)),
+          },
+        ].filter((change) => String(change.oldValue ?? "") !== String(change.newValue ?? ""));
+
+        if (changes.length === 0) {
+          await logActivity({
+            actionType: "VARIANT_UPDATED",
+            entityType: "product_variant",
+            entityId: editing.id,
+            description: `Variant ${payload.size} update submitted for ${editing.products?.name ?? "product"} (no field changes detected)`,
+            performedBy: session?.user?.id,
+          });
+        } else {
+          await Promise.all(
+            changes.map((change) =>
+              logActivity({
+                actionType: "VARIANT_UPDATED",
+                entityType: "product_variant",
+                entityId: editing.id,
+                description: `Variant ${payload.size} updated for ${selectedProduct?.name ?? editing.products?.name ?? "product"}: ${change.field} ${change.oldLabel} -> ${change.newLabel}`,
+                performedBy: session?.user?.id,
+                fieldChanged: change.field,
+                oldValue: String(change.oldLabel),
+                newValue: String(change.newLabel),
+              })
+            )
+          );
+        }
+
         toast.success("Variant updated");
       } else {
-        await supabase.from("product_variants").insert(payload);
+        const { data: created, error } = await supabase
+          .from("product_variants")
+          .insert(payload)
+          .select("id")
+          .single();
+        if (error) throw error;
+
+        if (created?.id) {
+          const selectedProduct = (products ?? []).find((p: any) => p.id === form.product_id);
+          await logActivity({
+            actionType: "VARIANT_CREATED",
+            entityType: "product_variant",
+            entityId: created.id,
+            description: `Variant ${payload.size} created for ${selectedProduct?.name ?? "product"}`,
+            performedBy: session?.user?.id,
+          });
+        }
+
         toast.success("Variant created");
       }
-      queryClient.invalidateQueries({ queryKey: ["admin-variants"] });
+      await refreshVariantQueries();
       setDialogOpen(false);
       setEditing(null);
       setForm({ product_id: "", size: "", stock: "0", price_override: "" });
-    } catch {
-      toast.error("Failed to save variant");
+    } catch (error: any) {
+      console.error("Failed to save variant", error);
+      toast.error(error?.message || "Failed to save variant");
     }
   };
 
@@ -147,9 +242,53 @@ const ProductVariantsPage = () => {
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
-    await supabase.from("product_variants").update({ status: newStatus }).eq("id", id);
-    queryClient.invalidateQueries({ queryKey: ["admin-variants"] });
-    toast.success(`Variant ${newStatus === "active" ? "enabled" : "disabled"}`);
+    const variant = (variants ?? []).find((v: any) => v.id === id);
+
+    try {
+      const { error } = await supabase.from("product_variants").update({ status: newStatus }).eq("id", id);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: newStatus === "active" ? "VARIANT_ENABLED" : "VARIANT_DISABLED",
+        entityType: "product_variant",
+        entityId: id,
+        description: `Variant ${variant?.size ?? ""} ${newStatus === "active" ? "enabled" : "disabled"} for ${variant?.products?.name ?? "product"}`,
+        performedBy: session?.user?.id,
+      });
+
+      await refreshVariantQueries();
+      toast.success(`Variant ${newStatus === "active" ? "enabled" : "disabled"}`);
+    } catch (error: any) {
+      console.error("Failed to toggle variant status", error);
+      toast.error(error?.message || "Failed to update variant status");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || !session?.user?.id) {
+      toast.error("Authenticated admin user is required");
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from("product_variants").delete().eq("id", deleteTarget.id);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: "VARIANT_DELETED",
+        entityType: "product_variants",
+        entityId: deleteTarget.id,
+        description: `Variant ${deleteTarget.size} deleted for ${deleteTarget.products?.name ?? "product"}`,
+        performedBy: session.user.id,
+      });
+
+      setDeleteTarget(null);
+      await refreshVariantQueries();
+      toast.success("Variant deleted");
+    } catch (error: any) {
+      console.error("Failed to delete variant", error);
+      toast.error(error?.message || "Failed to delete variant");
+    }
   };
 
   const openEdit = (variant: any) => {
@@ -284,6 +423,16 @@ const ProductVariantsPage = () => {
                           onClick={() => handleStatusToggle(v.id, v.status || "active")}>
                           {v.status === "inactive" ? "Enable" : "Disable"}
                         </Button>
+                        {canDelete && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs text-destructive border-destructive/30 hover:text-destructive"
+                            onClick={() => setDeleteTarget(v)}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -367,6 +516,21 @@ const ProductVariantsPage = () => {
           </Button>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Variant</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

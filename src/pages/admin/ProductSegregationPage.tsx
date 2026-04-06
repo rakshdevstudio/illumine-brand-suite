@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +22,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { logActivity } from "@/lib/activity-log";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const ProductSegregationPage = () => {
+  const queryClient = useQueryClient();
+  const { session } = useRequireAuth();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     product_id: "",
@@ -176,13 +180,32 @@ const ProductSegregationPage = () => {
   };
 
   const removeAssignment = async (assignmentId: string) => {
+    const assignment = (assignments ?? []).find((item: any) => item.id === assignmentId);
     const { error } = await supabase.from("product_assignments").delete().eq("id", assignmentId);
     if (error) {
       toast.error("Failed to remove assignment");
       return;
     }
+
+    try {
+      const genderLabel = assignment?.gender === "Male" ? "Boys" : assignment?.gender === "Female" ? "Girls" : "Unisex";
+      await logActivity({
+        actionType: "ASSIGNMENT_REMOVED",
+        entityType: "product_assignment",
+        entityId: assignmentId,
+        description: `Assignment removed: ${assignment?.products?.name ?? "Product"} / ${assignment?.schools?.name ?? "School"} / ${assignment?.classes?.name ?? "Class"} / ${genderLabel}`,
+        performedBy: session?.user?.id,
+      });
+    } catch (logError) {
+      console.error("Assignment removed but failed to log activity", logError);
+      toast.error("Assignment removed, but activity log update failed");
+    }
+
     toast.success("Assignment removed");
-    refetch();
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+    ]);
   };
 
   return (
