@@ -104,10 +104,12 @@ const ClassProductsPage = () => {
       return (data ?? []).map((product: any) => ({
         ...product,
         product_images: Array.isArray(product.product_images) ? product.product_images : [],
-        product_variants: (Array.isArray(product.product_variants) ? product.product_variants : []).map((v: any) => ({
-          ...v,
-          price: v.base_price,
-        })),
+        product_variants: (Array.isArray(product.product_variants) ? product.product_variants : [])
+          .filter((v: any) => String(v.status ?? "").toLowerCase() === "active")
+          .map((v: any) => ({
+            ...v,
+            effective_price: Number(v.price_override ?? product.price ?? 0),
+          })),
       }));
     },
   });
@@ -196,6 +198,9 @@ const ClassProductsPage = () => {
               (sum: number, variant: any) => sum + Number(branchStockByVariant.get(variant.id) ?? 0),
               0
             );
+            const effectivePrices = (product.product_variants ?? [])
+              .map((v: any) => Number(v.effective_price ?? product.price ?? 0))
+              .filter((n: number) => Number.isFinite(n) && n >= 0);
             const galleryImages = getProductGalleryImages(product as any);
             const primaryImage = galleryImages[0] || "/placeholder.svg";
             const secondaryImage = galleryImages[1] && galleryImages[1] !== primaryImage ? galleryImages[1] : null;
@@ -212,11 +217,9 @@ const ClassProductsPage = () => {
               : isLowStock
                 ? "Low stock"
                 : "In stock";
-            const minPrice = Math.min(
-              ...(product.product_variants ?? [])
-                .map((v: any) => Number(v.price ?? v.base_price ?? 0))
-                .filter((n: number) => Number.isFinite(n) && n >= 0)
-            );
+            const minPrice = effectivePrices.length > 0 ? Math.min(...effectivePrices) : Number(product.price ?? 0);
+            const maxPrice = effectivePrices.length > 0 ? Math.max(...effectivePrices) : Number(product.price ?? 0);
+            const hasPriceRange = Number.isFinite(minPrice) && Number.isFinite(maxPrice) && minPrice !== maxPrice;
 
             return (
               <motion.div
@@ -345,8 +348,22 @@ const ClassProductsPage = () => {
                       <h3 className="text-[15px] font-medium tracking-wide leading-snug">
                         {product.name}
                       </h3>
-                      {Number.isFinite(minPrice) && (
-                        <p className="text-lg font-normal tracking-wide">{formatPrice(minPrice)}</p>
+                      {Number.isFinite(minPrice) && Number.isFinite(maxPrice) && (
+                        <div>
+                          <p className="text-lg font-normal tracking-wide text-foreground">
+                            {hasPriceRange
+                              ? `${formatPrice(minPrice)} - ${formatPrice(maxPrice)}`
+                              : formatPrice(minPrice)}
+                          </p>
+                          <p className="text-[11px] tracking-[0.08em] uppercase text-muted-foreground/80 mt-0.5">
+                            Inclusive of GST
+                          </p>
+                        </div>
+                      )}
+                      {sizes.length > 0 && (
+                        <p className="text-[11px] tracking-[0.08em] uppercase text-muted-foreground/80">
+                          Available in {sizes.length} size{sizes.length === 1 ? "" : "s"}
+                        </p>
                       )}
                       <p className={`text-xs ${isLowStock ? "text-red-500" : "text-muted-foreground"}`}>
                         {stockLabel}

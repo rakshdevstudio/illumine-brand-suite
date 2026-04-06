@@ -37,8 +37,8 @@ WHERE p.class_id = c.id
 WITH unique_scope AS (
   SELECT
     pa.product_id,
-    min(pa.school_id) AS school_id,
-    min(pa.class_id) AS class_id,
+    (array_agg(DISTINCT pa.school_id))[1] AS school_id,
+    (array_agg(DISTINCT pa.class_id))[1] AS class_id,
     count(DISTINCT pa.school_id) AS school_count,
     count(DISTINCT pa.class_id) AS class_count
   FROM public.product_assignments pa

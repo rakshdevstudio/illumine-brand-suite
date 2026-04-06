@@ -19,12 +19,13 @@ type BranchInventoryRow = {
   variant_id: string;
   stock: number;
   updated_at: string;
-  branches?: { name?: string; location?: string } | null;
-  product_variants?: {
-    size?: string | null;
-    low_stock_threshold?: number | null;
-    products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
-  } | null;
+};
+
+type VariantMeta = {
+  id: string;
+  size?: string | null;
+  low_stock_threshold?: number | null;
+  products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
 };
 
 type AggregatedInventoryRow = {
@@ -33,7 +34,11 @@ type AggregatedInventoryRow = {
   product_id: string;
   stock: number;
   primary_branch_id: string | null;
-  product_variants?: BranchInventoryRow["product_variants"];
+  product_variants?: {
+    size?: string | null;
+    low_stock_threshold?: number | null;
+    products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
+  } | null;
 };
 
 type InventoryMovementRow = {
@@ -101,13 +106,33 @@ const InventoryPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("branch_inventory")
-        .select("id, branch_id, product_id, variant_id, stock, updated_at, branches(name, location), product_variants(size, low_stock_threshold, products(name, category, price, schools(name)))")
+        .select("id, branch_id, product_id, variant_id, stock, updated_at")
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
       return (data ?? []) as BranchInventoryRow[];
     },
   });
+
+  const { data: variantMetaRows } = useQuery({
+    queryKey: ["admin-inventory-variant-meta"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("product_variants")
+        .select("id, size, low_stock_threshold, products(name, category, price, schools(name))");
+
+      if (error) throw error;
+      return (data ?? []) as VariantMeta[];
+    },
+  });
+
+  const variantMetaMap = useMemo(() => {
+    const map = new Map<string, VariantMeta>();
+    (variantMetaRows ?? []).forEach((row) => {
+      map.set(row.id, row);
+    });
+    return map;
+  }, [variantMetaRows]);
 
   const { data: movements, isLoading: loadingMovements } = useQuery({
     queryKey: ["admin-inventory-movements"],
@@ -152,13 +177,20 @@ const InventoryPage = () => {
       const key = row.variant_id;
       const existing = grouped.get(key);
       if (!existing) {
+        const meta = variantMetaMap.get(row.variant_id);
         grouped.set(key, {
           key,
           variant_id: row.variant_id,
           product_id: row.product_id,
           stock: Number(row.stock ?? 0),
           primary_branch_id: row.branch_id ?? null,
-          product_variants: row.product_variants,
+          product_variants: meta
+            ? {
+                size: meta.size,
+                low_stock_threshold: meta.low_stock_threshold,
+                products: meta.products,
+              }
+            : null,
         });
         return;
       }
@@ -171,7 +203,7 @@ const InventoryPage = () => {
     });
 
     return [...grouped.values()].sort((a, b) => b.stock - a.stock);
-  }, [rows]);
+  }, [rows, variantMetaMap]);
 
   const visibleRows = aggregatedRows;
 

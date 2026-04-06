@@ -33,6 +33,8 @@ const ProductVariantsPage = () => {
   const [adjusting, setAdjusting] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustBranchId, setAdjustBranchId] = useState("");
   const [form, setForm] = useState({ product_id: "", size: "", stock: "0", price_override: "" });
 
   // Filters
@@ -85,6 +87,37 @@ const ProductVariantsPage = () => {
     },
   });
 
+  const { data: branches, error: branchesError } = useQuery({
+    queryKey: ["admin-branches-select"],
+    queryFn: async () => {
+      const { data } = await safeQuery(
+        () => supabase.from("branches").select("id, name, is_active").order("name"),
+        "admin-product-variants/branches"
+      );
+      return data ?? [];
+    },
+  });
+
+  const { data: branchInventoryRows, error: branchInventoryError } = useQuery({
+    queryKey: ["admin-variant-stock-totals"],
+    queryFn: async () => {
+      const { data } = await safeQuery(
+        () => supabase.from("branch_inventory").select("variant_id, stock"),
+        "admin-product-variants/branch-inventory"
+      );
+      return data ?? [];
+    },
+  });
+
+  const variantStockMap = useMemo(() => {
+    const totals = new Map<string, number>();
+    (branchInventoryRows ?? []).forEach((row: any) => {
+      const current = totals.get(row.variant_id) ?? 0;
+      totals.set(row.variant_id, current + Number(row.stock ?? 0));
+    });
+    return totals;
+  }, [branchInventoryRows]);
+
   // Cascading filter logic
   const filteredClassesForFilter = useMemo(() => {
     if (!classes) return [];
@@ -117,7 +150,7 @@ const ProductVariantsPage = () => {
     );
   }
 
-  if (variantsError || schoolsError || classesError || productsError) {
+  if (variantsError || schoolsError || classesError || productsError || branchesError || branchInventoryError) {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
@@ -235,9 +268,50 @@ const ProductVariantsPage = () => {
   };
 
   const handleAdjustStock = async () => {
-    toast.error("Stock is managed per branch. Use Inventory page to adjust branch inventory.");
-    setAdjusting(null);
-    setAdjustAmount(0);
+    if (!adjusting) return;
+    if (adjustAmount === 0) {
+      toast.error("Adjustment amount is required");
+      return;
+    }
+    if (!adjustBranchId) {
+      toast.error("Select a branch");
+      return;
+    }
+    if (!adjustReason.trim()) {
+      toast.error("Adjustment reason is required");
+      return;
+    }
+
+    try {
+      const movementType = adjustAmount > 0 ? "IN" : "ADJUSTMENT";
+      const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+        p_branch_id: adjustBranchId,
+        p_variant_id: adjusting.id,
+        p_type: movementType,
+        p_quantity: adjustAmount,
+        p_reference_type: "MANUAL",
+        p_reason: adjustReason.trim(),
+      });
+
+      if (error) throw error;
+
+      toast.success("Stock adjusted");
+      setAdjusting(null);
+      setAdjustAmount(0);
+      setAdjustReason("");
+      setAdjustBranchId("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-variant-stock-totals"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+      ]);
+    } catch (error: any) {
+      console.error("Failed to adjust stock", error);
+      toast.error(error?.message || "Failed to adjust stock");
+    }
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
@@ -397,13 +471,14 @@ const ProductVariantsPage = () => {
             ) : (
               filteredVariants.map((v: any) => {
                 const effectivePrice = v.price_override ?? v.products?.price;
+                const liveStock = variantStockMap.get(v.id) ?? Number(v.stock ?? 0);
                 return (
                   <TableRow key={v.id}>
                     <TableCell className="text-sm">{v.products?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
                     <TableCell className="text-sm">{v.size}</TableCell>
-                    <TableCell className="text-sm font-medium">{v.stock}</TableCell>
+                    <TableCell className="text-sm font-medium">{liveStock}</TableCell>
                     <TableCell className="text-sm">
                       {formatPrice(effectivePrice)}
                       {v.price_override && <span className="text-xs text-muted-foreground ml-1">(override)</span>}
@@ -412,19 +487,30 @@ const ProductVariantsPage = () => {
                       <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
                         v.status === "inactive"
                           ? "border-destructive text-destructive"
-                          : v.stock === 0
+                          : liveStock === 0
                           ? "border-destructive text-destructive"
-                          : v.stock <= 10
+                          : liveStock <= 10
                           ? "border-border text-muted-foreground"
                           : "border-border text-foreground"
                       }`}>
-                        {v.status === "inactive" ? "Inactive" : v.stock === 0 ? "Out of Stock" : v.stock <= 10 ? "Low Stock" : "In Stock"}
+                        {v.status === "inactive" ? "Inactive" : liveStock === 0 ? "Out of Stock" : liveStock <= 10 ? "Low Stock" : "In Stock"}
                       </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(v)}>Edit</Button>
-                        <Button variant="outline" size="sm" className="text-xs" onClick={() => { setAdjusting(v); setAdjustAmount(0); }}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => {
+                            setAdjusting(v);
+                            setAdjustAmount(0);
+                            setAdjustReason("");
+                            const firstActiveBranchId = (branches ?? []).find((b: any) => b.is_active !== false)?.id ?? "";
+                            setAdjustBranchId(firstActiveBranchId);
+                          }}
+                        >
                           Adjust
                         </Button>
                         <Button variant="outline" size="sm" className="text-xs"
@@ -493,17 +579,39 @@ const ProductVariantsPage = () => {
       </Dialog>
 
       {/* Adjust Stock Dialog */}
-      <Dialog open={!!adjusting} onOpenChange={(open) => { if (!open) { setAdjusting(null); setAdjustAmount(0); } }}>
+      <Dialog
+        open={!!adjusting}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAdjusting(null);
+            setAdjustAmount(0);
+            setAdjustReason("");
+            setAdjustBranchId("");
+          }
+        }}
+      >
         <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide">
-              Stock Managed by Branch
+              Adjust Branch Stock
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-muted-foreground mb-4">
-              Variant stock is no longer adjusted here. Use Admin Inventory to adjust branch inventory rows.
-            </p>
+            <div className="mb-4">
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Branch</label>
+              <Select value={adjustBranchId} onValueChange={setAdjustBranchId}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(branches ?? []).map((branch: any) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setAdjustAmount((a) => a - 1)}
                 className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors">
@@ -515,12 +623,18 @@ const ProductVariantsPage = () => {
                 <Plus className="h-3 w-3" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Branch stock updates are handled in Inventory.
-            </p>
+            <div className="mt-4">
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Reason</label>
+              <Input
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                className="h-10"
+                placeholder="Manual stock correction"
+              />
+            </div>
           </div>
           <Button onClick={handleAdjustStock} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
-            Open Inventory Workflow
+            Apply Adjustment
           </Button>
         </DialogContent>
       </Dialog>

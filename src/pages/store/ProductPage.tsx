@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +35,7 @@ const ProductPage = () => {
 
       const { data: fallback, error: fbErr } = await client
         .from("products")
-        .select("*, product_variants!inner(id, size, base_price, sku, is_active, status), schools(*), product_images(*), classes(name)")
+        .select("*, product_variants!inner(id, size, base_price, price_override, sku, is_active, status), schools(*), product_images(*), classes(name)")
         .eq("id", id!)
         .eq("school_id", schoolId)
         .single();
@@ -54,13 +54,33 @@ const ProductPage = () => {
             ?.filter((v: any) => String(v.status ?? "").toLowerCase() === "active")
             .map((v: any) => ({
               ...v,
-              price: v.base_price,
+              effective_price: Number(v.price_override ?? fallback.price ?? 0),
             })) ?? [],
       };
     },
   });
 
-  const variantIds = useMemo(() => (product?.product_variants ?? []).map((variant: any) => variant.id), [product]);
+  const activeVariants = useMemo(
+    () =>
+      (product?.product_variants ?? [])
+        .filter((variant: any) => String(variant.status ?? "").toLowerCase() === "active"),
+    [product]
+  );
+
+  useEffect(() => {
+    if (!activeVariants.length) {
+      setSelectedSize(null);
+      return;
+    }
+
+    const hasCurrent = activeVariants.some((variant: any) => variant.size === selectedSize);
+    if (!hasCurrent) {
+      setSelectedSize(activeVariants[0].size ?? null);
+      setQuantity(1);
+    }
+  }, [activeVariants, selectedSize]);
+
+  const variantIds = useMemo(() => activeVariants.map((variant: any) => variant.id), [activeVariants]);
 
   const { data: variantStockEntries } = useQuery({
     queryKey: ["store-product-global-inventory", variantIds.join(",")],
@@ -79,18 +99,18 @@ const ProductPage = () => {
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
-  const selectedVariant = product?.product_variants?.find(
+  const selectedVariant = activeVariants.find(
     (v: any) => v.size === selectedSize
   );
   const selectedVariantStock = selectedVariant ? Number(branchStockByVariant.get(selectedVariant.id) ?? 0) : 0;
   const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariantStock)) : 1;
   const fallbackMinPrice = useMemo(() => {
-    const prices = (product?.product_variants ?? [])
-      .map((v: any) => Number(v.price ?? v.base_price ?? 0))
+    const prices = activeVariants
+      .map((v: any) => Number(v.effective_price ?? product?.price ?? 0))
       .filter((n) => Number.isFinite(n) && n >= 0);
-    return prices.length ? Math.min(...prices) : 0;
-  }, [product]);
-  const basePrice = selectedVariant?.price ?? selectedVariant?.base_price ?? fallbackMinPrice;
+    return prices.length ? Math.min(...prices) : Number(product?.price ?? 0);
+  }, [activeVariants, product]);
+  const effectivePrice = Number(selectedVariant?.effective_price ?? product?.price ?? fallbackMinPrice ?? 0);
 
   // Build image gallery
   const galleryImages: string[] = [];
@@ -115,7 +135,7 @@ const ProductPage = () => {
       variantId: selectedVariant.id,
       name: product.name,
       size: selectedVariant.size,
-      price: basePrice,
+      price: effectivePrice,
       schoolName: (product as any).schools?.name ?? "",
       className: (product as any).classes?.name ?? "",
       gender: (product as any).gender ?? "Unisex",
@@ -233,7 +253,14 @@ const ProductPage = () => {
           <h1 className="text-2xl font-extralight tracking-wide mb-2">
             {product.name}
           </h1>
-          <p className="text-lg font-light mb-8">{formatPrice(basePrice)}</p>
+          <div className="mb-8">
+            <p className="text-2xl font-light tracking-wide text-foreground">
+              {selectedVariant ? formatPrice(effectivePrice) : `Starting from ${formatPrice(fallbackMinPrice)}`}
+            </p>
+            <p className="text-[11px] tracking-[0.08em] uppercase text-muted-foreground/80 mt-1">
+              Inclusive of GST
+            </p>
+          </div>
 
           {/* Size selector */}
           <div className="mb-8">
@@ -241,7 +268,7 @@ const ProductPage = () => {
               Size
             </p>
             <div className="flex gap-3">
-              {product.product_variants
+              {activeVariants
                 ?.sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size))
                 .map((v: any) => {
                   const variantStock = Number(branchStockByVariant.get(v.id) ?? 0);

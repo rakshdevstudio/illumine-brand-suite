@@ -19,7 +19,7 @@ const InventoryAlertsPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("branch_inventory")
-        .select("id, branch_id, variant_id, stock, branches(name), product_variants(size, low_stock_threshold, products(name))")
+        .select("id, branch_id, variant_id, stock, product_variants(size, low_stock_threshold, products(name))")
         .order("stock", { ascending: true });
 
       if (error) throw error;
