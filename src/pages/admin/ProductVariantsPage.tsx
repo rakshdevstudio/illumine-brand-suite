@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -23,6 +24,16 @@ import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { logActivity } from "@/lib/activity-log";
 import { useAuth } from "@/hooks/use-auth";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import BulkActionBar from "@/components/admin/BulkActionBar";
+
+const chunk = <T,>(items: T[], size = 25) => {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size));
+  }
+  return batches;
+};
 
 const ProductVariantsPage = () => {
   const { session, isChecking } = useRequireAuth();
@@ -35,7 +46,14 @@ const ProductVariantsPage = () => {
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [adjustReason, setAdjustReason] = useState("");
   const [adjustBranchId, setAdjustBranchId] = useState("");
+  const [bulkAction, setBulkAction] = useState<"enable" | "disable" | "delete" | "stock" | "price" | "clear-price" | null>(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkStockDelta, setBulkStockDelta] = useState(0);
+  const [bulkStockReason, setBulkStockReason] = useState("");
+  const [bulkStockBranchId, setBulkStockBranchId] = useState("");
+  const [bulkPriceOverride, setBulkPriceOverride] = useState("");
   const [form, setForm] = useState({ product_id: "", size: "", stock: "0", price_override: "" });
+  const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
   const [schoolFilter, setSchoolFilter] = useState("all");
@@ -142,6 +160,14 @@ const ProductVariantsPage = () => {
     return filtered;
   }, [variants, schoolFilter, classFilter, productFilter]);
 
+  const allVariantIds = useMemo(() => (variants ?? []).map((variant: any) => variant.id), [variants]);
+  const visibleVariantIds = useMemo(() => filteredVariants.map((variant: any) => variant.id), [filteredVariants]);
+  const headerCheckboxState = useMemo(() => getHeaderState(visibleVariantIds), [getHeaderState, visibleVariantIds]);
+
+  useEffect(() => {
+    pruneMissing(allVariantIds);
+  }, [allVariantIds, pruneMissing]);
+
   if (isChecking) {
     return (
       <div className="min-h-[220px] flex items-center justify-center">
@@ -165,6 +191,181 @@ const ProductVariantsPage = () => {
   };
 
   const canDelete = isAdmin || isSuperAdmin;
+
+  const runBulkStatusUpdate = async (nextStatus: "active" | "inactive") => {
+    if (selectedIds.length === 0 || bulkAction) return;
+    setBulkAction(nextStatus === "active" ? "enable" : "disable");
+
+    const previousVariants = queryClient.getQueryData<any[]>(["admin-variants"]);
+    queryClient.setQueryData<any[]>(["admin-variants"], (old = []) =>
+      old.map((variant: any) => (selectedIds.includes(variant.id) ? { ...variant, status: nextStatus } : variant))
+    );
+
+    try {
+      const { error } = await supabase.from("product_variants").update({ status: nextStatus }).in("id", selectedIds);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: nextStatus === "active" ? "VARIANT_ENABLED" : "VARIANT_DISABLED",
+        entityType: "product_variant",
+        entityId: selectedIds[0],
+        description: `Bulk ${nextStatus === "active" ? "enable" : "disable"} executed for ${selectedIds.length} variants`,
+        performedBy: session?.user?.id,
+      });
+
+      toast.success(`${selectedIds.length} variants ${nextStatus === "active" ? "enabled" : "disabled"}`);
+      clearSelection();
+      await refreshVariantQueries();
+    } catch (error: any) {
+      if (previousVariants) queryClient.setQueryData(["admin-variants"], previousVariants);
+      toast.error(error?.message || "Bulk status update failed");
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
+  const runBulkDelete = async () => {
+    if (selectedIds.length === 0 || bulkAction || !canDelete) return;
+    setBulkAction("delete");
+
+    try {
+      const { data: deletedRows, error } = await supabase
+        .from("product_variants")
+        .delete()
+        .in("id", selectedIds)
+        .select("id");
+
+      if (error) throw error;
+
+      const deletedCount = deletedRows?.length ?? 0;
+      if (deletedCount === 0) {
+        throw new Error("Delete was blocked by database policy. Confirm admin RLS permissions.");
+      }
+
+      await logActivity({
+        actionType: "VARIANT_DELETED",
+        entityType: "product_variants",
+        entityId: selectedIds[0],
+        description: `Bulk delete executed for ${deletedCount} variants`,
+        performedBy: session?.user?.id,
+      });
+
+      toast.success(`${deletedCount} variants deleted`);
+      clearSelection();
+      setBulkDeleteConfirmOpen(false);
+      await refreshVariantQueries();
+    } catch (error: any) {
+      toast.error(error?.message || "Bulk delete failed");
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
+  const runBulkStockAdjust = async () => {
+    if (selectedIds.length === 0 || bulkAction) return;
+    if (!bulkStockBranchId) {
+      toast.error("Select a branch for bulk stock update");
+      return;
+    }
+    if (bulkStockDelta === 0) {
+      toast.error("Bulk stock delta cannot be zero");
+      return;
+    }
+    if (!bulkStockReason.trim()) {
+      toast.error("Reason is required for bulk stock update");
+      return;
+    }
+
+    const movementType = bulkStockDelta > 0 ? "IN" : "ADJUSTMENT";
+    setBulkAction("stock");
+
+    try {
+      for (const batch of chunk(selectedIds, 20)) {
+        const results = await Promise.all(
+          batch.map(async (variantId) => {
+            const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+              p_branch_id: bulkStockBranchId,
+              p_variant_id: variantId,
+              p_type: movementType,
+              p_quantity: bulkStockDelta,
+              p_reference_type: "MANUAL",
+              p_reason: bulkStockReason.trim(),
+            });
+            if (error) throw error;
+            return variantId;
+          })
+        );
+
+        if (results.length !== batch.length) {
+          throw new Error("Bulk stock update failed for one or more variants");
+        }
+      }
+
+      await logActivity({
+        actionType: "VARIANT_UPDATED",
+        entityType: "product_variant",
+        entityId: selectedIds[0],
+        description: `Bulk stock adjustment (${bulkStockDelta > 0 ? "+" : ""}${bulkStockDelta}) for ${selectedIds.length} variants on selected branch`,
+        performedBy: session?.user?.id,
+      });
+
+      toast.success(`Stock updated for ${selectedIds.length} variants`);
+      clearSelection();
+      setBulkStockDelta(0);
+      setBulkStockReason("");
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-variant-stock-totals"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-inventory-movements"] }),
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
+      ]);
+    } catch (error: any) {
+      toast.error(error?.message || "Bulk stock update failed");
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
+  const runBulkPriceOverride = async (clear = false) => {
+    if (selectedIds.length === 0 || bulkAction) return;
+    if (!clear) {
+      const parsed = Number(bulkPriceOverride);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        toast.error("Enter a valid non-negative price override");
+        return;
+      }
+    }
+
+    const payload = clear ? { price_override: null } : { price_override: Number(bulkPriceOverride) };
+    setBulkAction(clear ? "clear-price" : "price");
+
+    try {
+      const { error } = await supabase.from("product_variants").update(payload).in("id", selectedIds);
+      if (error) throw error;
+
+      await logActivity({
+        actionType: "VARIANT_UPDATED",
+        entityType: "product_variant",
+        entityId: selectedIds[0],
+        description: clear
+          ? `Bulk cleared price override for ${selectedIds.length} variants`
+          : `Bulk set price override to ${formatPrice(Number(bulkPriceOverride))} for ${selectedIds.length} variants`,
+        performedBy: session?.user?.id,
+      });
+
+      toast.success(clear ? `Cleared override for ${selectedIds.length} variants` : `Updated override for ${selectedIds.length} variants`);
+      clearSelection();
+      setBulkPriceOverride("");
+      await refreshVariantQueries();
+    } catch (error: any) {
+      toast.error(error?.message || "Bulk price override failed");
+    } finally {
+      setBulkAction(null);
+    }
+  };
 
   const handleSave = async () => {
     if (!form.product_id || !form.size) {
@@ -449,6 +650,13 @@ const ProductVariantsPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={headerCheckboxState}
+                  onCheckedChange={(value) => toggleMany(visibleVariantIds, Boolean(value))}
+                  aria-label="Select visible variants"
+                />
+              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
@@ -462,11 +670,11 @@ const ProductVariantsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : filteredVariants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
               </TableRow>
             ) : (
               filteredVariants.map((v: any) => {
@@ -474,6 +682,13 @@ const ProductVariantsPage = () => {
                 const liveStock = variantStockMap.get(v.id) ?? Number(v.stock ?? 0);
                 return (
                   <TableRow key={v.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={isSelected(v.id)}
+                        onCheckedChange={(value) => toggleOne(v.id, Boolean(value))}
+                        aria-label={`Select variant ${v.size}`}
+                      />
+                    </TableCell>
                     <TableCell className="text-sm">{v.products?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
@@ -536,6 +751,105 @@ const ProductVariantsPage = () => {
           </TableBody>
         </Table>
       </div>
+
+      <BulkActionBar selectedCount={selectedCount} onClear={clearSelection} isBusy={Boolean(bulkAction)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => runBulkStatusUpdate("active")}
+          disabled={selectedCount === 0 || Boolean(bulkAction)}
+        >
+          Enable
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => runBulkStatusUpdate("inactive")}
+          disabled={selectedCount === 0 || Boolean(bulkAction)}
+        >
+          Disable
+        </Button>
+        {canDelete && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs text-destructive border-destructive/40 hover:text-destructive"
+            onClick={() => setBulkDeleteConfirmOpen(true)}
+            disabled={selectedCount === 0 || Boolean(bulkAction)}
+          >
+            Delete
+          </Button>
+        )}
+        <Select value={bulkStockBranchId} onValueChange={setBulkStockBranchId}>
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue placeholder="Branch" />
+          </SelectTrigger>
+          <SelectContent>
+            {(branches ?? []).map((branch: any) => (
+              <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          value={bulkStockDelta}
+          onChange={(event) => setBulkStockDelta(parseInt(event.target.value || "0", 10) || 0)}
+          placeholder="± Stock"
+          className="h-8 w-24 text-xs"
+          disabled={Boolean(bulkAction)}
+        />
+        <Input
+          value={bulkStockReason}
+          onChange={(event) => setBulkStockReason(event.target.value)}
+          placeholder="Stock reason"
+          className="h-8 w-36 text-xs"
+          disabled={Boolean(bulkAction)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={runBulkStockAdjust}
+          disabled={selectedCount === 0 || Boolean(bulkAction)}
+        >
+          Bulk Stock
+        </Button>
+        <Input
+          type="number"
+          min={0}
+          value={bulkPriceOverride}
+          onChange={(event) => setBulkPriceOverride(event.target.value)}
+          placeholder="Price override"
+          className="h-8 w-28 text-xs"
+          disabled={Boolean(bulkAction)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => runBulkPriceOverride(false)}
+          disabled={selectedCount === 0 || Boolean(bulkAction)}
+        >
+          Set Price
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => runBulkPriceOverride(true)}
+          disabled={selectedCount === 0 || Boolean(bulkAction)}
+        >
+          Clear Price
+        </Button>
+      </BulkActionBar>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
@@ -650,6 +964,23 @@ const ProductVariantsPage = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Selected Variants</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedCount} selected variants. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkAction === "delete"}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runBulkDelete} disabled={bulkAction === "delete"}>
+              {bulkAction === "delete" ? "Deleting..." : "Delete Selected"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
