@@ -27,6 +27,7 @@ import ShopBySchoolPage from "./pages/store/ShopBySchoolPage";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
+import AdminRoute from "./components/admin/AdminRoute";
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
 import DashboardPage from "./pages/admin/DashboardPage";
 import SchoolsPage from "./pages/admin/SchoolsPage";
@@ -76,7 +77,6 @@ const queryClient = new QueryClient({
 });
 
 const isProtectedPath = (path: string) =>
-  path.startsWith("/admin") ||
   path.startsWith("/vendor") ||
   path.startsWith("/school") ||
   path.startsWith("/pos") ||
@@ -207,7 +207,7 @@ const App = () => (
 
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLoginPage />} />
-          <Route path="/admin" element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="sales" element={<Navigate to="/admin/reports/sales" replace />} />
