@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { GraduationCap, Monitor, Plus, Shield, ShieldCheck, Store, Trash2, User } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
+import { logger } from "@/lib/logger";
 
 const NO_SCHOOL_VALUE = "__none__";
 const SCHOOL_AVATAR_FALLBACK_PREFIX = "school-assignment:";
@@ -151,7 +152,7 @@ const AdminUsersPage = () => {
 
         if (userSchoolMapError) {
           if (!isMissingUserSchoolMapError(userSchoolMapError)) {
-            console.warn("Failed to load user_school_map:", userSchoolMapError.message);
+            logger.warn("Failed to load user_school_map", userSchoolMapError.message);
           }
         } else {
           userSchoolMapByUserId = new Map(
@@ -162,7 +163,7 @@ const AdminUsersPage = () => {
           );
         }
       } catch (userSchoolMapError) {
-        console.warn("Failed to load user_school_map:", userSchoolMapError);
+        logger.warn("Failed to load user_school_map", userSchoolMapError);
       }
 
       return profiles.map((profile: any) => ({
@@ -215,7 +216,7 @@ const AdminUsersPage = () => {
 
       if (profileError) {
         if (isMissingProfileSchoolColumnError(profileError)) {
-          console.warn("profiles.school_id is unavailable, falling back to user_school_map.");
+          logger.warn("profiles.school_id is unavailable; falling back to user_school_map.");
         } else {
           throw profileError;
         }
@@ -223,7 +224,7 @@ const AdminUsersPage = () => {
         profileSynced = true;
       }
     } else {
-      console.warn("profiles.school_id is unavailable, falling back to user_school_map.");
+      logger.warn("profiles.school_id is unavailable; falling back to user_school_map.");
     }
 
     if (schoolAssignmentSupport?.supportsUserSchoolMap !== false) {
@@ -240,9 +241,9 @@ const AdminUsersPage = () => {
 
           if (error) {
             if (isMissingUserSchoolMapError(error)) {
-              console.warn("user_school_map is unavailable while syncing school assignment.");
+              logger.warn("user_school_map is unavailable while syncing school assignment.");
             } else {
-              console.warn("Failed to sync user_school_map:", error.message);
+              logger.warn("Failed to sync user_school_map", error.message);
             }
           } else {
             mappingSynced = true;
@@ -251,19 +252,19 @@ const AdminUsersPage = () => {
           const { error } = await userSchoolMap.delete().eq("user_id", userId);
           if (error) {
             if (isMissingUserSchoolMapError(error)) {
-              console.warn("user_school_map is unavailable while clearing school assignment.");
+              logger.warn("user_school_map is unavailable while clearing school assignment.");
             } else {
-              console.warn("Failed to clear user_school_map:", error.message);
+              logger.warn("Failed to clear user_school_map", error.message);
             }
           } else {
             mappingSynced = true;
           }
         }
       } catch (error) {
-        console.warn("Failed to sync user_school_map:", error);
+        logger.warn("Failed to sync user_school_map", error);
       }
     } else {
-      console.warn("user_school_map is unavailable while syncing school assignment.");
+      logger.warn("user_school_map is unavailable while syncing school assignment.");
     }
 
     if (!profileSynced && !mappingSynced) {

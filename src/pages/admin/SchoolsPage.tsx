@@ -21,6 +21,7 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { logger } from "@/lib/logger";
 
 const SchoolsPage = () => {
   const queryClient = useQueryClient();
@@ -97,7 +98,7 @@ const SchoolsPage = () => {
       setEditing(null);
       setForm({ name: "", code: "", slug: "", status: "active" });
     } catch (err: any) {
-      console.error("School save error:", err);
+      logger.error("School save failed", err);
       toast.error("Failed to save school", { description: err?.message || "Network error — please check your internet connection and try again" });
     } finally {
       setSaving(false);
@@ -171,7 +172,7 @@ const SchoolsPage = () => {
       ]);
       toast.success("School deleted");
     } catch (error: any) {
-      console.error("Failed to delete school", error);
+      logger.error("Failed to delete school", error);
       toast.error(error?.message || "Failed to delete school");
     }
   };

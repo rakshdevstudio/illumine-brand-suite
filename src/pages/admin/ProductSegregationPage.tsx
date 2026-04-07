@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 import { logActivity } from "@/lib/activity-log";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
@@ -197,7 +198,7 @@ const ProductSegregationPage = () => {
         performedBy: session?.user?.id,
       });
     } catch (logError) {
-      console.error("Assignment removed but failed to log activity", logError);
+      logger.error("Assignment removed but failed to log activity", logError);
       toast.error("Assignment removed, but activity log update failed");
     }
 

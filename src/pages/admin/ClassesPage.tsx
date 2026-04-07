@@ -23,6 +23,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
+import { logger } from "@/lib/logger";
 
 const ClassesPage = () => {
   const { session, isChecking } = useRequireAuth();
@@ -177,7 +178,7 @@ const ClassesPage = () => {
       ]);
       toast.success("Class deleted");
     } catch (error: any) {
-      console.error("Failed to delete class", error);
+      logger.error("Failed to delete class", error);
       toast.error(error?.message || "Failed to delete class");
     }
   };

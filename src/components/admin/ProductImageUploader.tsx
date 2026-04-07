@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Upload, X, Star, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 
 interface ProductImage {
   id: string;
@@ -70,7 +71,7 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
       toast.success(`${validFiles.length} image(s) uploaded`);
       onImagesChange();
     } catch (err) {
-      console.error(err);
+      logger.error("Failed to upload image", err);
       toast.error("Failed to upload image");
     } finally {
       setUploading(false);

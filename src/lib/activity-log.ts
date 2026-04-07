@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 type ActivityLogInput = {
   actionType: string;
@@ -18,7 +19,7 @@ const ensureProfileExists = async (userId: string) => {
   );
 
   if (error) {
-    console.error("Failed to ensure profile exists for activity log:", error);
+    logger.error("Failed to ensure profile exists for activity log", error);
     throw error;
   }
 };
@@ -49,7 +50,7 @@ export const logActivity = async ({
   });
 
   if (error) {
-    console.error("Failed to log activity:", error);
+    logger.error("Failed to log activity", error);
     throw error;
   }
 };

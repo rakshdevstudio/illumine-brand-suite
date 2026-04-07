@@ -26,6 +26,7 @@ import { logActivity } from "@/lib/activity-log";
 import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import BulkActionBar from "@/components/admin/BulkActionBar";
+import { logger } from "@/lib/logger";
 
 const chunk = <T,>(items: T[], size = 25) => {
   const batches: T[][] = [];
@@ -463,7 +464,7 @@ const ProductVariantsPage = () => {
       setEditing(null);
       setForm({ product_id: "", size: "", stock: "0", price_override: "" });
     } catch (error: any) {
-      console.error("Failed to save variant", error);
+      logger.error("Failed to save variant", error);
       toast.error(error?.message || "Failed to save variant");
     }
   };
@@ -510,7 +511,7 @@ const ProductVariantsPage = () => {
         queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
       ]);
     } catch (error: any) {
-      console.error("Failed to adjust stock", error);
+      logger.error("Failed to adjust stock", error);
       toast.error(error?.message || "Failed to adjust stock");
     }
   };
@@ -534,7 +535,7 @@ const ProductVariantsPage = () => {
       await refreshVariantQueries();
       toast.success(`Variant ${newStatus === "active" ? "enabled" : "disabled"}`);
     } catch (error: any) {
-      console.error("Failed to toggle variant status", error);
+      logger.error("Failed to toggle variant status", error);
       toast.error(error?.message || "Failed to update variant status");
     }
   };
@@ -569,7 +570,7 @@ const ProductVariantsPage = () => {
       await refreshVariantQueries();
       toast.success("Variant deleted");
     } catch (error: any) {
-      console.error("Failed to delete variant", error);
+      logger.error("Failed to delete variant", error);
       toast.error(error?.message || "Failed to delete variant");
     }
   };

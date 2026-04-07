@@ -7,6 +7,7 @@ import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
 import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
+import { logger } from "@/lib/logger";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -92,7 +93,7 @@ const ClassProductsPage = () => {
       });
 
       if (queryError) {
-        console.error("[ClassProductsPage] strict store RPC failed", {
+        logger.error("Strict store RPC failed", {
           schoolId: id,
           classId: cls!.id,
           gender: genderDb,

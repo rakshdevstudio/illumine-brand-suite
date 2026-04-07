@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useMemo, useState } from "react";
+import { logger } from "@/lib/logger";
 
 type ActivityLogRow = {
   id: string;
@@ -43,7 +44,7 @@ export const fetchActivityLogs = async (): Promise<ActivityLogRow[]> => {
     .in("id", userIds as string[]);
 
   if (profilesError) {
-    console.error("Failed to load activity log profiles:", profilesError);
+    logger.error("Failed to load activity log profiles", profilesError);
   }
 
   const profileMap = new Map(

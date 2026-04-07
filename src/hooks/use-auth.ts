@@ -35,7 +35,6 @@ export function useAuth() {
 
     const resolveRole = async () => {
       if (isChecking) return;
-      console.log("SESSION:", session);
 
       const currentUser = session?.user ?? null;
       if (mounted) setUser(currentUser);

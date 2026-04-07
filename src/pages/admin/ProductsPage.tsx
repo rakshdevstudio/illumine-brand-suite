@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 import { archiveProduct, hardDeleteProduct, restoreProduct } from "@/lib/product-lifecycle";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { logger } from "@/lib/logger";
 
 const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
@@ -255,7 +256,7 @@ const ProductsPage = () => {
       setEditing(null);
       setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
     } catch (err: any) {
-      console.error("Failed to save product:", err);
+      logger.error("Failed to save product", err);
       toast.error(err?.message || "Failed to save product");
     }
   };
@@ -276,7 +277,7 @@ const ProductsPage = () => {
       setArchiveTarget(null);
       await refreshProductAndLogQueries();
     } catch (err: any) {
-      console.error("Failed to update product lifecycle", err);
+      logger.error("Failed to update product lifecycle", err);
       toast.error(err?.message || "Failed to update product");
     }
   };
@@ -304,7 +305,7 @@ const ProductsPage = () => {
       setHardDeleteTarget(null);
       await refreshProductAndLogQueries();
     } catch (err: any) {
-      console.error("Failed to hard delete product", err);
+      logger.error("Failed to hard delete product", err);
       toast.error(err?.message || "Failed to permanently delete product");
     }
   };
@@ -375,7 +376,7 @@ const ProductsPage = () => {
         );
         toast.success(`${bulkMode === "archive" ? "Archived" : "Restored"} ${selectedIds.length} products`);
       } catch (err: any) {
-        console.error("Bulk lifecycle action failed", err);
+        logger.error("Bulk lifecycle action failed", err);
         toast.error(err?.message || "Bulk update failed");
         return;
       }

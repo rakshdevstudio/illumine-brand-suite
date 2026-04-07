@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 export interface ScopedSchool {
   id: string;
@@ -63,14 +64,14 @@ const resolveSchoolIdFromMappingTable = async (userId: string) => {
     if (error) {
       const errorCode = (error as { code?: string }).code;
       if (errorCode && !["PGRST205", "42P01"].includes(errorCode)) {
-        console.warn("user_school_map lookup failed:", error.message);
+        logger.warn("user_school_map lookup failed", error.message);
       }
       return null;
     }
 
     return readSchoolId(data?.school_id);
   } catch (error) {
-    console.warn("user_school_map lookup failed:", error);
+    logger.warn("user_school_map lookup failed", error);
     return null;
   }
 };
@@ -91,7 +92,7 @@ export const useResolvedSchoolScope = (user: User | null) =>
       }
 
       if (profileError && isMissingProfileSchoolColumnError(profileError)) {
-        console.warn("profiles.school_id is unavailable, resolving school scope from auth metadata or user_school_map.");
+        logger.warn("profiles.school_id is unavailable; resolving school scope from auth metadata or user_school_map.");
       }
 
       let schoolId = readSchoolId((profile as { school_id?: string | null } | null)?.school_id);
@@ -122,7 +123,7 @@ export const useResolvedSchoolScope = (user: User | null) =>
         }
       }
 
-      console.log("Resolved school_id:", schoolId);
+      logger.debug("Resolved school scope", { hasSchoolId: Boolean(schoolId), resolution });
 
       if (!schoolId) {
         return {

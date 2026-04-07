@@ -2,6 +2,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { isLowStock } from "@/lib/inventory";
 import { extractOrderStudentMeta } from "@/lib/portal-dashboard";
+import { logger } from "@/lib/logger";
 
 type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
 type OrderNoteRow = Database["public"]["Tables"]["order_notes"]["Row"];
@@ -239,7 +240,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.warn("School portal could not load order notes:", error.message);
+      logger.warn("School portal could not load order notes", error.message);
     } else {
       orderNotes = data ?? [];
     }
@@ -253,7 +254,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       .in("order_id", orderIds);
 
     if (error) {
-      console.warn("School portal could not load order items:", error.message);
+      logger.warn("School portal could not load order items", error.message);
     } else {
       rawOrderItems = data ?? [];
     }
@@ -282,7 +283,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       .in("id", orderedProductIds);
 
     if (error) {
-      console.warn("School portal could not load ordered products:", error.message);
+      logger.warn("School portal could not load ordered products", error.message);
     } else {
       orderedProducts = data ?? [];
     }
@@ -296,7 +297,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       .in("id", orderedVariantIds);
 
     if (error) {
-      console.warn("School portal could not load ordered variants:", error.message);
+      logger.warn("School portal could not load ordered variants", error.message);
     } else {
       orderedVariants = data ?? [];
     }
@@ -325,7 +326,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       .in("product_id", [...activeScopedProductIds]);
 
     if (error) {
-      console.warn("School portal could not load low stock variants:", error.message);
+      logger.warn("School portal could not load low stock variants", error.message);
     } else {
       inventoryVariants = data ?? [];
     }

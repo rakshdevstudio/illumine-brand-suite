@@ -20,7 +20,6 @@ export function useRequireAuth() {
         if (!mounted) return;
 
         const currentSession = error ? null : data?.session ?? null;
-        console.log("SESSION:", currentSession);
         setSession(currentSession);
       } finally {
         if (mounted) {

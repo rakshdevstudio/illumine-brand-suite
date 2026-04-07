@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 type QueryResult<T> = {
   data: T | null;
@@ -55,11 +56,10 @@ export async function safeQuery<T>(
   queryFn: () => PromiseLike<QueryResult<T>>,
   pageName = "unknown",
 ): Promise<{ data: T | null }> {
-  console.log("FETCH START:", pageName);
   const { data, error } = await queryFn();
 
   if (error) {
-    console.error("Query error:", error);
+    logger.error("Query failed", { scope: pageName, error });
     if (isAuthError(error)) {
       await handleAuthFailure();
       return { data: null };
@@ -67,6 +67,5 @@ export async function safeQuery<T>(
     throw error;
   }
 
-  console.log("FETCH RESULT:", data);
   return { data: (data ?? null) as T | null };
 }

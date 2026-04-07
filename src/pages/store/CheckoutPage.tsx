@@ -9,6 +9,7 @@ import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
+import { logger } from "@/lib/logger";
 
 type CheckoutForm = {
   customer_name: string;
@@ -235,7 +236,7 @@ const CheckoutPage = () => {
           break;
         }
 
-        console.warn("orders schema is older than the checkout payload, retrying with a compatible insert shape.");
+        logger.warn("Orders schema is older than the checkout payload; retrying with a compatible insert shape.");
       }
 
       if (orderErr) throw orderErr;
@@ -287,7 +288,7 @@ const CheckoutPage = () => {
 
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
-      console.error(err);
+      logger.error("Failed to place order", err);
       toast.error("Failed to place order. Please try again.");
     } finally {
       setLoading(false);

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { logger } from "@/lib/logger";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -584,7 +585,7 @@ const PosDashboard = () => {
 
       toast.success(`Order ${order.id.slice(0, 8).toUpperCase()} placed successfully`);
     } catch (error) {
-      console.error(error);
+      logger.error("Failed to place POS order", error);
       toast.error("Failed to place POS order");
     } finally {
       setPlacingOrder(false);

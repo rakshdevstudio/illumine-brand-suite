@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 
 type ProductLifecycleInput = {
   productId: string;
@@ -25,7 +26,7 @@ const ensureProfileExists = async (userId: string) => {
   );
 
   if (error) {
-    console.error("Failed to ensure profile exists for lifecycle logging:", error);
+    logger.error("Failed to ensure profile exists for lifecycle logging", error);
     throw error;
   }
 };
@@ -54,7 +55,7 @@ const ensureLifecycleActivityLogged = async ({
     .maybeSingle();
 
   if (error) {
-    console.error("Failed to verify lifecycle activity log:", error);
+    logger.error("Failed to verify lifecycle activity log", error);
   }
 
   if (existing) {
@@ -65,7 +66,7 @@ const ensureLifecycleActivityLogged = async ({
         .eq("id", existing.id);
 
       if (updateError) {
-        console.error("Failed to backfill lifecycle activity log actor:", updateError);
+        logger.error("Failed to backfill lifecycle activity log actor", updateError);
         throw updateError;
       }
     }
@@ -84,23 +85,21 @@ const ensureLifecycleActivityLogged = async ({
   });
 
   if (insertError) {
-    console.error("Failed to insert fallback lifecycle activity log:", insertError);
+    logger.error("Failed to insert fallback lifecycle activity log", insertError);
     throw insertError;
   }
 };
 
 export const archiveProduct = async ({ productId }: ProductLifecycleInput) => {
   const user = await getAuthenticatedAdminUser();
-  console.log("RPC START", { productId, action: "ARCHIVE", actorId: user.id });
   const client = supabase as any;
   const response = await client.rpc("archive_product_cascade", {
     p_product_id: productId,
     p_deleted_at: new Date().toISOString(),
     p_deleted_by: user.id,
   });
-  console.log("RPC RESULT", response);
   if (response.error) {
-    console.error("RPC ERROR", response.error);
+    logger.error("Archive product RPC failed", response.error);
     throw response.error;
   }
   await ensureLifecycleActivityLogged({
@@ -114,15 +113,13 @@ export const archiveProduct = async ({ productId }: ProductLifecycleInput) => {
 
 export const restoreProduct = async ({ productId }: ProductLifecycleInput) => {
   const user = await getAuthenticatedAdminUser();
-  console.log("RPC START", { productId, action: "RESTORE", actorId: user.id });
   const client = supabase as any;
   const response = await client.rpc("restore_product_cascade", {
     p_product_id: productId,
     p_actor: user.id,
   });
-  console.log("RPC RESULT", response);
   if (response.error) {
-    console.error("RPC ERROR", response.error);
+    logger.error("Restore product RPC failed", response.error);
     throw response.error;
   }
   await ensureLifecycleActivityLogged({
@@ -136,15 +133,13 @@ export const restoreProduct = async ({ productId }: ProductLifecycleInput) => {
 
 export const hardDeleteProduct = async ({ productId }: ProductLifecycleInput) => {
   const user = await getAuthenticatedAdminUser();
-  console.log("RPC START", { productId, action: "HARD_DELETE", actorId: user.id });
   const client = supabase as any;
   const response = await client.rpc("hard_delete_product_cascade", {
     p_product_id: productId,
     p_actor: user.id,
   });
-  console.log("RPC RESULT", response);
   if (response.error) {
-    console.error("RPC ERROR", response.error);
+    logger.error("Hard delete product RPC failed", response.error);
     throw response.error;
   }
   await ensureLifecycleActivityLogged({
