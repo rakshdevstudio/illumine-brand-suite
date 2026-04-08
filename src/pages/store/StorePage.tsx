@@ -251,6 +251,9 @@ const StorePage = () => {
   const showcaseSectionRef = useRef<HTMLElement | null>(null);
   const testimonialSectionRef = useRef<HTMLElement | null>(null);
   const missionStatementRef = useRef<HTMLParagraphElement | null>(null);
+  const testimonialCardRectRef = useRef<DOMRect | null>(null);
+  const pointerSnapshotRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerRafRef = useRef<number | null>(null);
 
   const { scrollYProgress: heroScrollProgress } = useScroll({
     target: heroSectionRef,
@@ -355,20 +358,53 @@ const StorePage = () => {
     setActiveTestimonial((prev) => (prev + 1) % TESTIMONIALS.length);
   };
 
-  const handleTestimonialCardMove = (event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const relativeX = (event.clientX - rect.left) / rect.width;
-    const relativeY = (event.clientY - rect.top) / rect.height;
+  const flushPointerSnapshot = () => {
+    pointerRafRef.current = null;
+    const snapshot = pointerSnapshotRef.current;
+    const rect = testimonialCardRectRef.current;
+    if (!snapshot || !rect) return;
+
+    const relativeX = (snapshot.x - rect.left) / rect.width;
+    const relativeY = (snapshot.y - rect.top) / rect.height;
     rotateYRaw.set((relativeX - 0.5) * 12);
     rotateXRaw.set((0.5 - relativeY) * 8);
     scaleRaw.set(1.02);
   };
 
+  const handleTestimonialCardEnter = (event: MouseEvent<HTMLDivElement>) => {
+    testimonialCardRectRef.current = event.currentTarget.getBoundingClientRect();
+  };
+
+  const handleTestimonialCardMove = (event: MouseEvent<HTMLDivElement>) => {
+    if (!testimonialCardRectRef.current) {
+      testimonialCardRectRef.current = event.currentTarget.getBoundingClientRect();
+    }
+
+    pointerSnapshotRef.current = { x: event.clientX, y: event.clientY };
+
+    if (pointerRafRef.current !== null) return;
+    pointerRafRef.current = window.requestAnimationFrame(flushPointerSnapshot);
+  };
+
   const handleTestimonialCardLeave = () => {
+    testimonialCardRectRef.current = null;
+    pointerSnapshotRef.current = null;
+    if (pointerRafRef.current !== null) {
+      window.cancelAnimationFrame(pointerRafRef.current);
+      pointerRafRef.current = null;
+    }
     rotateXRaw.set(0);
     rotateYRaw.set(0);
     scaleRaw.set(1);
   };
+
+  useEffect(() => {
+    return () => {
+      if (pointerRafRef.current !== null) {
+        window.cancelAnimationFrame(pointerRafRef.current);
+      }
+    };
+  }, []);
 
   const previousTestimonialIndex = (activeTestimonial - 1 + TESTIMONIALS.length) % TESTIMONIALS.length;
   const nextTestimonialIndex = (activeTestimonial + 1) % TESTIMONIALS.length;
@@ -931,6 +967,7 @@ const StorePage = () => {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0.5, x: -200, scale: 0.9 }}
                 transition={{ duration: 0.6, ease: "easeInOut" }}
+                onMouseEnter={handleTestimonialCardEnter}
                 onMouseMove={handleTestimonialCardMove}
                 onMouseLeave={handleTestimonialCardLeave}
                 style={{ rotateX, rotateY, scale: cardScale, willChange: "transform, opacity" }}
