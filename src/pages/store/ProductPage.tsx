@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
-import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  getProductContextSummary,
+  normalizeStorefrontProduct,
+  resolveStoreBrowseContext,
+  sortSizes,
+} from "@/lib/storefront";
+import { getShippingSummary } from "@/lib/store-shipping";
+
+const isMissingColumnError = (error: any, columnName: string) => {
+  const message = String(error?.message ?? "").toLowerCase();
+  return error?.code === "PGRST204" || message.includes(columnName.toLowerCase());
+};
 
 const LOW_STOCK_THRESHOLD = 10;
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
@@ -18,52 +30,118 @@ const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const addItem = useCart((s) => s.addItem);
   const desktopAddButtonRef = useRef<HTMLDivElement | null>(null);
   const mobileAddButtonRef = useRef<HTMLDivElement | null>(null);
   const desktopAddControls = useAnimationControls();
   const mobileAddControls = useAnimationControls();
+  const browseContext = resolveStoreBrowseContext(searchParams);
 
-  const { data: product, isLoading } = useQuery({
+  const { data: product, isLoading, isError, error } = useQuery({
     queryKey: ["product", id],
+    enabled: Boolean(id),
+    retry: 1,
     queryFn: async () => {
       const schoolId = requireSchoolId();
       const client = supabase as any;
 
-      const { data: fallback, error: fbErr } = await client
-        .from("products")
-        .select("*, product_variants!inner(id, size, base_price, price_override, sku, is_active, status), schools(*), product_images(*), classes(name)")
-        .eq("id", id!)
-        .eq("school_id", schoolId)
-        .single();
-      if (fbErr) throw fbErr;
+      const baseProductQuery = () =>
+        client
+          .from("products")
+          .select("*, schools(name, slug), classes(name, slug), product_images(*)")
+          .eq("id", id)
+          .eq("status", "active")
+          .maybeSingle();
 
-      const fallbackIsActive = String(fallback?.status ?? "").toLowerCase() === "active";
-      if (!fallbackIsActive) {
+      const deletedSafeProduct = await baseProductQuery().is("deleted_at", null);
+
+      const productResponse = deletedSafeProduct.error && isMissingColumnError(deletedSafeProduct.error, "deleted_at")
+        ? await baseProductQuery().eq("is_active", true)
+        : deletedSafeProduct;
+
+      if (productResponse.error) {
+        throw productResponse.error;
+      }
+
+      const productRow = productResponse.data;
+      if (!productRow) {
         throw new Error("Product not available for this school");
       }
 
-      if (!fallback) throw new Error("Product not available for this school");
-      return {
-        ...fallback,
-        product_variants:
-          (fallback as any).product_variants
-            ?.filter((v: any) => String(v.status ?? "").toLowerCase() === "active")
-            .map((v: any) => ({
-              ...v,
-              effective_price: Number(v.price_override ?? fallback.price ?? 0),
-            })) ?? [],
-      };
+      let visibleForSchool = productRow.school_id === schoolId || Boolean(productRow.is_universal);
+      if (!visibleForSchool) {
+        const { data: assignmentRows, error: assignmentError } = await client
+          .from("product_assignments")
+          .select("id")
+          .eq("product_id", id)
+          .eq("school_id", schoolId)
+          .limit(1);
+
+        if (assignmentError) {
+          throw assignmentError;
+        }
+
+        visibleForSchool = (assignmentRows ?? []).length > 0;
+      }
+
+      if (!visibleForSchool) {
+        throw new Error("Product not available for this school");
+      }
+
+      const { data: variantRows, error: variantError } = await client
+        .from("product_variants")
+        .select("id, product_id, size, sku, low_stock_threshold, status, price_override, stock")
+        .eq("product_id", id)
+        .eq("status", "active");
+
+      if (variantError) throw variantError;
+
+      const variants = variantRows ?? [];
+      const variantIds = variants.map((variant: any) => variant.id);
+
+      let stockRows: Array<{ variant_id: string; stock: number }> = [];
+      if (variantIds.length > 0) {
+        const { data: branchRows, error: stockError } = await client
+          .from("branch_inventory")
+          .select("variant_id, stock")
+          .in("variant_id", variantIds);
+
+        if (stockError) throw stockError;
+        stockRows = branchRows ?? [];
+      }
+
+      const stockByVariant = new Map<string, number>();
+      stockRows.forEach((row) => {
+        stockByVariant.set(row.variant_id, (stockByVariant.get(row.variant_id) ?? 0) + Number(row.stock ?? 0));
+      });
+
+      const normalized = normalizeStorefrontProduct({
+        ...productRow,
+        product_variants: variants.map((variant: any) => ({
+          ...variant,
+          available_stock: stockByVariant.has(variant.id)
+            ? stockByVariant.get(variant.id)
+            : Math.max(0, Number(variant.stock ?? 0)),
+          effective_price: Number(variant.price_override ?? productRow.price ?? 0),
+        })),
+      });
+
+      if (!normalized?.id) {
+        throw new Error("Product not available for this school");
+      }
+
+      return normalized;
     },
   });
 
   const activeVariants = useMemo(
     () =>
-      (product?.product_variants ?? [])
-        .filter((variant: any) => String(variant.status ?? "").toLowerCase() === "active"),
+      (product?.productVariants ?? []).filter((variant) => String(variant.status ?? "").toLowerCase() === "active"),
     [product]
   );
 
@@ -80,42 +158,27 @@ const ProductPage = () => {
     }
   }, [activeVariants, selectedSize]);
 
-  const variantIds = useMemo(() => activeVariants.map((variant: any) => variant.id), [activeVariants]);
-
-  const { data: variantStockEntries } = useQuery({
-    queryKey: ["store-product-global-inventory", variantIds.join(",")],
-    enabled: variantIds.length > 0,
-    queryFn: async () => {
-      const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
-      return Array.from(stockByVariant.entries());
-    },
-  });
-
-  const branchStockByVariant = useMemo(
-    () => new Map((variantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
-    [variantStockEntries]
-  );
-
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
   const selectedVariant = activeVariants.find(
-    (v: any) => v.size === selectedSize
+    (v) => v.size === selectedSize
   );
-  const selectedVariantStock = selectedVariant ? Number(branchStockByVariant.get(selectedVariant.id) ?? 0) : 0;
+  const selectedVariantStock = selectedVariant ? Number(selectedVariant.availableStock ?? 0) : 0;
   const maxQty = selectedVariant ? Math.max(1, Math.min(10, selectedVariantStock)) : 1;
   const fallbackMinPrice = useMemo(() => {
     const prices = activeVariants
-      .map((v: any) => Number(v.effective_price ?? product?.price ?? 0))
+      .map((v) => Number(v.effectivePrice ?? product?.price ?? 0))
       .filter((n) => Number.isFinite(n) && n >= 0);
     return prices.length ? Math.min(...prices) : Number(product?.price ?? 0);
   }, [activeVariants, product]);
-  const effectivePrice = Number(selectedVariant?.effective_price ?? product?.price ?? fallbackMinPrice ?? 0);
+  const effectivePrice = Number(selectedVariant?.effectivePrice ?? product?.price ?? fallbackMinPrice ?? 0);
+  const shippingSummary = product ? getShippingSummary(product, effectivePrice * quantity) : null;
 
   // Build image gallery
   const galleryImages: string[] = [];
   if (product) {
-    const imgs = (product as any).product_images ?? [];
+    const imgs = product.productImages ?? [];
     if (imgs.length > 0) {
       const sorted = [...imgs].sort((a: any, b: any) => {
         if (a.is_primary && !b.is_primary) return -1;
@@ -136,9 +199,9 @@ const ProductPage = () => {
       name: product.name,
       size: selectedVariant.size,
       price: effectivePrice,
-      schoolName: (product as any).schools?.name ?? "",
-      className: (product as any).classes?.name ?? "",
-      gender: (product as any).gender ?? "Unisex",
+      schoolName: product.schoolName ?? "",
+      className: product.className ?? "",
+      gender: product.gender ?? "Unisex",
       imageUrl: galleryImages[0] || null,
       quantity,
     });
@@ -171,6 +234,13 @@ const ProductPage = () => {
   if (isLoading) {
     return (
       <div className="max-w-6xl mx-auto px-6 py-12">
+        <div
+          onClick={() => navigate(-1)}
+          className="mb-6 cursor-pointer text-sm tracking-wide text-gray-500 hover:text-black transition"
+        >
+          ← Back
+        </div>
+
         <div className="grid md:grid-cols-2 gap-16">
           <div className="aspect-square bg-secondary animate-pulse" />
           <div className="space-y-4">
@@ -182,27 +252,33 @@ const ProductPage = () => {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="store-shell pb-28 md:pb-12">
+        <div
+          onClick={() => navigate(-1)}
+          className="mb-6 cursor-pointer text-sm tracking-wide text-gray-500 hover:text-black transition"
+        >
+          ← Back
+        </div>
+
+        <div className="text-center py-16">
+          <p className="text-sm text-destructive">{(error as Error)?.message || "Failed to load product"}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!product) return null;
 
-  const schoolSlug = (product as any).schools?.slug;
-  const handleBack = () => {
-    if (schoolSlug) {
-      navigate(`/store/school/${schoolSlug}`);
-      return;
-    }
-    navigate(-1);
-  };
-
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12 pb-28 md:pb-12">
-      <button
-        type="button"
-        onClick={handleBack}
-        className="inline-flex items-center gap-2 text-xs tracking-[0.2em] text-muted-foreground uppercase mb-12 hover:text-foreground transition-colors"
+    <div className="store-shell pb-28 md:pb-12">
+      <div
+        onClick={() => navigate(-1)}
+        className="mb-6 cursor-pointer text-sm tracking-wide text-gray-500 hover:text-black transition"
       >
-        <ArrowLeft className="h-3 w-3" strokeWidth={1.5} />
-        Back
-      </button>
+        ← Back
+      </div>
 
       <div className="grid md:grid-cols-2 gap-16">
         {/* Image Gallery */}
@@ -239,16 +315,8 @@ const ProductPage = () => {
 
         {/* Details */}
         <div className="flex flex-col">
-          <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-1">
-            {(product as any).schools?.name}
-          </p>
-          {(product as any).classes?.name && (
-            <p className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase mb-1">
-              {(product as any).classes.name}
-            </p>
-          )}
-          <p className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase mb-3">
-            {(product as any).gender || "Unisex"}
+          <p className="text-xs tracking-[0.18em] text-muted-foreground uppercase mb-3">
+            {getProductContextSummary(product)}
           </p>
           <h1 className="text-2xl font-extralight tracking-wide mb-2">
             {product.name}
@@ -269,9 +337,9 @@ const ProductPage = () => {
             </p>
             <div className="flex gap-3">
               {activeVariants
-                ?.sort((a: any, b: any) => parseInt(a.size) - parseInt(b.size))
-                .map((v: any) => {
-                  const variantStock = Number(branchStockByVariant.get(v.id) ?? 0);
+                ?.sort((a, b) => sortSizes(a.size, b.size))
+                .map((v) => {
+                  const variantStock = Number(v.availableStock ?? 0);
                   return (
                   <button
                     key={v.id}
@@ -356,18 +424,31 @@ const ProductPage = () => {
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
               Size Guide
             </p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Select your regular school uniform size. If between two sizes, choose the larger size for a comfortable fit.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {product.sizeChartNotes || "Select your regular school uniform size. If you are between two sizes, choose the larger size for a more comfortable fit."}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSizeChartOpen(true)}
+                className="h-10 text-xs tracking-[0.18em] uppercase"
+              >
+                View Size Chart
+              </Button>
+            </div>
           </div>
 
           <div className="mt-8 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
               Shipping Information
             </p>
-            <p className="text-sm text-muted-foreground">
-              Free delivery within 5–7 business days. Express delivery available at checkout.
-            </p>
+            {shippingSummary && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">{shippingSummary.label}</p>
+                <p className="text-sm text-muted-foreground">{shippingSummary.detail}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -387,6 +468,37 @@ const ProductPage = () => {
           </Button>
         </motion.div>
       </div>
+
+      <Dialog open={sizeChartOpen} onOpenChange={setSizeChartOpen}>
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="text-sm font-light uppercase tracking-[0.16em]">
+              {product.sizeChartTitle || `${product.name} Size Chart`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {product.sizeChartRows.length > 0 ? (
+              <div className="space-y-2 rounded-xl border border-border p-4">
+                {product.sizeChartRows.map((row) => (
+                  <div key={`${row.label}-${row.value}`} className="flex items-start justify-between gap-4 border-b border-border/70 py-3 last:border-b-0 last:pb-0 first:pt-0">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{row.label}</p>
+                      {row.notes ? <p className="mt-1 text-xs text-muted-foreground">{row.notes}</p> : null}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{row.value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border p-4">
+                <p className="text-sm text-muted-foreground">
+                  Measurements are not configured for this product yet. Use the listed sizes and the fit guidance on this page, or contact support if you need help choosing a size.
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

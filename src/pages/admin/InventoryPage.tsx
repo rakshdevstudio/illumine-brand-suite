@@ -25,7 +25,14 @@ type VariantMeta = {
   id: string;
   size?: string | null;
   low_stock_threshold?: number | null;
-  products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
+  products?: {
+    name?: string;
+    category?: string;
+    price?: number;
+    gender?: string | null;
+    schools?: { name?: string } | null;
+    classes?: { name?: string } | null;
+  } | null;
 };
 
 type AggregatedInventoryRow = {
@@ -37,7 +44,14 @@ type AggregatedInventoryRow = {
   product_variants?: {
     size?: string | null;
     low_stock_threshold?: number | null;
-    products?: { name?: string; category?: string; price?: number; schools?: { name?: string } | null } | null;
+    products?: {
+      name?: string;
+      category?: string;
+      price?: number;
+      gender?: string | null;
+      schools?: { name?: string } | null;
+      classes?: { name?: string } | null;
+    } | null;
   } | null;
 };
 
@@ -119,7 +133,7 @@ const InventoryPage = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("product_variants")
-        .select("id, size, low_stock_threshold, products(name, category, price, schools(name))");
+        .select("id, size, low_stock_threshold, products(name, category, price, gender, schools(name), classes(name))");
 
       if (error) throw error;
       return (data ?? []) as VariantMeta[];
@@ -300,13 +314,15 @@ const InventoryPage = () => {
 
   const exportSelectedInventory = () => {
     const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.key));
-    const header = ["Product", "School", "Category", "Size", "Stock", "Price"];
+    const header = ["Product", "School", "Class", "Gender", "Category", "Size", "Stock", "Price"];
 
     const lines = selectedRows.map((row) => {
       const product = row.product_variants?.products;
       const values = [
         product?.name ?? "",
         product?.schools?.name ?? "",
+        product?.classes?.name ?? "",
+        product?.gender ?? "",
         product?.category ?? "",
         row.product_variants?.size ?? "",
         row.stock,
@@ -366,6 +382,8 @@ const InventoryPage = () => {
               </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Gender</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Category</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Stock</TableHead>
@@ -376,9 +394,9 @@ const InventoryPage = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell></TableRow>
             ) : visibleRows.length === 0 ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No branch inventory rows found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No branch inventory rows found</TableCell></TableRow>
             ) : (
               visibleRows.map((row) => {
                 const product = row.product_variants?.products;
@@ -391,6 +409,8 @@ const InventoryPage = () => {
                     </TableCell>
                     <TableCell className="text-sm">{product?.name ?? "Product"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.schools?.name ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{product?.classes?.name ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{product?.gender ?? "Unisex"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.category ?? "—"}</TableCell>
                     <TableCell className="text-sm">{row.product_variants?.size ?? "default"}</TableCell>
                     <TableCell className="text-sm font-medium">{stock}</TableCell>

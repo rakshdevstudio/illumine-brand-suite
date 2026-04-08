@@ -85,7 +85,7 @@ const POS_LAST_CUSTOMER_KEY = "illume-pos-last-customer";
 const POS_CUSTOMER_CONTEXT_KEY = "illume-pos-customer-context";
 const WALK_IN_CUSTOMER_KEY = "__walk_in_customer__";
 
-const selectPreferredVariant = (variants: any[] | null | undefined) => {
+const selectPreferredVariant = (variants: any[] | null | undefined, stockByVariant: Map<string, number>) => {
   const activeVariants = (variants ?? []).filter((variant) => !variant?.status || variant.status === "active");
 
   if (activeVariants.length === 0) return null;
@@ -93,12 +93,14 @@ const selectPreferredVariant = (variants: any[] | null | undefined) => {
   return [...activeVariants].sort((a, b) => {
     const aIsDefault = String(a.size ?? "").toLowerCase() === "default";
     const bIsDefault = String(b.size ?? "").toLowerCase() === "default";
-    const aInStock = Number(a.stock ?? 0) > 0;
-    const bInStock = Number(b.stock ?? 0) > 0;
+    const aStock = Number(stockByVariant.get(a.id) ?? 0);
+    const bStock = Number(stockByVariant.get(b.id) ?? 0);
+    const aInStock = aStock > 0;
+    const bInStock = bStock > 0;
 
     if (aIsDefault !== bIsDefault) return aIsDefault ? -1 : 1;
     if (aInStock !== bInStock) return aInStock ? -1 : 1;
-    return Number(b.stock ?? 0) - Number(a.stock ?? 0);
+    return bStock - aStock;
   })[0];
 };
 
@@ -261,7 +263,7 @@ const PosDashboard = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, price, category, school_id, is_universal, status, product_variants(id, size, stock, status, price_override)")
+        .select("id, name, price, category, school_id, is_universal, status, product_variants(id, size, status, price_override)")
         .eq("status", "active")
         .order("name");
 
@@ -292,29 +294,18 @@ const PosDashboard = () => {
     [schoolProductAssignments],
   );
 
-  const sellableProducts = useMemo<SellableProduct[]>(() => {
-    return (products ?? [])
-      .map((product: any) => {
-        const variant = selectPreferredVariant(product.product_variants);
-        if (!variant) return null;
-
-        return {
-          productId: product.id,
-          variantId: variant.id,
-          schoolId: product.school_id ?? null,
-          name: product.name,
-          size: variant.size ?? "Default",
-          category: product.category,
-          price: Number(variant.price_override ?? product.price ?? 0),
-          stock: Number(variant.stock ?? 0),
-        };
-      })
-      .filter((product): product is SellableProduct => Boolean(product));
-  }, [products]);
-
   const variantIds = useMemo(
-    () => sellableProducts.map((product) => product.variantId),
-    [sellableProducts],
+    () =>
+      Array.from(
+        new Set(
+          (products ?? []).flatMap((product: any) =>
+            (product.product_variants ?? [])
+              .map((variant: any) => variant.id)
+              .filter((variantId: unknown): variantId is string => typeof variantId === "string" && variantId.length > 0),
+          ),
+        ),
+      ),
+    [products],
   );
 
   const { data: globalVariantStockEntries } = useQuery({
@@ -330,6 +321,26 @@ const PosDashboard = () => {
     () => new Map((globalVariantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
     [globalVariantStockEntries],
   );
+
+  const sellableProducts = useMemo<SellableProduct[]>(() => {
+    return (products ?? [])
+      .map((product: any) => {
+        const variant = selectPreferredVariant(product.product_variants, stockByVariant);
+        if (!variant) return null;
+
+        return {
+          productId: product.id,
+          variantId: variant.id,
+          schoolId: product.school_id ?? null,
+          name: product.name,
+          size: variant.size ?? "Default",
+          category: product.category,
+          price: Number(variant.price_override ?? product.price ?? 0),
+          stock: Number(stockByVariant.get(variant.id) ?? 0),
+        };
+      })
+      .filter((product): product is SellableProduct => Boolean(product));
+  }, [products, stockByVariant]);
 
   const filteredProducts = useMemo(() => {
     if (!selectedSchoolId) return [];

@@ -24,6 +24,8 @@ import TrackOrderPage from "./pages/store/TrackOrderPage";
 import SchoolCodePage from "./pages/store/SchoolCodePage";
 import RequireSchoolContext from "./components/store/RequireSchoolContext";
 import ShopBySchoolPage from "./pages/store/ShopBySchoolPage";
+import ScrollToTop from "./components/store/ScrollToTop";
+import GoToTopButton from "./components/store/GoToTopButton";
 
 // Admin
 import AdminLayout from "./components/admin/AdminLayout";
@@ -174,6 +176,8 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ScrollToTop />
+        <GoToTopButton />
         <Routes>
           {/* Public homepage (marketing) */}
           <Route path="/" element={<StoreLayout />}>

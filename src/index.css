@@ -68,6 +68,32 @@
   }
 }
 
+@layer components {
+  .store-shell {
+    @apply mx-auto w-full max-w-6xl px-4 py-10 md:px-6 md:py-12;
+  }
+
+  .store-shell-wide {
+    @apply mx-auto w-full max-w-7xl px-4 py-10 md:px-6 md:py-14;
+  }
+
+  .store-breadcrumb {
+    @apply mb-10 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .store-title {
+    @apply text-2xl font-extralight uppercase tracking-[0.1em] md:text-3xl;
+  }
+
+  .store-subtitle {
+    @apply mt-2 text-sm text-muted-foreground;
+  }
+
+  .store-context-chip {
+    @apply rounded-full border border-border bg-secondary/40 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground;
+  }
+}
+
 @layer utilities {
   .illume-hero-bg {
     background:

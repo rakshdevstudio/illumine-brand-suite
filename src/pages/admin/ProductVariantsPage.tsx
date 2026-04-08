@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -17,8 +25,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Plus, Minus } from "lucide-react";
+import { Check, ChevronDown, Plus, Minus } from "lucide-react";
 import { safeQuery } from "@/lib/safeQuery";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -27,6 +36,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import BulkActionBar from "@/components/admin/BulkActionBar";
 import { logger } from "@/lib/logger";
+import { useCatalogFilters } from "@/hooks/useCatalogFilters";
+import { ALL_FILTER_VALUE } from "@/lib/storefront";
 
 const chunk = <T,>(items: T[], size = 25) => {
   const batches: T[][] = [];
@@ -34,6 +45,61 @@ const chunk = <T,>(items: T[], size = 25) => {
     batches.push(items.slice(i, i + size));
   }
   return batches;
+};
+
+type ProductOption = {
+  id: string;
+  name: string;
+  schoolName: string;
+  className: string;
+  genderValue: string;
+  genderLabel: string;
+  schoolSortKey: string;
+  classSortKey: string;
+  genderSortKey: number;
+  searchText: string;
+};
+
+const normalizeGenderLabel = (value: string | null | undefined) => {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "male" || normalized === "boys") return "Boys";
+  if (normalized === "female" || normalized === "girls") return "Girls";
+  return "Unisex";
+};
+
+const getGenderSortKey = (value: string | null | undefined) => {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "male" || normalized === "boys") return 0;
+  if (normalized === "female" || normalized === "girls") return 1;
+  return 2;
+};
+
+const formatFallbackLabel = (value: string | null | undefined, fallback: string) => {
+  const text = String(value ?? "").trim();
+  return text.length > 0 ? text : fallback;
+};
+
+const buildProductOption = (product: any): ProductOption => {
+  const schoolName = formatFallbackLabel(product?.schools?.name, "No School");
+  const className = formatFallbackLabel(product?.classes?.name, "No Class");
+  const genderValue = String(product?.gender ?? "Unisex");
+  const genderLabel = normalizeGenderLabel(genderValue);
+
+  return {
+    id: String(product?.id ?? ""),
+    name: String(product?.name ?? "Untitled product"),
+    schoolName,
+    className,
+    genderValue,
+    genderLabel,
+    schoolSortKey: schoolName.toLowerCase(),
+    classSortKey: className.toLowerCase(),
+    genderSortKey: getGenderSortKey(genderValue),
+    searchText: [product?.name, className, genderLabel, genderValue, schoolName]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
 };
 
 const ProductVariantsPage = () => {
@@ -53,13 +119,15 @@ const ProductVariantsPage = () => {
   const [bulkStockReason, setBulkStockReason] = useState("");
   const [bulkStockBranchId, setBulkStockBranchId] = useState("");
   const [bulkPriceOverride, setBulkPriceOverride] = useState("");
-  const [form, setForm] = useState({ product_id: "", size: "", stock: "0", price_override: "" });
+  const [form, setForm] = useState({ product_id: "", size: "", price_override: "" });
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
   const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
-  const [schoolFilter, setSchoolFilter] = useState("all");
-  const [classFilter, setClassFilter] = useState("all");
-  const [productFilter, setProductFilter] = useState("all");
+  const { filters, replaceFilters, updateFilter } = useCatalogFilters();
+  const schoolFilter = filters.school;
+  const classFilter = filters.class;
+  const productFilter = filters.product;
 
   const { data: variants, isLoading, error: variantsError } = useQuery({
     queryKey: ["admin-variants"],
@@ -99,7 +167,7 @@ const ProductVariantsPage = () => {
     queryKey: ["admin-products-select"],
     queryFn: async () => {
       const { data } = await safeQuery(
-        () => supabase.from("products").select("id, name, school_id, class_id, schools(name)").order("name"),
+        () => supabase.from("products").select("id, name, gender, school_id, class_id, schools(name), classes(name)").order("name"),
         "admin-product-variants/products"
       );
       return data ?? [];
@@ -140,26 +208,95 @@ const ProductVariantsPage = () => {
   // Cascading filter logic
   const filteredClassesForFilter = useMemo(() => {
     if (!classes) return [];
-    if (schoolFilter === "all") return classes;
+    if (schoolFilter === ALL_FILTER_VALUE) return classes;
     return classes.filter((c: any) => c.school_id === schoolFilter);
   }, [classes, schoolFilter]);
 
   const filteredProductsForFilter = useMemo(() => {
     if (!products) return [];
     let filtered = products as any[];
-    if (schoolFilter !== "all") filtered = filtered.filter((p) => p.school_id === schoolFilter);
-    if (classFilter !== "all") filtered = filtered.filter((p) => p.class_id === classFilter);
+    if (schoolFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((p) => p.school_id === schoolFilter);
+    if (classFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((p) => p.class_id === classFilter);
     return filtered;
   }, [products, schoolFilter, classFilter]);
+
+  const productOptions = useMemo(() => {
+    return (products ?? [])
+      .map((product: any) => buildProductOption(product))
+      .sort((left, right) => {
+        const schoolCompare = left.schoolSortKey.localeCompare(right.schoolSortKey);
+        if (schoolCompare !== 0) return schoolCompare;
+
+        const classCompare = left.classSortKey.localeCompare(right.classSortKey);
+        if (classCompare !== 0) return classCompare;
+
+        if (left.genderSortKey !== right.genderSortKey) {
+          return left.genderSortKey - right.genderSortKey;
+        }
+
+        return left.name.localeCompare(right.name);
+      });
+  }, [products]);
+
+  const groupedProductOptions = useMemo(() => {
+    const schoolGroups = new Map<string, ProductOption[]>();
+
+    productOptions.forEach((option) => {
+      const current = schoolGroups.get(option.schoolName) ?? [];
+      current.push(option);
+      schoolGroups.set(option.schoolName, current);
+    });
+
+    return Array.from(schoolGroups.entries())
+      .sort(([leftSchool], [rightSchool]) => leftSchool.localeCompare(rightSchool))
+      .map(([schoolName, schoolOptions]) => ({
+        schoolName,
+        options: schoolOptions.sort((left, right) => {
+          const classCompare = left.classSortKey.localeCompare(right.classSortKey);
+          if (classCompare !== 0) return classCompare;
+
+          if (left.genderSortKey !== right.genderSortKey) {
+            return left.genderSortKey - right.genderSortKey;
+          }
+
+          return left.name.localeCompare(right.name);
+        }),
+      }));
+  }, [productOptions]);
+
+  const selectedProduct = useMemo(
+    () => productOptions.find((product) => product.id === form.product_id) ?? null,
+    [form.product_id, productOptions]
+  );
+
+  const selectedProductPreview = selectedProduct
+    ? `Creating variant for: ${selectedProduct.name} | ${selectedProduct.className} | ${selectedProduct.genderLabel}`
+    : "";
 
   const filteredVariants = useMemo(() => {
     if (!variants) return [];
     let filtered = variants as any[];
-    if (schoolFilter !== "all") filtered = filtered.filter((v) => v.products?.school_id === schoolFilter);
-    if (classFilter !== "all") filtered = filtered.filter((v) => v.products?.class_id === classFilter);
-    if (productFilter !== "all") filtered = filtered.filter((v) => v.product_id === productFilter);
+    if (schoolFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.products?.school_id === schoolFilter);
+    if (classFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.products?.class_id === classFilter);
+    if (productFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.product_id === productFilter);
     return filtered;
   }, [variants, schoolFilter, classFilter, productFilter]);
+
+  useEffect(() => {
+    const nextFilters: Partial<typeof filters> = {};
+
+    if (classFilter !== ALL_FILTER_VALUE && !filteredClassesForFilter.some((schoolClass: any) => schoolClass.id === classFilter)) {
+      nextFilters.class = ALL_FILTER_VALUE;
+    }
+
+    if (productFilter !== ALL_FILTER_VALUE && !filteredProductsForFilter.some((product: any) => product.id === productFilter)) {
+      nextFilters.product = ALL_FILTER_VALUE;
+    }
+
+    if (Object.keys(nextFilters).length > 0) {
+      replaceFilters(nextFilters);
+    }
+  }, [classFilter, filteredClassesForFilter, filteredProductsForFilter, filters, productFilter, replaceFilters]);
 
   const allVariantIds = useMemo(() => (variants ?? []).map((variant: any) => variant.id), [variants]);
   const visibleVariantIds = useMemo(() => filteredVariants.map((variant: any) => variant.id), [filteredVariants]);
@@ -377,7 +514,6 @@ const ProductVariantsPage = () => {
       const payload: any = {
         product_id: form.product_id,
         size: form.size,
-        stock: 0,
       };
       if (form.price_override) payload.price_override = parseFloat(form.price_override);
       
@@ -462,7 +598,7 @@ const ProductVariantsPage = () => {
       await refreshVariantQueries();
       setDialogOpen(false);
       setEditing(null);
-      setForm({ product_id: "", size: "", stock: "0", price_override: "" });
+      setForm({ product_id: "", size: "", price_override: "" });
     } catch (error: any) {
       logger.error("Failed to save variant", error);
       toast.error(error?.message || "Failed to save variant");
@@ -580,15 +716,16 @@ const ProductVariantsPage = () => {
     setForm({
       product_id: variant.product_id,
       size: variant.size,
-      stock: String(variant.stock),
       price_override: variant.price_override ? String(variant.price_override) : "",
     });
+    setProductPickerOpen(false);
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ product_id: "", size: "", stock: "0", price_override: "" });
+    setForm({ product_id: "", size: "", price_override: "" });
+    setProductPickerOpen(false);
     setDialogOpen(true);
   };
 
@@ -605,12 +742,12 @@ const ProductVariantsPage = () => {
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
-          <Select value={schoolFilter} onValueChange={(v) => { setSchoolFilter(v); setClassFilter("all"); setProductFilter("all"); }}>
+          <Select value={schoolFilter} onValueChange={(value) => updateFilter("school", value)}>
             <SelectTrigger className="w-48 h-9 text-xs">
               <SelectValue placeholder="All Schools" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Schools</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Schools</SelectItem>
               {schools?.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
               ))}
@@ -619,12 +756,12 @@ const ProductVariantsPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Class</span>
-          <Select value={classFilter} onValueChange={(v) => { setClassFilter(v); setProductFilter("all"); }}>
+          <Select value={classFilter} onValueChange={(value) => updateFilter("class", value)}>
             <SelectTrigger className="w-48 h-9 text-xs">
               <SelectValue placeholder="All Classes" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Classes</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Classes</SelectItem>
               {filteredClassesForFilter.map((c: any) => (
                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
@@ -633,12 +770,12 @@ const ProductVariantsPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Product</span>
-          <Select value={productFilter} onValueChange={setProductFilter}>
+          <Select value={productFilter} onValueChange={(value) => updateFilter("product", value)}>
             <SelectTrigger className="w-48 h-9 text-xs">
               <SelectValue placeholder="All Products" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Products</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Products</SelectItem>
               {filteredProductsForFilter.map((p: any) => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
@@ -661,6 +798,7 @@ const ProductVariantsPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Class</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Gender</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Stock</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Price</TableHead>
@@ -671,16 +809,16 @@ const ProductVariantsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : filteredVariants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
               </TableRow>
             ) : (
               filteredVariants.map((v: any) => {
                 const effectivePrice = v.price_override ?? v.products?.price;
-                const liveStock = variantStockMap.get(v.id) ?? Number(v.stock ?? 0);
+                const liveStock = variantStockMap.get(v.id) ?? 0;
                 return (
                   <TableRow key={v.id}>
                     <TableCell>
@@ -693,6 +831,7 @@ const ProductVariantsPage = () => {
                     <TableCell className="text-sm">{v.products?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{v.products?.gender ?? "Unisex"}</TableCell>
                     <TableCell className="text-sm">{v.size}</TableCell>
                     <TableCell className="text-sm font-medium">{liveStock}</TableCell>
                     <TableCell className="text-sm">
@@ -853,7 +992,7 @@ const ProductVariantsPage = () => {
       </BulkActionBar>
 
       {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); setProductPickerOpen(false); } }}>
         <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
@@ -863,24 +1002,73 @@ const ProductVariantsPage = () => {
           <div className="space-y-4 py-4">
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product</label>
-              <Select value={form.product_id} onValueChange={(v) => setForm({ ...form, product_id: v })}>
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Select product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products?.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} — {p.schools?.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-auto min-h-10 w-full justify-between border-border bg-background px-3 py-2 text-left font-normal"
+                  >
+                    <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                      <span className={selectedProduct ? "truncate text-sm text-foreground" : "truncate text-sm text-muted-foreground"}>
+                        {selectedProduct?.name ?? "Select product"}
+                      </span>
+                      {selectedProduct ? (
+                        <span className="truncate text-[11px] tracking-[0.08em] text-muted-foreground">
+                          {selectedProduct.className} • {selectedProduct.genderLabel} • {selectedProduct.schoolName}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          Search by name, class, gender, or school
+                        </span>
+                      )}
+                    </span>
+                    <ChevronDown className="ml-3 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[32rem] max-w-[calc(100vw-2rem)] p-0" sideOffset={8}>
+                  <Command shouldFilter>
+                    <CommandInput placeholder="Search products, class, gender, or school" />
+                    <CommandList className="max-h-80">
+                      <CommandEmpty>No products found.</CommandEmpty>
+                      {groupedProductOptions.map((group) => (
+                        <CommandGroup key={group.schoolName} heading={group.schoolName}>
+                          {group.options.map((option) => (
+                            <CommandItem
+                              key={option.id}
+                              value={option.searchText}
+                              keywords={[option.name, option.className, option.genderLabel, option.genderValue, option.schoolName]}
+                              onSelect={() => {
+                                setForm((current) => ({ ...current, product_id: option.id }));
+                                setProductPickerOpen(false);
+                              }}
+                            >
+                              <div className="flex w-full items-start gap-3">
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                  <div className="truncate font-medium text-foreground">{option.name}</div>
+                                  <div className="truncate text-xs text-muted-foreground">
+                                    {option.className} • {option.genderLabel} • {option.schoolName}
+                                  </div>
+                                </div>
+                                {form.product_id === option.id && <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ))}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {selectedProductPreview && (
+                <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  {selectedProductPreview}
+                </div>
+              )}
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size</label>
               <Input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} className="h-10" placeholder="30" />
-            </div>
-            <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Initial Stock</label>
-              <Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="h-10" placeholder="100" />
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Price Override (optional)</label>
@@ -890,6 +1078,9 @@ const ProductVariantsPage = () => {
           <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
             {editing ? "Update Variant" : "Create Variant"}
           </Button>
+          <p className="text-center text-[10px] text-muted-foreground">
+            Inventory is managed only from branch inventory. Use the stock adjustment flow after saving.
+          </p>
         </DialogContent>
       </Dialog>
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { logActivity } from "@/lib/activity-log";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useCatalogFilters } from "@/hooks/useCatalogFilters";
+import { ALL_FILTER_VALUE } from "@/lib/storefront";
 
 const ProductSegregationPage = () => {
   const queryClient = useQueryClient();
@@ -38,9 +40,10 @@ const ProductSegregationPage = () => {
     is_required: false,
   });
 
-  const [schoolFilter, setSchoolFilter] = useState("all");
-  const [classFilter, setClassFilter] = useState("all");
-  const [genderFilter, setGenderFilter] = useState("all");
+  const { filters, replaceFilters, updateFilter } = useCatalogFilters();
+  const schoolFilter = filters.school;
+  const classFilter = filters.class;
+  const genderFilter = filters.gender;
 
   const { data: schools } = useQuery({
     queryKey: ["all-schools"],
@@ -91,17 +94,23 @@ const ProductSegregationPage = () => {
 
   const filteredClassesForFilter = useMemo(() => {
     if (!classes) return [];
-    if (schoolFilter === "all") return classes;
+    if (schoolFilter === ALL_FILTER_VALUE) return classes;
     return classes.filter((cls) => cls.school_id === schoolFilter);
   }, [classes, schoolFilter]);
+
+  useEffect(() => {
+    if (classFilter !== ALL_FILTER_VALUE && !filteredClassesForFilter.some((schoolClass) => schoolClass.id === classFilter)) {
+      replaceFilters({ class: ALL_FILTER_VALUE });
+    }
+  }, [classFilter, filteredClassesForFilter, replaceFilters]);
 
   const filteredAssignments = useMemo(() => {
     if (!assignments) return [];
     return assignments
       .filter((a) => {
-        if (schoolFilter !== "all" && a.school_id !== schoolFilter) return false;
-        if (classFilter !== "all" && a.class_id !== classFilter) return false;
-        if (genderFilter !== "all" && a.gender !== genderFilter) return false;
+        if (schoolFilter !== ALL_FILTER_VALUE && a.school_id !== schoolFilter) return false;
+        if (classFilter !== ALL_FILTER_VALUE && a.class_id !== classFilter) return false;
+        if (genderFilter !== ALL_FILTER_VALUE && a.gender !== genderFilter) return false;
         return true;
       })
       .sort((a, b) => a.display_order - b.display_order);
@@ -271,10 +280,10 @@ const ProductSegregationPage = () => {
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
         <div className="w-48">
-          <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+          <Select value={schoolFilter} onValueChange={(value) => updateFilter("school", value)}>
             <SelectTrigger><SelectValue placeholder="All Schools" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Schools</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Schools</SelectItem>
               {schools?.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
               ))}
@@ -282,10 +291,10 @@ const ProductSegregationPage = () => {
           </Select>
         </div>
         <div className="w-48">
-          <Select value={classFilter} onValueChange={setClassFilter}>
+          <Select value={classFilter} onValueChange={(value) => updateFilter("class", value)}>
             <SelectTrigger><SelectValue placeholder="All Classes" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Classes</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Classes</SelectItem>
               {filteredClassesForFilter.map((c) => (
                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
@@ -293,10 +302,10 @@ const ProductSegregationPage = () => {
           </Select>
         </div>
         <div className="w-48">
-          <Select value={genderFilter} onValueChange={setGenderFilter}>
+          <Select value={genderFilter} onValueChange={(value) => updateFilter("gender", value)}>
             <SelectTrigger><SelectValue placeholder="All Genders" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Genders</SelectItem>
+              <SelectItem value={ALL_FILTER_VALUE}>All Genders</SelectItem>
               <SelectItem value="Male">Boys</SelectItem>
               <SelectItem value="Female">Girls</SelectItem>
               <SelectItem value="Unisex">Unisex</SelectItem>

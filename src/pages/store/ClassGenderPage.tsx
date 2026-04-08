@@ -1,10 +1,11 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 
 const ClassGenderPage = () => {
   const { slug, classSlug } = useParams<{ slug: string; classSlug: string }>();
+  const navigate = useNavigate();
   const ctxSchool = useSchoolContext((s) => s.school);
   const schoolId = ctxSchool?.id ?? null;
 
@@ -41,9 +42,16 @@ const ClassGenderPage = () => {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
+    <div className="store-shell">
+      <div
+        onClick={() => navigate(-1)}
+        className="mb-6 cursor-pointer text-sm tracking-wide text-gray-500 hover:text-black transition"
+      >
+        ← Back
+      </div>
+
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-muted-foreground mb-12 flex-wrap">
+      <nav className="store-breadcrumb">
         <Link to="/store" className="hover:text-foreground transition-colors">All Schools</Link>
         <span>/</span>
         <Link to={`/store/school/${slug}`} className="hover:text-foreground transition-colors">{school?.name ?? "…"}</Link>
@@ -51,10 +59,10 @@ const ClassGenderPage = () => {
         <span className="text-foreground">{cls?.name ?? "…"}</span>
       </nav>
 
-      <h1 className="text-2xl md:text-3xl font-extralight tracking-[0.1em] uppercase mb-2">
+      <h1 className="store-title mb-2">
         {cls?.name ?? "…"}
       </h1>
-      <p className="text-sm text-muted-foreground mb-12">Select gender</p>
+      <p className="store-subtitle mb-12">Select gender</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl">
         {genders.map((g) => (

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Minus, Plus, ShoppingBag, X } from "lucide-react";
+import { useStudentProfile } from "@/lib/student-profile";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -11,6 +12,11 @@ const CartPage = () => {
   const { items, updateQuantity, removeItem, total } = useCart();
   const navigate = useNavigate();
   const [removingIds, setRemovingIds] = useState<string[]>([]);
+  const profile = useStudentProfile((state) => state.profile);
+
+  const continueShoppingPath = profile
+    ? `/store/school/${profile.schoolSlug}/class/${profile.classSlug}/gender/${profile.gender}`
+    : "/store";
 
   const subtotal = useMemo(() => total(), [total, items]);
   const taxes = 0;
@@ -38,7 +44,7 @@ const CartPage = () => {
     <div className="max-w-7xl mx-auto px-6 py-10 md:py-12">
       <motion.button
         type="button"
-        onClick={() => navigate("/store")}
+        onClick={() => navigate(continueShoppingPath)}
         className="mb-8 inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground"
         whileHover={{ opacity: 0.78 }}
         transition={{ duration: 0.2, ease: INTERACTION_EASE }}
@@ -72,7 +78,7 @@ const CartPage = () => {
           >
             <Button
               variant="outline"
-              onClick={() => navigate("/store")}
+              onClick={() => navigate(continueShoppingPath)}
               className="h-12 px-8 text-xs uppercase tracking-[0.2em] transition-opacity hover:opacity-85"
             >
               Continue Shopping

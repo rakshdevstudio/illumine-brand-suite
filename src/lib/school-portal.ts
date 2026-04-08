@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isLowStock } from "@/lib/inventory";
 import { extractOrderStudentMeta } from "@/lib/portal-dashboard";
 import { logger } from "@/lib/logger";
+import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 type OrderRow = Database["public"]["Tables"]["orders"]["Row"];
 type OrderNoteRow = Database["public"]["Tables"]["order_notes"]["Row"];
@@ -293,7 +294,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
   if (orderedVariantIds.length) {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("id, product_id, size, stock, low_stock_threshold, status")
+      .select("id, product_id, size, low_stock_threshold, status")
       .in("id", orderedVariantIds);
 
     if (error) {
@@ -322,7 +323,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
   if (activeScopedProductIds.size) {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("id, product_id, size, stock, low_stock_threshold, status")
+      .select("id, product_id, size, low_stock_threshold, status")
       .in("product_id", [...activeScopedProductIds]);
 
     if (error) {
@@ -331,6 +332,16 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
       inventoryVariants = data ?? [];
     }
   }
+
+  const allVariantIds = Array.from(
+    new Set(
+      [...orderedVariants, ...inventoryVariants]
+        .map((variant) => variant.id)
+        .filter((variantId): variantId is string => typeof variantId === "string" && variantId.length > 0),
+    ),
+  );
+
+  const { stockByVariant } = await fetchGlobalStockByVariants(allVariantIds);
 
   const productById = new Map<string, Pick<ProductRow, "id" | "name" | "school_id" | "class_id" | "status">>(
     dedupeById([
@@ -344,7 +355,13 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
     dedupeById([
       ...orderedVariants,
       ...inventoryVariants,
-    ]).map((variant) => [variant.id, variant]),
+    ]).map((variant) => [
+      variant.id,
+      {
+        ...variant,
+        stock: Number(stockByVariant.get(variant.id) ?? 0),
+      },
+    ]),
   );
 
   const notesByOrderId = orderNotes.reduce((map, note) => {
@@ -399,7 +416,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
     })
     .filter((order) => orderMatchesSchool(order, schoolId, schoolMatchProductIds, order.order_items));
 
-  const lowStockItems = inventoryVariants
+  const lowStockItems = [...variantById.values()]
     .filter((variant) => variant.status === "active")
     .filter((variant) => isLowStock(Number(variant.stock ?? 0), variant.low_stock_threshold))
     .map((variant) => {

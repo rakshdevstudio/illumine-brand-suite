@@ -1,18 +1,26 @@
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { getDisplayImage } from "@/lib/product-images";
 import { useStudentProfile } from "@/lib/student-profile";
-import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
 import { logger } from "@/lib/logger";
+import {
+  buildStoreBrowseHref,
+  getProductContextSummary,
+  getStoreGenderLabel,
+  normalizeStorefrontProduct,
+  sortSizes,
+  type StorefrontProduct,
+} from "@/lib/storefront";
 
 const INTERACTION_EASE = [0.22, 1, 0.36, 1] as const;
 
 const getProductGalleryImages = (product: any) => {
-  const images = [...((product?.product_images as any[]) ?? [])].sort((a, b) => {
+  const sourceImages = (product?.product_images as any[]) ?? (product?.productImages as any[]) ?? [];
+  const images = [...sourceImages].sort((a, b) => {
     if (a.is_primary && !b.is_primary) return -1;
     if (!a.is_primary && b.is_primary) return 1;
     return (a.sort_order ?? 0) - (b.sort_order ?? 0);
@@ -28,14 +36,14 @@ const getProductGalleryImages = (product: any) => {
 
 const ClassProductsPage = () => {
   const { slug, classSlug, gender } = useParams<{ slug: string; classSlug: string; gender: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const setProfile = useStudentProfile((s) => s.setProfile);
   const debugMode = searchParams.get("debug") === "true";
   const ctxSchool = useSchoolContext((s) => s.school);
   const schoolId = ctxSchool?.id ?? null;
 
-  const genderLabel = gender === "boys" ? "Boys" : gender === "girls" ? "Girls" : "Unisex";
-  const genderDb = gender === "boys" ? "Male" : gender === "girls" ? "Female" : "Unisex";
+  const genderLabel = getStoreGenderLabel(gender);
 
   const { data: school } = useQuery({
     queryKey: ["school", schoolId],
@@ -81,7 +89,7 @@ const ClassProductsPage = () => {
   }, [school, cls, slug, classSlug, gender, setProfile]);
 
   const { data: products, isLoading, isError, error } = useQuery({
-    queryKey: ["class-products", schoolId, cls?.id, genderDb],
+    queryKey: ["class-products", schoolId, cls?.id, genderLabel],
     enabled: !!schoolId && !!cls?.id,
     queryFn: async () => {
       const id = requireSchoolId();
@@ -89,67 +97,106 @@ const ClassProductsPage = () => {
       const { data, error: queryError } = await db.rpc("get_store_class_products", {
         p_school_id: id,
         p_class_id: cls!.id,
-        p_gender: genderDb,
+        p_gender: genderLabel === "Boys" ? "Male" : genderLabel === "Girls" ? "Female" : "Unisex",
       });
 
       if (queryError) {
         logger.error("Strict store RPC failed", {
           schoolId: id,
           classId: cls!.id,
-          gender: genderDb,
+          gender: genderLabel,
           error: queryError,
         });
         throw queryError;
       }
 
-      return (data ?? []).map((product: any) => ({
-        ...product,
-        product_images: Array.isArray(product.product_images) ? product.product_images : [],
-        product_variants: (Array.isArray(product.product_variants) ? product.product_variants : [])
-          .filter((v: any) => String(v.status ?? "").toLowerCase() === "active")
-          .map((v: any) => ({
-            ...v,
-            effective_price: Number(v.price_override ?? product.price ?? 0),
-          })),
-      }));
+      const normalizedProducts = (data ?? []).map((product: any) => normalizeStorefrontProduct(product));
+
+      if (normalizedProducts.length === 0) {
+        return normalizedProducts;
+      }
+
+      const productIds = normalizedProducts.map((product: StorefrontProduct) => product.id);
+      const { data: legacyVariantRows, error: legacyVariantError } = await db
+        .from("product_variants")
+        .select("id, product_id, size, sku, status, low_stock_threshold, price_override, stock")
+        .in("product_id", productIds)
+        .eq("status", "active");
+
+      if (legacyVariantError) {
+        logger.warn("Legacy variant stock fallback query failed", {
+          schoolId: id,
+          classId: cls!.id,
+          gender: genderLabel,
+          error: legacyVariantError,
+        });
+        return normalizedProducts;
+      }
+
+      const variantsByProductId = new Map<string, any[]>();
+      (legacyVariantRows ?? []).forEach((variant: any) => {
+        const list = variantsByProductId.get(variant.product_id) ?? [];
+        list.push(variant);
+        variantsByProductId.set(variant.product_id, list);
+      });
+
+      return normalizedProducts.map((product: StorefrontProduct) => {
+        const strictTotalStock = product.productVariants.reduce(
+          (sum, variant) => sum + Number(variant.availableStock ?? 0),
+          0,
+        );
+        const legacyVariants = variantsByProductId.get(product.id) ?? [];
+        const legacyTotalStock = legacyVariants.reduce(
+          (sum, variant) => sum + Math.max(0, Number(variant.stock ?? 0)),
+          0,
+        );
+
+        if (strictTotalStock > 0 || legacyTotalStock <= 0) {
+          return product;
+        }
+
+        const mergedVariants = legacyVariants
+          .map((variant) => ({
+            id: String(variant.id),
+            productId: String(variant.product_id),
+            size: String(variant.size ?? "default"),
+            sku: typeof variant.sku === "string" ? variant.sku : null,
+            effectivePrice: Number(variant.price_override ?? product.price ?? 0),
+            availableStock: Math.max(0, Number(variant.stock ?? 0)),
+            lowStockThreshold:
+              typeof variant.low_stock_threshold === "number" ? variant.low_stock_threshold : null,
+            status: String(variant.status ?? "active"),
+          }))
+          .sort((left, right) => sortSizes(left.size, right.size));
+
+        return {
+          ...product,
+          productVariants: mergedVariants,
+        };
+      });
     },
   });
-
-  const allVariantIds = useMemo<string[]>(
-    () =>
-      Array.from(
-        new Set(
-          (products ?? []).flatMap((product: any) =>
-            (product.product_variants ?? [])
-              .map((variant: any) => variant.id)
-              .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
-          )
-        )
-      ),
-    [products]
-  );
-
-  const { data: variantStockEntries } = useQuery({
-    queryKey: ["store-class-products-global-inventory", allVariantIds.join(",")],
-    enabled: allVariantIds.length > 0,
-    queryFn: async () => {
-      const { stockByVariant } = await fetchGlobalStockByVariants(allVariantIds);
-      return Array.from(stockByVariant.entries());
-    },
-  });
-
-  const branchStockByVariant = useMemo(
-    () => new Map((variantStockEntries ?? []).map(([variantId, stock]) => [variantId, Number(stock ?? 0)])),
-    [variantStockEntries]
-  );
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
 
+  const browseContextHref = buildStoreBrowseHref({
+    schoolSlug: slug ?? null,
+    classSlug: classSlug ?? null,
+    gender: gender === "boys" || gender === "girls" || gender === "unisex" ? gender : null,
+  });
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-14 md:py-16">
+    <div className="store-shell-wide">
+      <div
+        onClick={() => navigate(-1)}
+        className="mb-6 cursor-pointer text-sm tracking-wide text-gray-500 hover:text-black transition"
+      >
+        ← Back
+      </div>
+
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-muted-foreground mb-14 flex-wrap">
+      <nav className="store-breadcrumb">
         <Link to="/store" className="hover:text-foreground transition-colors">All Schools</Link>
         <span>/</span>
         <Link to={`/store/school/${slug}`} className="hover:text-foreground transition-colors">{school?.name ?? "…"}</Link>
@@ -169,10 +216,10 @@ const ClassProductsPage = () => {
         </div>
       )}
 
-      <h1 className="text-3xl md:text-4xl font-extralight tracking-[0.12em] uppercase mb-3">
+      <h1 className="store-title mb-3 md:text-4xl">
         {cls?.name ?? "…"} — {genderLabel}
       </h1>
-      <p className="text-sm text-muted-foreground mb-16 md:mb-20">{school?.name ?? ""}</p>
+      <p className="store-subtitle mb-12 md:mb-16">{school?.name ?? ""}</p>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-14 md:gap-y-16">
@@ -194,21 +241,21 @@ const ClassProductsPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-14 md:gap-y-16">
-          {products.map((product, index) => {
-            const totalStock = (product.product_variants ?? []).reduce(
-              (sum: number, variant: any) => sum + Number(branchStockByVariant.get(variant.id) ?? 0),
-              0
+          {(products as StorefrontProduct[]).map((product, index) => {
+            const totalStock = product.productVariants.reduce(
+              (sum: number, variant) => sum + Number(variant.availableStock ?? 0),
+              0,
             );
-            const effectivePrices = (product.product_variants ?? [])
-              .map((v: any) => Number(v.effective_price ?? product.price ?? 0))
+            const effectivePrices = product.productVariants
+              .map((v) => Number(v.effectivePrice ?? product.price ?? 0))
               .filter((n: number) => Number.isFinite(n) && n >= 0);
             const galleryImages = getProductGalleryImages(product as any);
             const primaryImage = galleryImages[0] || "/placeholder.svg";
             const secondaryImage = galleryImages[1] && galleryImages[1] !== primaryImage ? galleryImages[1] : null;
             const sizes = Array.from(
               new Set(
-                (product.product_variants ?? [])
-                  .map((variant: any) => variant.size)
+                product.productVariants
+                  .map((variant) => variant.size)
                   .filter((size: string | null) => Boolean(size))
               )
             ) as string[];
@@ -234,7 +281,7 @@ const ClassProductsPage = () => {
                 }}
                 style={{ willChange: "transform, opacity" }}
               >
-                <Link to={`/store/product/${product.id}`} className="block">
+                <Link to={`/store/product/${product.id}${browseContextHref}`} className="block">
                   <motion.article
                     initial="rest"
                     animate="rest"
@@ -331,7 +378,7 @@ const ClassProductsPage = () => {
                             {sizes.slice(0, 6).map((size) => (
                               <span
                                 key={size}
-                                className="rounded-full border border-white/65 bg-white/20 px-2.5 py-1 text-[10px] tracking-[0.12em] uppercase text-white"
+                                className="rounded-full border border-black/10 bg-white/95 px-2.5 py-1 text-[10px] tracking-[0.12em] uppercase text-foreground shadow-sm"
                               >
                                 {size}
                               </span>
@@ -346,6 +393,9 @@ const ClassProductsPage = () => {
                     </div>
 
                     <div className="space-y-1.5 px-1">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        {getProductContextSummary(product)}
+                      </p>
                       <h3 className="text-[15px] font-medium tracking-wide leading-snug">
                         {product.name}
                       </h3>

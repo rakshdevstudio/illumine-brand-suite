@@ -30,6 +30,22 @@ import { logger } from "@/lib/logger";
 const defaultCategories = ["Shirt", "Pant", "Blazer", "Tie", "Skirt", "Sweater"];
 const genders = ["Male", "Female", "Unisex"];
 
+type VariantDraft = {
+  tempId: string;
+  size: string;
+  initialStock: string;
+  lowStockThreshold: string;
+  priceOverride: string;
+};
+
+const createVariantDraft = (): VariantDraft => ({
+  tempId: crypto.randomUUID(),
+  size: "",
+  initialStock: "0",
+  lowStockThreshold: "5",
+  priceOverride: "",
+});
+
 const fieldLabels: Record<string, string> = {
   name: "Name",
   category: "Category",
@@ -38,7 +54,14 @@ const fieldLabels: Record<string, string> = {
   school_id: "School",
   class_id: "Class",
   gender: "Gender",
+  size_chart_title: "Size Chart Title",
+  size_chart_notes: "Size Chart Notes",
   status: "Status",
+};
+
+const isMissingColumnError = (error: any, columnName: string) => {
+  const message = String(error?.message ?? "").toLowerCase();
+  return error?.code === "PGRST204" || message.includes(columnName.toLowerCase());
 };
 
 const ProductsPage = () => {
@@ -63,19 +86,47 @@ const ProductsPage = () => {
     school_id: "",
     class_id: "",
     gender: "Unisex",
+    size_chart_title: "",
+    size_chart_notes: "",
   });
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([createVariantDraft()]);
+  const [inventoryBranchId, setInventoryBranchId] = useState("");
 
   const { data: products, isLoading } = useQuery<any[]>({
     queryKey: ["admin-products-list", viewMode],
     queryFn: async () => {
       const client = supabase as any;
-      const { data, error } = await client
-        .from("products")
-        .select("*, schools(name, slug), classes(name), product_images(*)")
-        .eq("is_active", viewMode === "active")
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
+      const baseQuery = () =>
+        client
+          .from("products")
+          .select("*, schools(name, slug), classes(name), product_images(*)")
+          .order("name");
+
+      const deletedAtAttempt = viewMode === "archived"
+        ? await baseQuery().not("deleted_at", "is", null)
+        : await baseQuery().is("deleted_at", null);
+
+      if (!deletedAtAttempt.error) {
+        return deletedAtAttempt.data ?? [];
+      }
+
+      if (!isMissingColumnError(deletedAtAttempt.error, "deleted_at")) {
+        throw deletedAtAttempt.error;
+      }
+
+      logger.warn("Products query fallback: deleted_at column missing, using is_active lifecycle field", {
+        viewMode,
+        error: deletedAtAttempt.error,
+      });
+
+      const isActiveAttempt = await baseQuery()
+        .eq("is_active", viewMode !== "archived");
+
+      if (!isActiveAttempt.error) {
+        return isActiveAttempt.data ?? [];
+      }
+
+      throw isActiveAttempt.error;
     },
   });
 
@@ -94,6 +145,18 @@ const ProductsPage = () => {
       const { data, error } = await supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order");
       if (error) throw error;
       return data;
+    },
+  });
+
+  const { data: branches } = useQuery({
+    queryKey: ["admin-branches-select"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("id, name, is_active")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -136,6 +199,22 @@ const ProductsPage = () => {
     ]);
   };
 
+  const resetProductForm = () => {
+    setForm({
+      name: "",
+      category: "",
+      price: "",
+      description: "",
+      school_id: "",
+      class_id: "",
+      gender: "Unisex",
+      size_chart_title: "",
+      size_chart_notes: "",
+    });
+    setVariantDrafts([createVariantDraft()]);
+    setInventoryBranchId((branches ?? []).find((branch: any) => branch.is_active !== false)?.id ?? "");
+  };
+
   const handleSave = async () => {
     if (!form.name || !form.category || !form.price) {
       toast.error("Please fill all required fields");
@@ -146,6 +225,36 @@ const ProductsPage = () => {
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       toast.error("Please enter a valid base price");
       return;
+    }
+
+    if (!editing) {
+      const normalizedDrafts = variantDrafts
+        .map((draft) => ({
+          ...draft,
+          size: draft.size.trim(),
+        }))
+        .filter((draft) => draft.size.length > 0);
+
+      if (normalizedDrafts.length === 0) {
+        toast.error("Add at least one size to create a product");
+        return;
+      }
+
+      const duplicateSizes = normalizedDrafts.filter(
+        (draft, index, drafts) =>
+          drafts.findIndex((current) => current.size.toLowerCase() === draft.size.toLowerCase()) !== index,
+      );
+
+      if (duplicateSizes.length > 0) {
+        toast.error("Each size can only be added once");
+        return;
+      }
+
+      const requiresInventoryBranch = normalizedDrafts.some((draft) => Number(draft.initialStock || 0) > 0);
+      if (requiresInventoryBranch && !inventoryBranchId) {
+        toast.error("Select the branch that should receive the initial stock");
+        return;
+      }
     }
 
     try {
@@ -159,6 +268,8 @@ const ProductsPage = () => {
         base_price: parsedPrice,
         description: form.description.trim() || null,
         is_universal: true,
+        size_chart_title: form.size_chart_title.trim() || null,
+        size_chart_notes: form.size_chart_notes.trim() || null,
       };
 
       let savedProductId: string | null = editing?.id ?? null;
@@ -175,6 +286,8 @@ const ProductsPage = () => {
           { field: "school_id", oldValue: editing.school_id ?? null, newValue: payload.school_id ?? null },
           { field: "class_id", oldValue: editing.class_id ?? null, newValue: payload.class_id ?? null },
           { field: "gender", oldValue: editing.gender ?? "Unisex", newValue: payload.gender },
+          { field: "size_chart_title", oldValue: editing.size_chart_title ?? null, newValue: payload.size_chart_title ?? null },
+          { field: "size_chart_notes", oldValue: editing.size_chart_notes ?? null, newValue: payload.size_chart_notes ?? null },
         ].filter((change) => String(change.oldValue ?? "") !== String(change.newValue ?? ""));
 
         await Promise.all(
@@ -204,22 +317,51 @@ const ProductsPage = () => {
         savedProductId = created?.id ?? null;
 
         if (savedProductId) {
-          const { error: variantError } = await supabase.from("product_variants").insert({
-            product_id: savedProductId,
-            size: "default",
-            stock: 0,
-            price_override: null,
-          });
+          const normalizedDrafts = variantDrafts
+            .map((draft) => ({
+              size: draft.size.trim(),
+              initialStock: Math.max(0, Number(draft.initialStock || 0)),
+              lowStockThreshold: Math.max(0, Number(draft.lowStockThreshold || 0)),
+              priceOverride: draft.priceOverride.trim() ? Number(draft.priceOverride) : null,
+            }))
+            .filter((draft) => draft.size.length > 0);
+
+          const { data: createdVariants, error: variantError } = await supabase
+            .from("product_variants")
+            .insert(
+              normalizedDrafts.map((draft) => ({
+                product_id: savedProductId,
+                size: draft.size,
+                price_override: draft.priceOverride,
+                low_stock_threshold: draft.lowStockThreshold,
+              })),
+            )
+            .select("id, size");
 
           if (variantError) throw variantError;
-        }
 
-        if (savedProductId) {
+          for (const draft of normalizedDrafts) {
+            if (!inventoryBranchId || draft.initialStock <= 0) continue;
+            const createdVariant = (createdVariants ?? []).find((variant: any) => variant.size === draft.size);
+            if (!createdVariant?.id) continue;
+
+            const { error: stockError } = await (supabase as any).rpc("apply_inventory_movement", {
+              p_branch_id: inventoryBranchId,
+              p_variant_id: createdVariant.id,
+              p_type: "IN",
+              p_quantity: draft.initialStock,
+              p_reference_type: "MANUAL",
+              p_reason: "Initial stock seeded during product creation",
+            });
+
+            if (stockError) throw stockError;
+          }
+
           await logActivity({
             actionType: "PRODUCT_CREATED",
             entityType: "product",
             entityId: savedProductId,
-            description: `Admin created product \"${payload.name}\"`,
+            description: `Admin created product "${payload.name}" with ${normalizedDrafts.length} size option${normalizedDrafts.length === 1 ? "" : "s"}`,
             performedBy: user?.id,
           });
         }
@@ -254,7 +396,7 @@ const ProductsPage = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-variants"] });
       setDialogOpen(false);
       setEditing(null);
-      setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
+      resetProductForm();
     } catch (err: any) {
       logger.error("Failed to save product", err);
       toast.error(err?.message || "Failed to save product");
@@ -267,7 +409,7 @@ const ProductsPage = () => {
     }
 
     try {
-      if (archiveTarget.is_active) {
+      if (!archiveTarget.archived) {
         await archiveProduct({ productId: archiveTarget.id });
         toast.success("Product archived");
       } else {
@@ -320,13 +462,17 @@ const ProductsPage = () => {
       school_id: product.school_id ?? "",
       class_id: product.class_id ?? "",
       gender: product.gender ?? "Unisex",
+      size_chart_title: product.size_chart_title ?? "",
+      size_chart_notes: product.size_chart_notes ?? "",
     });
+    setVariantDrafts([createVariantDraft()]);
+    setInventoryBranchId((branches ?? []).find((branch: any) => branch.is_active !== false)?.id ?? "");
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: "", category: "", price: "", description: "", school_id: "", class_id: "", gender: "Unisex" });
+    resetProductForm();
     setDialogOpen(true);
   };
 
@@ -523,11 +669,11 @@ const ProductsPage = () => {
                   <TableCell className="text-sm">{formatPrice((product as any).base_price ?? product.price)}</TableCell>
                   <TableCell>
                     <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                      product.is_active === false
+                      product.archived
                         ? "border-amber-200 text-amber-700"
                         : "border-border text-foreground"
                     }`}>
-                      {product.is_active === false ? "archived" : "active"}
+                      {product.archived ? "archived" : "active"}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -539,7 +685,7 @@ const ProductsPage = () => {
                         className="text-xs"
                         onClick={() => setArchiveTarget(product)}
                       >
-                        {product.is_active === false ? "Restore" : "Archive"}
+                        {product.archived ? "Restore" : "Archive"}
                       </Button>
                       {canDelete && (
                         <Button
@@ -601,9 +747,9 @@ const ProductsPage = () => {
       <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => { if (!open) setArchiveTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{archiveTarget?.is_active === false ? "Restore Product" : "Archive Product"}</AlertDialogTitle>
+            <AlertDialogTitle>{archiveTarget?.archived ? "Restore Product" : "Archive Product"}</AlertDialogTitle>
             <AlertDialogDescription>
-              {archiveTarget?.is_active === false
+              {archiveTarget?.archived
                 ? "This will restore the product, its variants, and school mappings."
                 : "Are you sure you want to archive this product?"}
             </AlertDialogDescription>
@@ -611,7 +757,7 @@ const ProductsPage = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleArchiveConfirm}>
-              {archiveTarget?.is_active === false ? "Restore" : "Archive"}
+              {archiveTarget?.archived ? "Restore" : "Archive"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -632,22 +778,23 @@ const ProductsPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); resetProductForm(); } }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               {editing ? "Edit Product" : "Add Product"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground tracking-wide">
-              Select school/class/gender for initial mapping. Product remains a single catalog item.
+              Keep product details, size options, and initial inventory in one place.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
+          <div className="grid gap-8 py-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="space-y-4">
+              <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product Name</label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" placeholder="DPS Shirt" />
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Category</label>
               <Input
                 value={form.category}
@@ -661,8 +808,9 @@ const ProductsPage = () => {
                   <option key={c} value={c} />
                 ))}
               </datalist>
-            </div>
-            <div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School</label>
               <Select value={form.school_id} onValueChange={(v) => setForm({ ...form, school_id: v, class_id: "" })}>
                 <SelectTrigger className="h-10">
@@ -674,8 +822,8 @@ const ProductsPage = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
+                </div>
+                <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Class</label>
               <Select value={form.class_id} onValueChange={(v) => setForm({ ...form, class_id: v })}>
                 <SelectTrigger className="h-10">
@@ -687,8 +835,10 @@ const ProductsPage = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Gender</label>
               <Select value={form.gender} onValueChange={(v) => setForm({ ...form, gender: v })}>
                 <SelectTrigger className="h-10">
@@ -700,12 +850,13 @@ const ProductsPage = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
+                </div>
+                <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Base Price (₹)</label>
               <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="h-10" placeholder="1200" />
-            </div>
-            <div>
+                </div>
+              </div>
+              <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Description</label>
               <textarea
                 value={form.description}
@@ -713,7 +864,27 @@ const ProductsPage = () => {
                 className="w-full min-h-[96px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-vertical"
                 placeholder="Optional description"
               />
-            </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size Chart Title</label>
+                  <Input
+                    value={form.size_chart_title}
+                    onChange={(e) => setForm({ ...form, size_chart_title: e.target.value })}
+                    className="h-10"
+                    placeholder="e.g. Measurement Guide"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size Chart Notes</label>
+                  <Input
+                    value={form.size_chart_notes}
+                    onChange={(e) => setForm({ ...form, size_chart_notes: e.target.value })}
+                    className="h-10"
+                    placeholder="Displayed on the product page"
+                  />
+                </div>
+              </div>
 
             {/* Image uploader - only for existing products */}
             {editing && (
@@ -724,6 +895,108 @@ const ProductsPage = () => {
                 onImagesChange={refreshImages}
               />
             )}
+            </div>
+
+            {!editing ? (
+              <div className="space-y-4 rounded-2xl border border-border bg-muted/20 p-4">
+                <div>
+                  <h3 className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Sizes and Inventory</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Create every size here and seed its starting stock into one branch. Inventory remains the only stock source after creation.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Initial Stock Branch</label>
+                  <Select value={inventoryBranchId} onValueChange={setInventoryBranchId}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select active branch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(branches ?? [])
+                        .filter((branch: any) => branch.is_active !== false)
+                        .map((branch: any) => (
+                          <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3">
+                  {variantDrafts.map((variantDraft, index) => (
+                    <div key={variantDraft.tempId} className="rounded-xl border border-border bg-background p-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Size {index + 1}</p>
+                        {variantDrafts.length > 1 ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => setVariantDrafts((current) => current.filter((draft) => draft.tempId !== variantDraft.tempId))}
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Size</label>
+                          <Input
+                            value={variantDraft.size}
+                            onChange={(e) => setVariantDrafts((current) => current.map((draft) => draft.tempId === variantDraft.tempId ? { ...draft, size: e.target.value } : draft))}
+                            className="h-10"
+                            placeholder="28, 30, S"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Initial Stock</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={variantDraft.initialStock}
+                            onChange={(e) => setVariantDrafts((current) => current.map((draft) => draft.tempId === variantDraft.tempId ? { ...draft, initialStock: e.target.value } : draft))}
+                            className="h-10"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Low Stock Threshold</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={variantDraft.lowStockThreshold}
+                            onChange={(e) => setVariantDrafts((current) => current.map((draft) => draft.tempId === variantDraft.tempId ? { ...draft, lowStockThreshold: e.target.value } : draft))}
+                            className="h-10"
+                            placeholder="5"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Price Override</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={variantDraft.priceOverride}
+                            onChange={(e) => setVariantDrafts((current) => current.map((draft) => draft.tempId === variantDraft.tempId ? { ...draft, priceOverride: e.target.value } : draft))}
+                            className="h-10"
+                            placeholder="Optional"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full text-xs uppercase tracking-[0.18em]"
+                  onClick={() => setVariantDrafts((current) => [...current, createVariantDraft()])}
+                >
+                  Add Another Size
+                </Button>
+              </div>
+            ) : null}
           </div>
           <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
             {editing ? "Update Product" : "Create Product"}

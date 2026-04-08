@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useAnimationControls } from "framer-motion";
-import { Link } from "react-router-dom";
-import { ShoppingBag, User } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { House, ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
 import illumeLogo from "@/assets/logo.png";
@@ -20,6 +20,7 @@ type FlyingCartItem = {
 };
 
 const StoreHeader = () => {
+  const navigate = useNavigate();
   const items = useCart((s) => s.items);
   const count = items.reduce((s, i) => s + i.quantity, 0);
   const profile = useStudentProfile((s) => s.profile);
@@ -69,20 +70,31 @@ const StoreHeader = () => {
     <>
       <header className="bg-surface-dark border-b border-surface-dark">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/store" className="flex items-center gap-2">
-                    <img
+        <div className="flex items-center gap-4">
+          <Link to="/" className="flex items-center gap-2">
+            <img
             src={illumeLogo}
             alt="Illume"
             className="h-9 w-auto"
           />
-        </Link>
+          </Link>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] tracking-[0.2em] uppercase text-surface-dark-muted transition-colors hover:text-surface-dark-foreground"
+            aria-label="Back to store home"
+          >
+            <House className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span className="hidden sm:inline">Home</span>
+          </button>
+        </div>
 
         <div className="flex items-center gap-6">
           {school ? (
             <button
               onClick={() => {
                 clearSchool();
-                window.location.href = "/shop-by-school";
+                navigate("/shop-by-school");
               }}
               className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors flex items-center gap-2"
             >

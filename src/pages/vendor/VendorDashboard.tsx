@@ -14,6 +14,7 @@ import {
   useResolvedSchoolScope,
 } from "@/lib/portal-dashboard";
 import { isLowStock } from "@/lib/inventory";
+import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 
 const VendorDashboard = () => {
   const { user, isVendor, hasAccess, loading, signOut } = useAuth();
@@ -32,7 +33,7 @@ const VendorDashboard = () => {
 
       let productsQuery = supabase
         .from("products")
-        .select("id, name, school_id, product_variants(id, stock, low_stock_threshold)")
+        .select("id, name, school_id, product_variants(id, low_stock_threshold)")
         .eq("status", "active")
         .order("name");
 
@@ -48,6 +49,18 @@ const VendorDashboard = () => {
 
       if (ordersError) throw ordersError;
       if (productsError) throw productsError;
+
+      const variantIds = Array.from(
+        new Set(
+          (products ?? []).flatMap((product: any) =>
+            (product.product_variants ?? [])
+              .map((variant: any) => variant.id)
+              .filter((variantId: unknown): variantId is string => typeof variantId === "string" && variantId.length > 0),
+          ),
+        ),
+      );
+
+      const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
 
       const completedOrders = (orders ?? []).filter((order: any) => order.status !== "CANCELLED");
 
@@ -67,7 +80,7 @@ const VendorDashboard = () => {
       );
       const lowStockCount = (products ?? []).reduce((count: number, product: any) => {
         const lowStockVariants = (product.product_variants ?? []).filter((variant: any) =>
-          isLowStock(Number(variant.stock ?? 0), variant.low_stock_threshold),
+          isLowStock(Number(stockByVariant.get(variant.id) ?? 0), variant.low_stock_threshold),
         );
 
         return count + lowStockVariants.length;

@@ -569,7 +569,7 @@ const StorePage = () => {
       </section>
 
       {/* ── WHAT WE OFFER ────────────────────────────────────────── */}
-      <section ref={offerSectionRef} className="border-t border-border px-6 py-10 md:py-16 lg:py-20 overflow-hidden">
+      <section ref={offerSectionRef} className="relative border-t border-border px-6 py-10 md:py-16 lg:py-20 overflow-hidden">
         <div className="max-w-5xl mx-auto">
           <motion.h3
             variants={offerHeadingVariants}
