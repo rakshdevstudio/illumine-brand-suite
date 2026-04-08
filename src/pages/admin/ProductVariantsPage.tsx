@@ -1,19 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +18,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { Check, ChevronDown, Plus, Minus } from "lucide-react";
 import { safeQuery } from "@/lib/safeQuery";
@@ -58,6 +50,145 @@ type ProductOption = {
   classSortKey: string;
   genderSortKey: number;
   searchText: string;
+};
+
+const ProductPickerDropdown = ({
+  isOpen,
+  onClose,
+  anchorRef,
+  portalContainer,
+  groupedProductOptions,
+  onSelect,
+  productFilter,
+  setProductFilter,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  anchorRef: RefObject<HTMLButtonElement | null>;
+  portalContainer: HTMLElement | null;
+  groupedProductOptions: { schoolName: string; options: ProductOption[] }[];
+  onSelect: (productId: string) => void;
+  productFilter: string;
+  setProductFilter: (filter: string) => void;
+}) => {
+  if (!isOpen || !anchorRef.current) return null;
+
+  const rect = anchorRef.current.getBoundingClientRect();
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      }}
+      className="relative z-[9999] pointer-events-auto bg-white border shadow-lg rounded-md"
+    >
+      <div className="p-2 border-b sticky top-0 bg-white z-10">
+        <Input
+          placeholder="Search products, class, gender, or school"
+          value={productFilter}
+          onChange={(e) => setProductFilter(e.target.value)}
+          className="w-full outline-none"
+        />
+      </div>
+      <div className="max-h-[50vh] overflow-y-auto overscroll-contain">
+        {groupedProductOptions.length === 0 ? (
+          <div className="text-center text-sm text-gray-500 py-4">No products found</div>
+        ) : (
+          groupedProductOptions.map(({ schoolName, options }) => (
+            <div key={schoolName}>
+              <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 sticky top-0">{schoolName}</div>
+              {options.map((option) => (
+                <div
+                  key={option.id}
+                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                  onClick={() => {
+                    onSelect(option.id);
+                    onClose();
+                  }}
+                >
+                  <div className="font-medium">{option.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {option.className} • {option.genderLabel}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </div>,
+    portalContainer ?? document.body
+  );
+};
+
+const ProductPicker = ({
+  productId,
+  onSelect,
+  portalContainer,
+  productOptions,
+  groupedProductOptions,
+}: {
+  productId: string;
+  onSelect: (id: string) => void;
+  portalContainer: HTMLElement | null;
+  productOptions: ProductOption[];
+  groupedProductOptions: { schoolName: string; options: ProductOption[] }[];
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const anchorRef = useRef<HTMLButtonElement>(null);
+
+  const selectedProduct = useMemo(() => productOptions.find((p) => p.id === productId), [productId, productOptions]);
+
+  const filteredGroups = useMemo(() => {
+    if (!filter) return groupedProductOptions;
+    const lowercasedFilter = filter.toLowerCase();
+    return groupedProductOptions
+      .map(({ schoolName, options }) => ({
+        schoolName,
+        options: options.filter((option) => option.searchText.includes(lowercasedFilter)),
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [filter, groupedProductOptions]);
+
+  return (
+    <>
+      <Button
+        ref={anchorRef}
+        variant="outline"
+        role="combobox"
+        aria-expanded={isOpen}
+        className="w-full justify-between h-10"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {selectedProduct ? (
+          <div className="flex flex-col items-start">
+            <span className="font-medium">{selectedProduct.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {selectedProduct.className} • {selectedProduct.genderLabel} • {selectedProduct.schoolName}
+            </span>
+          </div>
+        ) : (
+          "Select product"
+        )}
+        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+      </Button>
+      <ProductPickerDropdown
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        anchorRef={anchorRef}
+        portalContainer={portalContainer}
+        groupedProductOptions={filteredGroups}
+        onSelect={onSelect}
+        productFilter={filter}
+        setProductFilter={setFilter}
+      />
+    </>
+  );
 };
 
 const normalizeGenderLabel = (value: string | null | undefined) => {
@@ -120,7 +251,7 @@ const ProductVariantsPage = () => {
   const [bulkStockBranchId, setBulkStockBranchId] = useState("");
   const [bulkPriceOverride, setBulkPriceOverride] = useState("");
   const [form, setForm] = useState({ product_id: "", size: "", price_override: "" });
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const addVariantDialogContentRef = useRef<HTMLDivElement | null>(null);
   const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
@@ -718,14 +849,12 @@ const ProductVariantsPage = () => {
       size: variant.size,
       price_override: variant.price_override ? String(variant.price_override) : "",
     });
-    setProductPickerOpen(false);
     setDialogOpen(true);
   };
 
   const openCreate = () => {
     setEditing(null);
     setForm({ product_id: "", size: "", price_override: "" });
-    setProductPickerOpen(false);
     setDialogOpen(true);
   };
 
@@ -992,8 +1121,17 @@ const ProductVariantsPage = () => {
       </BulkActionBar>
 
       {/* Add/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); setProductPickerOpen(false); } }}>
-        <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <Dialog
+        modal={false}
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogOpen(false);
+            setEditing(null);
+          }
+        }}
+      >
+        <DialogContent ref={addVariantDialogContentRef} className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="text-sm font-light tracking-wide uppercase">
               {editing ? "Edit Variant" : "Add Variant"}
@@ -1001,77 +1139,24 @@ const ProductVariantsPage = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Product</label>
-              <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-auto min-h-10 w-full justify-between border-border bg-background px-3 py-2 text-left font-normal"
-                  >
-                    <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
-                      <span className={selectedProduct ? "truncate text-sm text-foreground" : "truncate text-sm text-muted-foreground"}>
-                        {selectedProduct?.name ?? "Select product"}
-                      </span>
-                      {selectedProduct ? (
-                        <span className="truncate text-[11px] tracking-[0.08em] text-muted-foreground">
-                          {selectedProduct.className} • {selectedProduct.genderLabel} • {selectedProduct.schoolName}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                          Search by name, class, gender, or school
-                        </span>
-                      )}
-                    </span>
-                    <ChevronDown className="ml-3 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[32rem] max-w-[calc(100vw-2rem)] p-0" sideOffset={8}>
-                  <Command shouldFilter>
-                    <CommandInput placeholder="Search products, class, gender, or school" />
-                    <CommandList className="max-h-80">
-                      <CommandEmpty>No products found.</CommandEmpty>
-                      {groupedProductOptions.map((group) => (
-                        <CommandGroup key={group.schoolName} heading={group.schoolName}>
-                          {group.options.map((option) => (
-                            <CommandItem
-                              key={option.id}
-                              value={option.searchText}
-                              keywords={[option.name, option.className, option.genderLabel, option.genderValue, option.schoolName]}
-                              onSelect={() => {
-                                setForm((current) => ({ ...current, product_id: option.id }));
-                                setProductPickerOpen(false);
-                              }}
-                            >
-                              <div className="flex w-full items-start gap-3">
-                                <div className="min-w-0 flex-1 space-y-0.5">
-                                  <div className="truncate font-medium text-foreground">{option.name}</div>
-                                  <div className="truncate text-xs text-muted-foreground">
-                                    {option.className} • {option.genderLabel} • {option.schoolName}
-                                  </div>
-                                </div>
-                                {form.product_id === option.id && <Check className="mt-0.5 h-4 w-4 shrink-0 text-foreground" />}
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      ))}
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {selectedProductPreview && (
-                <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  {selectedProductPreview}
-                </div>
-              )}
+              <label className="text-sm font-medium">Product</label>
+              <ProductPicker
+                productId={form.product_id}
+                onSelect={(id) => setForm((prev) => ({ ...prev, product_id: id }))}
+                portalContainer={addVariantDialogContentRef.current}
+                productOptions={productOptions}
+                groupedProductOptions={groupedProductOptions}
+              />
+              {selectedProductPreview && <p className="text-xs text-muted-foreground mt-1">{selectedProductPreview}</p>}
             </div>
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size</label>
+              <label htmlFor="size" className="text-sm font-medium">
+                Size
+              </label>
               <Input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} className="h-10" placeholder="30" />
             </div>
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Price Override (optional)</label>
+              <label className="text-sm font-medium">Price Override (optional)</label>
               <Input type="number" value={form.price_override} onChange={(e) => setForm({ ...form, price_override: e.target.value })} className="h-10" placeholder="Leave empty to use base price" />
             </div>
           </div>
@@ -1119,13 +1204,22 @@ const ProductVariantsPage = () => {
               </Select>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setAdjustAmount((a) => a - 1)}
-                className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors">
+              <button
+                onClick={() => setAdjustAmount((a) => a - 1)}
+                className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+              >
                 <Minus className="h-3 w-3" />
               </button>
-              <Input type="number" value={adjustAmount} onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)} className="w-24 text-center h-10" />
-              <button onClick={() => setAdjustAmount((a) => a + 1)}
-                className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors">
+              <Input
+                type="number"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(parseInt(e.target.value) || 0)}
+                className="w-24 text-center h-10"
+              />
+              <button
+                onClick={() => setAdjustAmount((a) => a + 1)}
+                className="w-10 h-10 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+              >
                 <Plus className="h-3 w-3" />
               </button>
             </div>
