@@ -17,9 +17,6 @@ dist-ssr
 .env.local
 .env.*.local
 
-# Lovable metadata (no longer needed)
-.lovable/
-
 # Supabase CLI temp files
 supabase/.temp/
 
