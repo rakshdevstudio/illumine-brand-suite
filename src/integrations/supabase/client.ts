@@ -19,3 +19,31 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
     detectSessionInUrl: true,
   }
 });
+
+const isInvalidRefreshTokenError = (error: unknown) => {
+  const message = String((error as { message?: string } | null)?.message ?? "").toLowerCase();
+  return message.includes("invalid refresh token") || message.includes("refresh token not found");
+};
+
+const getAuthStorageKey = () => {
+  try {
+    const host = new URL(SUPABASE_URL).host;
+    const projectRef = host.split(".")[0];
+    return `sb-${projectRef}-auth-token`;
+  } catch {
+    return null;
+  }
+};
+
+if (typeof window !== "undefined") {
+  void supabase.auth.getSession().then(async ({ error }) => {
+    if (!isInvalidRefreshTokenError(error)) return;
+
+    await supabase.auth.signOut({ scope: "local" });
+
+    const storageKey = getAuthStorageKey();
+    if (storageKey) {
+      window.localStorage.removeItem(storageKey);
+    }
+  });
+}

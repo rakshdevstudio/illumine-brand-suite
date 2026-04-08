@@ -73,7 +73,7 @@ export const deductStockAcrossBranches = async (
     if (available === 0) continue;
 
     const toDeduct = Math.min(remaining, available);
-    const { data: movementData, error: movementError } = await (supabase as any).rpc("apply_inventory_movement", {
+    const { error: movementError } = await (supabase as any).rpc("apply_inventory_movement", {
       p_branch_id: row.branch_id,
       p_variant_id: variantId,
       p_type: "OUT",
@@ -84,19 +84,7 @@ export const deductStockAcrossBranches = async (
     });
 
     if (movementError) throw movementError;
-
-    const beforeStock = Number(movementData?.before_stock ?? row.stock);
-    const afterStock = Number(movementData?.after_stock ?? Math.max(0, beforeStock - toDeduct));
-
-    await supabase.from("inventory_logs").insert({
-      product_id: productId,
-      variant_id: variantId,
-      change_type: "order",
-      quantity_change: -toDeduct,
-      previous_stock: beforeStock,
-      new_stock: afterStock,
-      order_id: orderId ?? null,
-    });
+    void productId;
 
     remaining -= toDeduct;
   }

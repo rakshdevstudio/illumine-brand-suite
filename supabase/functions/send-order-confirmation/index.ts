@@ -182,8 +182,8 @@ serve(async (req: Request) => {
   try {
     if (!RESEND_API_KEY) {
       console.error("RESEND_API_KEY is not set");
-      return new Response(JSON.stringify({ error: "Email service not configured" }), {
-        status: 500,
+      return new Response(JSON.stringify({ success: false, accepted: false, reason: "email_service_not_configured" }), {
+        status: 202,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -220,21 +220,26 @@ serve(async (req: Request) => {
         status: resendResponse.status,
         body: errorBody,
       });
-      return new Response(JSON.stringify({ error: "Failed to send email", status: resendResponse.status, detail: errorBody }), {
-        status: 502,
+      return new Response(JSON.stringify({
+        success: false,
+        accepted: false,
+        reason: "email_provider_error",
+        provider_status: resendResponse.status,
+      }), {
+        status: 202,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const result = await resendResponse.json();
     console.log("Email sent successfully", result);
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, accepted: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("Email sending failed", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
+    return new Response(JSON.stringify({ success: false, accepted: false, reason: "internal_error" }), {
+      status: 202,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
