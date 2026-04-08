@@ -239,7 +239,6 @@ const getClassRange = (classes: SchoolWithClasses["classes"]) => {
 const StorePage = () => {
   const profile = useStudentProfile((s) => s.profile);
   const clearProfile = useStudentProfile((s) => s.clearProfile);
-  const openModal = useStudentProfile((s) => s.openModal);
   const navigate = useNavigate();
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [visibleCards, setVisibleCards] = useState<Record<string, boolean>>({});
@@ -299,16 +298,6 @@ const StorePage = () => {
     const timer = setTimeout(() => navigate(profileRoute), 2500);
     return () => clearTimeout(timer);
   }, [profileRoute, bannerDismissed, navigate]);
-
-  const [checkedFirst, setCheckedFirst] = useState(false);
-  useEffect(() => {
-    if (!checkedFirst) {
-      setCheckedFirst(true);
-      // When auto redirect is disabled for development, always keep users on school selection.
-      // Saved profile data remains intact for easy re-enable later.
-      if (!profile) openModal();
-    }
-  }, [checkedFirst, profile, openModal]);
 
   const { data: schools, isLoading } = useQuery({
     queryKey: ["schools-with-classes"],
