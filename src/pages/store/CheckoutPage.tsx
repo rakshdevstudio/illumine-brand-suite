@@ -215,17 +215,19 @@ const CheckoutPage = () => {
         },
       ];
 
+      const createdOrderId = crypto.randomUUID();
       let order: any = null;
       let orderErr: any = null;
 
       for (const [index, payloadVariant] of payloadVariants.entries()) {
         const attempt = await (supabase as any)
           .from("orders")
-          .insert(payloadVariant)
-          .select()
-          .single();
+          .insert({
+            id: createdOrderId,
+            ...payloadVariant,
+          });
 
-        order = attempt.data;
+        order = { id: createdOrderId, total_amount: orderTotal };
         orderErr = attempt.error;
 
         if (!orderErr) {
