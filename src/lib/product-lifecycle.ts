@@ -140,6 +140,10 @@ export const hardDeleteProduct = async ({ productId }: ProductLifecycleInput) =>
   });
   if (response.error) {
     logger.error("Hard delete product RPC failed", response.error);
+    const message = String(response.error?.message ?? "").toLowerCase();
+    if (message.includes('relation "public.inventory" does not exist')) {
+      throw new Error("Database hard-delete RPC is outdated. Apply the latest Supabase migrations and retry.");
+    }
     throw response.error;
   }
   await ensureLifecycleActivityLogged({

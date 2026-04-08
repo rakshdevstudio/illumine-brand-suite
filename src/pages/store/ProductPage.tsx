@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { getDisplayImage } from "@/lib/product-images";
 import { emitStoreAddToCart, toAnimationRect } from "@/lib/store-interactions";
 import { requireSchoolId } from "@/lib/school-context";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   getProductContextSummary,
   normalizeStorefrontProduct,
@@ -34,7 +33,6 @@ const ProductPage = () => {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const addItem = useCart((s) => s.addItem);
   const desktopAddButtonRef = useRef<HTMLDivElement | null>(null);
   const mobileAddButtonRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +199,7 @@ const ProductPage = () => {
       price: effectivePrice,
       schoolName: product.schoolName ?? "",
       className: product.className ?? "",
-      gender: product.gender ?? "Unisex",
+      gender: product.gender,
       imageUrl: galleryImages[0] || null,
       quantity,
     });
@@ -422,25 +420,6 @@ const ProductPage = () => {
 
           <div className="mt-8 pt-8 border-t border-border">
             <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
-              Size Guide
-            </p>
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {product.sizeChartNotes || "Select your regular school uniform size. If you are between two sizes, choose the larger size for a more comfortable fit."}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSizeChartOpen(true)}
-                className="h-10 text-xs tracking-[0.18em] uppercase"
-              >
-                View Size Chart
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-8 pt-8 border-t border-border">
-            <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase mb-4">
               Shipping Information
             </p>
             {shippingSummary && (
@@ -469,36 +448,6 @@ const ProductPage = () => {
         </motion.div>
       </div>
 
-      <Dialog open={sizeChartOpen} onOpenChange={setSizeChartOpen}>
-        <DialogContent className="max-w-lg" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="text-sm font-light uppercase tracking-[0.16em]">
-              {product.sizeChartTitle || `${product.name} Size Chart`}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {product.sizeChartRows.length > 0 ? (
-              <div className="space-y-2 rounded-xl border border-border p-4">
-                {product.sizeChartRows.map((row) => (
-                  <div key={`${row.label}-${row.value}`} className="flex items-start justify-between gap-4 border-b border-border/70 py-3 last:border-b-0 last:pb-0 first:pt-0">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{row.label}</p>
-                      {row.notes ? <p className="mt-1 text-xs text-muted-foreground">{row.notes}</p> : null}
-                    </div>
-                    <p className="text-sm text-muted-foreground">{row.value}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border p-4">
-                <p className="text-sm text-muted-foreground">
-                  Measurements are not configured for this product yet. Use the listed sizes and the fit guidance on this page, or contact support if you need help choosing a size.
-                </p>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

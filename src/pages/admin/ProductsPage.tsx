@@ -54,8 +54,6 @@ const fieldLabels: Record<string, string> = {
   school_id: "School",
   class_id: "Class",
   gender: "Gender",
-  size_chart_title: "Size Chart Title",
-  size_chart_notes: "Size Chart Notes",
   status: "Status",
 };
 
@@ -85,9 +83,7 @@ const ProductsPage = () => {
     description: "",
     school_id: "",
     class_id: "",
-    gender: "Unisex",
-    size_chart_title: "",
-    size_chart_notes: "",
+    gender: "",
   });
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([createVariantDraft()]);
   const [inventoryBranchId, setInventoryBranchId] = useState("");
@@ -207,17 +203,35 @@ const ProductsPage = () => {
       description: "",
       school_id: "",
       class_id: "",
-      gender: "Unisex",
-      size_chart_title: "",
-      size_chart_notes: "",
+      gender: "",
     });
     setVariantDrafts([createVariantDraft()]);
     setInventoryBranchId((branches ?? []).find((branch: any) => branch.is_active !== false)?.id ?? "");
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.category || !form.price) {
+    if (!form.name || !form.category) {
       toast.error("Please fill all required fields");
+      return;
+    }
+
+    if (!form.price) {
+      toast.error("Price is required");
+      return;
+    }
+
+    if (!form.school_id) {
+      toast.error("School is required");
+      return;
+    }
+
+    if (!form.class_id) {
+      toast.error("Class is required");
+      return;
+    }
+
+    if (!form.gender) {
+      toast.error("Gender is required");
       return;
     }
 
@@ -264,12 +278,9 @@ const ProductsPage = () => {
         class_id: form.class_id || null,
         category: form.category.trim(),
         gender: form.gender,
-        price: parsedPrice,
-        base_price: parsedPrice,
+        price: Number(parsedPrice),
+        base_price: Number(parsedPrice),
         description: form.description.trim() || null,
-        is_universal: true,
-        size_chart_title: form.size_chart_title.trim() || null,
-        size_chart_notes: form.size_chart_notes.trim() || null,
       };
 
       let savedProductId: string | null = editing?.id ?? null;
@@ -281,13 +292,11 @@ const ProductsPage = () => {
         const changes = [
           { field: "name", oldValue: editing.name, newValue: payload.name },
           { field: "category", oldValue: editing.category, newValue: payload.category },
-          { field: "price", oldValue: Number((editing as any).base_price ?? editing.price), newValue: payload.base_price },
+          { field: "price", oldValue: Number((editing as any).base_price ?? editing.price), newValue: payload.price },
           { field: "description", oldValue: editing.description ?? null, newValue: payload.description ?? null },
           { field: "school_id", oldValue: editing.school_id ?? null, newValue: payload.school_id ?? null },
           { field: "class_id", oldValue: editing.class_id ?? null, newValue: payload.class_id ?? null },
-          { field: "gender", oldValue: editing.gender ?? "Unisex", newValue: payload.gender },
-          { field: "size_chart_title", oldValue: editing.size_chart_title ?? null, newValue: payload.size_chart_title ?? null },
-          { field: "size_chart_notes", oldValue: editing.size_chart_notes ?? null, newValue: payload.size_chart_notes ?? null },
+          { field: "gender", oldValue: editing.gender ?? "-", newValue: payload.gender },
         ].filter((change) => String(change.oldValue ?? "") !== String(change.newValue ?? ""));
 
         await Promise.all(
@@ -461,9 +470,7 @@ const ProductsPage = () => {
       description: product.description || "",
       school_id: product.school_id ?? "",
       class_id: product.class_id ?? "",
-      gender: product.gender ?? "Unisex",
-      size_chart_title: product.size_chart_title ?? "",
-      size_chart_notes: product.size_chart_notes ?? "",
+      gender: product.gender ?? "",
     });
     setVariantDrafts([createVariantDraft()]);
     setInventoryBranchId((branches ?? []).find((branch: any) => branch.is_active !== false)?.id ?? "");
@@ -536,7 +543,7 @@ const ProductsPage = () => {
       }
       const { error } = await supabase
         .from("products")
-        .update({ base_price: parsed, price: parsed })
+        .update({ price: parsed, base_price: parsed })
         .in("id", selectedIds);
       if (error) {
         toast.error("Failed to update price");
@@ -664,7 +671,7 @@ const ProductsPage = () => {
                   <TableCell className="text-sm">{product.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).schools?.name ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{(product as any).classes?.name ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{(product as any).gender ?? "Unisex"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{(product as any).gender ?? "-"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{product.category}</TableCell>
                   <TableCell className="text-sm">{formatPrice((product as any).base_price ?? product.price)}</TableCell>
                   <TableCell>
@@ -852,7 +859,7 @@ const ProductsPage = () => {
               </Select>
                 </div>
                 <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Base Price (₹)</label>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Price (₹)</label>
               <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="h-10" placeholder="1200" />
                 </div>
               </div>
@@ -865,27 +872,6 @@ const ProductsPage = () => {
                 placeholder="Optional description"
               />
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size Chart Title</label>
-                  <Input
-                    value={form.size_chart_title}
-                    onChange={(e) => setForm({ ...form, size_chart_title: e.target.value })}
-                    className="h-10"
-                    placeholder="e.g. Measurement Guide"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Size Chart Notes</label>
-                  <Input
-                    value={form.size_chart_notes}
-                    onChange={(e) => setForm({ ...form, size_chart_notes: e.target.value })}
-                    className="h-10"
-                    placeholder="Displayed on the product page"
-                  />
-                </div>
-              </div>
-
             {/* Image uploader - only for existing products */}
             {editing && (
               <ProductImageUploader

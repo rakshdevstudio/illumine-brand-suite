@@ -69,6 +69,39 @@ const normalizeInventoryDailyRow = (row: any): InventoryReportDailyRow => ({
   variant_id: String(row.variant_id),
   product_id: String(row.product_id),
   product_name: String(row.product_name || "Product"),
+  school_id: (() => {
+    if (!row.school_id) {
+      throw new Error(`Corrupt product data detected: missing school_id for product ${String(row.product_id || "unknown")}`);
+    }
+    return String(row.school_id);
+  })(),
+  school_name: (() => {
+    const value = String(row.school_name || "").trim();
+    if (!value) {
+      throw new Error(`Corrupt product data detected: missing school_name for product ${String(row.product_id || "unknown")}`);
+    }
+    return value;
+  })(),
+  class_id: (() => {
+    if (!row.class_id) {
+      throw new Error(`Corrupt product data detected: missing class_id for product ${String(row.product_id || "unknown")}`);
+    }
+    return String(row.class_id);
+  })(),
+  class_name: (() => {
+    const value = String(row.class_name || "").trim();
+    if (!value) {
+      throw new Error(`Corrupt product data detected: missing class_name for product ${String(row.product_id || "unknown")}`);
+    }
+    return value;
+  })(),
+  gender: (() => {
+    const value = String(row.gender || "").trim();
+    if (!value) {
+      throw new Error(`Corrupt product data detected: missing gender for product ${String(row.product_id || "unknown")}`);
+    }
+    return value;
+  })(),
   variant_size: String(row.variant_size || "Default"),
   opening_stock: toNumber(row.opening_stock),
   stock_in: toNumber(row.stock_in),
@@ -172,6 +205,31 @@ const buildSalesRowFromOrder = (order: any): SalesReportRow => {
 export const fetchSchoolOptions = async (): Promise<DimensionOption[]> => {
   const { data } = await safeQuery<any[]>(() => db.from("schools").select("id, name, code").order("name"), "reports/fetchSchoolOptions");
   return (data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name), secondary: row.code || null }));
+};
+
+export const fetchClassOptions = async (): Promise<DimensionOption[]> => {
+  const { data } = await safeQuery<any[]>(
+    () => db.from("classes").select("id, name, school_id, schools(name)").order("name"),
+    "reports/fetchClassOptions"
+  );
+  return (data ?? []).map((row: any) => ({
+    id: String(row.id),
+    name: String(row.name),
+    secondary: row.schools?.name ? String(row.schools.name) : null,
+  }));
+};
+
+export const fetchInventoryGenderOptions = async (): Promise<DimensionOption[]> => {
+  const { data } = await safeQuery<any[]>(() => db.from("products").select("gender"), "reports/fetchInventoryGenderOptions");
+  const values = Array.from(
+    new Set(
+      (data ?? [])
+        .map((row: any) => String(row.gender || "").trim())
+        .filter((value) => value.length > 0),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
+
+  return values.map((value) => ({ id: value, name: value, secondary: null }));
 };
 
 export const fetchProductOptions = async (): Promise<DimensionOption[]> => {
@@ -340,13 +398,18 @@ export const fetchInventoryReportRows = async (filters: InventoryReportFilters):
       .range(from, to);
 
     query = applyIdFilter(query, "product_id", filters.productIds);
+    query = applyIdFilter(query, "school_id", filters.schoolIds);
+    query = applyIdFilter(query, "class_id", filters.classIds);
+    query = applyIdFilter(query, "gender", filters.genders);
+
+    if (filters.negativeOnly) {
+      query = query.or("negative_stock_detected.eq.true,closing_stock.lt.0,current_stock.lt.0");
+    }
 
     return query;
   });
 
-  const normalized = rows.map(normalizeInventoryDailyRow);
-  if (!filters.negativeOnly) return normalized;
-  return normalized.filter((row) => row.negative_stock_detected || row.closing_stock < 0 || row.current_stock < 0);
+  return rows.map(normalizeInventoryDailyRow);
 };
 
 export const fetchInventoryAuditRows = async (variantId: string): Promise<InventoryAuditRow[]> => {
@@ -369,17 +432,22 @@ export const aggregateInventoryRows = (rows: InventoryReportDailyRow[]): Aggrega
     .slice()
     .sort((left, right) => left.movement_date.localeCompare(right.movement_date) || left.last_movement_at.localeCompare(right.last_movement_at))
     .forEach((row) => {
-      const key = row.variant_id;
+      const key = `${row.variant_id}:${row.branch_id}`;
       const current = grouped.get(key);
 
       if (!current) {
         grouped.set(key, {
           key,
           branch_id: row.branch_id,
-          branch_name: "Global",
+          branch_name: row.branch_name,
           variant_id: row.variant_id,
           product_id: row.product_id,
           product_name: row.product_name,
+          school_id: row.school_id,
+          school_name: row.school_name,
+          class_id: row.class_id,
+          class_name: row.class_name,
+          gender: row.gender,
           variant_size: row.variant_size,
           opening_stock: row.opening_stock,
           stock_in: row.stock_in,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +21,15 @@ import {
   ReportTableSkeleton,
   SmartInsightsPanel,
 } from "@/components/admin/reports/ReportUI";
-import { aggregateInventoryRows, fetchInventoryAuditRows, fetchInventoryReportRows, fetchProductOptions } from "@/lib/reports/data";
+import {
+  aggregateInventoryRows,
+  fetchClassOptions,
+  fetchInventoryAuditRows,
+  fetchInventoryGenderOptions,
+  fetchInventoryReportRows,
+  fetchProductOptions,
+  fetchSchoolOptions,
+} from "@/lib/reports/data";
 import { exportReportCsv, exportReportXlsx } from "@/lib/reports/export";
 import { formatDateTime, formatNumber, getDefaultDateRange, getRangeSpanDays, paginateRows } from "@/lib/reports/format";
 import type { AggregatedInventoryReportRow, InventoryReportFilters, ReportAlert, SmartInsight } from "@/lib/reports/types";
@@ -31,10 +40,36 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 const InventoryReportPage = () => {
   const { isChecking } = useRequireAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const parseListParam = (value: string | null) =>
+    (value ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+  const initialFilters = useMemo<InventoryReportFilters>(
+    () => ({
+      dateRange: {
+        from: searchParams.get("from") ?? getDefaultDateRange(30).from,
+        to: searchParams.get("to") ?? getDefaultDateRange(30).to,
+      },
+      productIds: parseListParam(searchParams.get("products")),
+      schoolIds: parseListParam(searchParams.get("schools")),
+      classIds: parseListParam(searchParams.get("classes")),
+      genders: parseListParam(searchParams.get("genders")),
+      negativeOnly: searchParams.get("negativeOnly") === "1",
+    }),
+    [searchParams],
+  );
+
   const [filters, setFilters] = useState<InventoryReportFilters>({
-    dateRange: getDefaultDateRange(30),
-    productIds: [],
-    negativeOnly: false,
+    dateRange: initialFilters.dateRange,
+    productIds: initialFilters.productIds,
+    schoolIds: initialFilters.schoolIds,
+    classIds: initialFilters.classIds,
+    genders: initialFilters.genders,
+    negativeOnly: initialFilters.negativeOnly,
   });
   const [page, setPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<AggregatedInventoryReportRow | null>(null);
@@ -42,6 +77,24 @@ const InventoryReportPage = () => {
   const { data: products = [], error: productsError } = useQuery({
     queryKey: ["report-products"],
     queryFn: fetchProductOptions,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: schools = [], error: schoolsError } = useQuery({
+    queryKey: ["report-schools"],
+    queryFn: fetchSchoolOptions,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: classes = [], error: classesError } = useQuery({
+    queryKey: ["report-classes"],
+    queryFn: fetchClassOptions,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: genders = [], error: gendersError } = useQuery({
+    queryKey: ["report-inventory-genders"],
+    queryFn: fetchInventoryGenderOptions,
     staleTime: 5 * 60_000,
   });
 
@@ -59,6 +112,18 @@ const InventoryReportPage = () => {
   useEffect(() => {
     setPage(1);
   }, [filters]);
+
+  useEffect(() => {
+    const next = new URLSearchParams();
+    next.set("from", filters.dateRange.from);
+    next.set("to", filters.dateRange.to);
+    if (filters.productIds.length) next.set("products", filters.productIds.join(","));
+    if (filters.schoolIds.length) next.set("schools", filters.schoolIds.join(","));
+    if (filters.classIds.length) next.set("classes", filters.classIds.join(","));
+    if (filters.genders.length) next.set("genders", filters.genders.join(","));
+    if (filters.negativeOnly) next.set("negativeOnly", "1");
+    setSearchParams(next, { replace: true });
+  }, [filters, setSearchParams]);
 
   const rows = useMemo(() => aggregateInventoryRows(dailyRows), [dailyRows]);
 
@@ -104,8 +169,14 @@ const InventoryReportPage = () => {
 
   const filtersLabel = useMemo(() => {
     const productLabel = filters.productIds.length ? `${filters.productIds.length} products` : "All products";
+    const schoolLabel = filters.schoolIds.length ? `${filters.schoolIds.length} schools` : "All schools";
+    const classLabel = filters.classIds.length ? `${filters.classIds.length} classes` : "All classes";
+    const genderLabel = filters.genders.length ? filters.genders.join(", ") : "All genders";
     return [
       `${filters.dateRange.from} to ${filters.dateRange.to}`,
+      schoolLabel,
+      classLabel,
+      genderLabel,
       productLabel,
       filters.negativeOnly ? "Negative stock only" : "All stock states",
     ].join(" | ");
@@ -114,16 +185,16 @@ const InventoryReportPage = () => {
   const exportColumns = useMemo(
     () => [
       "Product",
+      "School",
+      "Class",
+      "Gender",
       "Variant",
       "Opening Stock",
       "Stock In",
       "Stock Out",
-      "Adjustments",
       "Closing Stock",
       "Current Stock",
-      "Negative Stock",
       "Health",
-      "Days to Stockout",
     ],
     [],
   );
@@ -132,16 +203,16 @@ const InventoryReportPage = () => {
     () =>
       enrichedRows.map((row) => [
         row.product_name,
+        row.school_name,
+        row.class_name,
+        row.gender,
         row.variant_size,
         row.opening_stock,
         row.stock_in,
         row.stock_out,
-        row.adjustments,
         row.closing_stock,
         row.current_stock,
-        row.negative_stock_detected ? "Yes" : "No",
         row.health,
-        row.daysToStockout ?? "n/a",
       ]),
     [enrichedRows],
   );
@@ -187,6 +258,9 @@ const InventoryReportPage = () => {
     setFilters({
       dateRange: getDefaultDateRange(30),
       productIds: [],
+      schoolIds: [],
+      classIds: [],
+      genders: [],
       negativeOnly: false,
     });
   };
@@ -244,7 +318,7 @@ const InventoryReportPage = () => {
     );
   }
 
-  if (productsError || dailyRowsError || auditRowsError) {
+  if (productsError || schoolsError || classesError || gendersError || dailyRowsError || auditRowsError) {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
@@ -254,7 +328,7 @@ const InventoryReportPage = () => {
       description="Audit-ready stock visibility sourced from inventory movements, with opening and closing stock, movement totals, and drill-through audit trails."
     >
       <ReportFiltersPanel onReset={resetFilters}>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
           <FilterField label="From Date">
             <Input
               type="date"
@@ -271,6 +345,33 @@ const InventoryReportPage = () => {
               onChange={(event) => setFilters((current) => ({ ...current, dateRange: { ...current.dateRange, to: event.target.value } }))}
               className="h-11 rounded-2xl border-black/10 bg-white"
               required
+            />
+          </FilterField>
+          <FilterField label="Schools">
+            <FilterMultiSelect
+              label="Schools"
+              options={schools}
+              selectedValues={filters.schoolIds}
+              onChange={(schoolIds) => setFilters((current) => ({ ...current, schoolIds }))}
+              placeholder="All schools"
+            />
+          </FilterField>
+          <FilterField label="Classes">
+            <FilterMultiSelect
+              label="Classes"
+              options={classes}
+              selectedValues={filters.classIds}
+              onChange={(classIds) => setFilters((current) => ({ ...current, classIds }))}
+              placeholder="All classes"
+            />
+          </FilterField>
+          <FilterField label="Gender">
+            <FilterMultiSelect
+              label="Gender"
+              options={genders}
+              selectedValues={filters.genders}
+              onChange={(genders) => setFilters((current) => ({ ...current, genders }))}
+              placeholder="All genders"
             />
           </FilterField>
           <FilterField label="Products">
@@ -324,29 +425,33 @@ const InventoryReportPage = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
+                      <TableHead>School</TableHead>
+                      <TableHead>Class</TableHead>
+                      <TableHead>Gender</TableHead>
                       <TableHead>Variant</TableHead>
-                      <TableHead>Branch</TableHead>
                       <TableHead className="text-right">Opening Stock</TableHead>
                       <TableHead className="text-right">Stock In</TableHead>
                       <TableHead className="text-right">Stock Out</TableHead>
-                      <TableHead className="text-right">Adjustments</TableHead>
                       <TableHead className="text-right">Closing Stock</TableHead>
                       <TableHead className="text-right">Current Stock</TableHead>
                       <TableHead>Health</TableHead>
-                      <TableHead className="text-right">Days to Stockout</TableHead>
-                      <TableHead>Negative Stock</TableHead>
                       <TableHead className="text-right">Audit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginated.rows.map((row) => (
                       <TableRow key={row.key}>
-                        <TableCell>{row.product_name}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{row.product_name}</div>
+                          <div className="text-xs text-muted-foreground">{row.class_name} • {row.gender} • {row.school_name}</div>
+                        </TableCell>
+                        <TableCell>{row.school_name}</TableCell>
+                        <TableCell>{row.class_name}</TableCell>
+                        <TableCell>{row.gender}</TableCell>
                         <TableCell>{row.variant_size}</TableCell>
                         <TableCell className="text-right">{formatNumber(row.opening_stock)}</TableCell>
                         <TableCell className="text-right text-emerald-700">{formatNumber(row.stock_in)}</TableCell>
                         <TableCell className="text-right text-rose-700">{formatNumber(row.stock_out)}</TableCell>
-                        <TableCell className={cn("text-right", row.adjustments < 0 ? "text-rose-700" : row.adjustments > 0 ? "text-emerald-700" : "")}>{formatNumber(row.adjustments)}</TableCell>
                         <TableCell className="text-right">{formatNumber(row.closing_stock)}</TableCell>
                         <TableCell className="text-right font-medium">{formatNumber(row.current_stock)}</TableCell>
                         <TableCell>
@@ -363,17 +468,6 @@ const InventoryReportPage = () => {
                             )}
                           >
                             {row.health}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">{row.daysToStockout ?? "—"}</TableCell>
-                        <TableCell>
-                          <span
-                            className={cn(
-                              "inline-flex rounded-full border px-2.5 py-1 text-xs font-medium",
-                              row.negative_stock_detected ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700",
-                            )}
-                          >
-                            {row.negative_stock_detected ? "Flagged" : "Clear"}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -407,6 +501,9 @@ const InventoryReportPage = () => {
           </DialogHeader>
           {selectedRow ? (
             <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                {selectedRow?.class_name} • {selectedRow?.gender} • {selectedRow?.school_name}
+              </div>
               <div className="grid gap-3 rounded-2xl border border-border/70 bg-stone-50/70 p-4 md:grid-cols-4">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Opening</p>

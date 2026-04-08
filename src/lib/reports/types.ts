@@ -38,6 +38,9 @@ export type SalesReportFilters = {
 export type InventoryReportFilters = {
   dateRange: DateRange;
   productIds: string[];
+  schoolIds: string[];
+  classIds: string[];
+  genders: string[];
   negativeOnly: boolean;
 };
 
@@ -92,6 +95,11 @@ export type InventoryReportDailyRow = {
   variant_id: string;
   product_id: string;
   product_name: string;
+  school_id: string | null;
+  school_name: string;
+  class_id: string | null;
+  class_name: string;
+  gender: string;
   variant_size: string;
   opening_stock: number;
   stock_in: number;
@@ -129,6 +137,11 @@ export type AggregatedInventoryReportRow = {
   variant_id: string;
   product_id: string;
   product_name: string;
+  school_id: string | null;
+  school_name: string;
+  class_id: string | null;
+  class_name: string;
+  gender: string;
   variant_size: string;
   opening_stock: number;
   stock_in: number;

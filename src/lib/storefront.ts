@@ -11,12 +11,6 @@ export type StoreBrowseContext = {
   gender?: StoreGenderSlug | null;
 };
 
-export type SizeChartRow = {
-  label: string;
-  value: string;
-  notes?: string | null;
-};
-
 export type StorefrontVariant = {
   id: string;
   productId: string;
@@ -44,9 +38,6 @@ export type StorefrontProduct = {
   description: string | null;
   status: string;
   archived: boolean;
-  sizeChartTitle: string | null;
-  sizeChartNotes: string | null;
-  sizeChartRows: SizeChartRow[];
   shippingMode: string | null;
   shippingFee: number | null;
   freeShippingThreshold: number | null;
@@ -140,22 +131,6 @@ export const getBrowseBackPath = (context: StoreBrowseContext) => {
   return "/store";
 };
 
-const parseSizeChartRows = (value: unknown): SizeChartRow[] => {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((row) => {
-      if (!row || typeof row !== "object") return null;
-      const label = typeof row.label === "string" ? row.label.trim() : "";
-      const valueText = typeof row.value === "string" ? row.value.trim() : "";
-      const notes = typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : null;
-
-      if (!label || !valueText) return null;
-      return { label, value: valueText, notes };
-    })
-    .filter((row): row is SizeChartRow => Boolean(row));
-};
-
 const normalizeVariant = (variant: any, fallbackPrice: number): StorefrontVariant => ({
   id: String(variant?.id ?? ""),
   productId: String(variant?.product_id ?? variant?.productId ?? ""),
@@ -187,9 +162,6 @@ export const normalizeStorefrontProduct = (product: any): StorefrontProduct => {
     description: typeof product?.description === "string" ? product.description : null,
     status: String(product?.status ?? "active"),
     archived: Boolean(product?.archived),
-    sizeChartTitle: typeof product?.size_chart_title === "string" ? product.size_chart_title : null,
-    sizeChartNotes: typeof product?.size_chart_notes === "string" ? product.size_chart_notes : null,
-    sizeChartRows: parseSizeChartRows(product?.size_chart_rows),
     shippingMode: typeof product?.shipping_mode === "string" ? product.shipping_mode : null,
     shippingFee: product?.shipping_fee === null || product?.shipping_fee === undefined ? null : Number(product.shipping_fee),
     freeShippingThreshold:

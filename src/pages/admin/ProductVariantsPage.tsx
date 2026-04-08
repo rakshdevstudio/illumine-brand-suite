@@ -195,14 +195,16 @@ const normalizeGenderLabel = (value: string | null | undefined) => {
   const normalized = String(value ?? "").toLowerCase();
   if (normalized === "male" || normalized === "boys") return "Boys";
   if (normalized === "female" || normalized === "girls") return "Girls";
-  return "Unisex";
+  if (normalized === "unisex") return "Unisex";
+  return "Unspecified";
 };
 
 const getGenderSortKey = (value: string | null | undefined) => {
   const normalized = String(value ?? "").toLowerCase();
   if (normalized === "male" || normalized === "boys") return 0;
   if (normalized === "female" || normalized === "girls") return 1;
-  return 2;
+  if (normalized === "unisex") return 2;
+  return 3;
 };
 
 const formatFallbackLabel = (value: string | null | undefined, fallback: string) => {
@@ -213,7 +215,7 @@ const formatFallbackLabel = (value: string | null | undefined, fallback: string)
 const buildProductOption = (product: any): ProductOption => {
   const schoolName = formatFallbackLabel(product?.schools?.name, "No School");
   const className = formatFallbackLabel(product?.classes?.name, "No Class");
-  const genderValue = String(product?.gender ?? "Unisex");
+  const genderValue = String(product?.gender ?? "");
   const genderLabel = normalizeGenderLabel(genderValue);
 
   return {
@@ -267,7 +269,7 @@ const ProductVariantsPage = () => {
         () =>
           supabase
             .from("product_variants")
-            .select("*, products(name, price, school_id, class_id, schools(name), classes(name))")
+            .select("*, products(name, price, gender, school_id, class_id, schools(name), classes(name))")
             .order("created_at", { ascending: false }),
         "admin-product-variants/list"
       );
@@ -960,7 +962,7 @@ const ProductVariantsPage = () => {
                     <TableCell className="text-sm">{v.products?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.products?.gender ?? "Unisex"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{v.products?.gender ?? "-"}</TableCell>
                     <TableCell className="text-sm">{v.size}</TableCell>
                     <TableCell className="text-sm font-medium">{liveStock}</TableCell>
                     <TableCell className="text-sm">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 import { isLowStock } from "@/lib/inventory";
+import { useInventoryFilters } from "@/hooks/useInventoryFilters";
 
 type BranchInventoryRow = {
   id: string;
@@ -75,14 +77,31 @@ const formatPrice = (price: number) =>
 
 const InventoryPage = () => {
   const queryClient = useQueryClient();
+  const [filters, setFilters] = useInventoryFilters();
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [adjustAmount, setAdjustAmount] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkAdjust, setBulkAdjust] = useState(0);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
-  const [initializing, setInitializing] = useState(false);
   const [adjustReason, setAdjustReason] = useState("");
   const [bulkReason, setBulkReason] = useState("");
+  const [highlightMovements, setHighlightMovements] = useState(false);
+  const [searchInput, setSearchInput] = useState(filters.search);
+
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const next = searchInput.trim();
+      if (next !== filters.search) {
+        setFilters({ search: next });
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchInput, filters.search, setFilters]);
 
   const { data: branches } = useQuery({
     queryKey: ["admin-branches-filter"],
@@ -115,38 +134,64 @@ const InventoryPage = () => {
     },
   });
 
-  const { data: rows, isLoading } = useQuery({
-    queryKey: ["admin-branch-inventory"],
+  const { data: schools = [] } = useQuery({
+    queryKey: ["admin-inventory-filter-schools"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("schools").select("id, name").order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: classes = [] } = useQuery({
+    queryKey: ["admin-inventory-filter-classes"],
     queryFn: async () => {
       const { data, error } = await supabase
+        .from("classes")
+        .select("id, name, school_id")
+        .eq("status", "active")
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["admin-inventory-filter-categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("category")
+        .not("category", "is", null)
+        .order("category");
+      if (error) throw error;
+      return Array.from(new Set((data ?? []).map((row: any) => String(row.category ?? "").trim()).filter(Boolean)));
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["admin-branch-inventory", filters.school, filters.class, filters.gender, filters.category, filters.search],
+    queryFn: async () => {
+      let query = supabase
         .from("branch_inventory")
-        .select("id, branch_id, product_id, variant_id, stock, updated_at")
+        .select("id, branch_id, product_id, variant_id, stock, updated_at, product_variants!inner(id, size, low_stock_threshold, products!inner(name, category, price, gender, school_id, class_id, schools(name), classes(name)))")
         .order("updated_at", { ascending: false });
+
+      if (filters.school) query = query.eq("product_variants.products.school_id", filters.school);
+      if (filters.class) query = query.eq("product_variants.products.class_id", filters.class);
+      if (filters.gender) query = query.eq("product_variants.products.gender", filters.gender);
+      if (filters.category) query = query.eq("product_variants.products.category", filters.category);
+      if (filters.search) query = query.ilike("product_variants.products.name", `%${filters.search}%`);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return (data ?? []) as BranchInventoryRow[];
     },
   });
-
-  const { data: variantMetaRows } = useQuery({
-    queryKey: ["admin-inventory-variant-meta"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_variants")
-        .select("id, size, low_stock_threshold, products(name, category, price, gender, schools(name), classes(name))");
-
-      if (error) throw error;
-      return (data ?? []) as VariantMeta[];
-    },
-  });
-
-  const variantMetaMap = useMemo(() => {
-    const map = new Map<string, VariantMeta>();
-    (variantMetaRows ?? []).forEach((row) => {
-      map.set(row.id, row);
-    });
-    return map;
-  }, [variantMetaRows]);
 
   const { data: movements, isLoading: loadingMovements } = useQuery({
     queryKey: ["admin-inventory-movements"],
@@ -162,36 +207,25 @@ const InventoryPage = () => {
     },
   });
 
-  const initializeInventory = async () => {
-    setInitializing(true);
-    const { data, error } = await (supabase as any).rpc("initialize_branch_inventory");
-    setInitializing(false);
+  const scrollToMovements = () => {
+    document.getElementById("inventory-movements")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
 
-    if (error) {
-      toast.error(error.message || "Failed to initialize inventory");
-      return;
-    }
-
-    const inserted = Number(data?.rowsInserted ?? 0);
-    toast.success(inserted > 0 ? `Initialized inventory (${inserted} rows added)` : "Inventory already initialized");
-
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-branches-filter"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory-count"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-product-variants-count"] }),
-    ]);
+    setHighlightMovements(true);
+    window.setTimeout(() => setHighlightMovements(false), 1200);
   };
 
   const aggregatedRows = useMemo<AggregatedInventoryRow[]>(() => {
     if (!rows) return [];
     const grouped = new Map<string, AggregatedInventoryRow>();
 
-    rows.forEach((row) => {
+    rows.forEach((row: any) => {
       const key = row.variant_id;
       const existing = grouped.get(key);
       if (!existing) {
-        const meta = variantMetaMap.get(row.variant_id);
+        const meta = row.product_variants as VariantMeta | undefined;
         grouped.set(key, {
           key,
           variant_id: row.variant_id,
@@ -217,9 +251,42 @@ const InventoryPage = () => {
     });
 
     return [...grouped.values()].sort((a, b) => b.stock - a.stock);
-  }, [rows, variantMetaMap]);
+  }, [rows]);
 
-  const visibleRows = aggregatedRows;
+  const visibleRows = useMemo(() => {
+    if (filters.status === "all") return aggregatedRows;
+
+    return aggregatedRows.filter((row) => {
+      const stock = Number(row.stock ?? 0);
+      const threshold = Number(row.product_variants?.low_stock_threshold ?? 5);
+      if (filters.status === "in-stock") return stock > threshold;
+      if (filters.status === "low-stock") return stock > 0 && stock <= threshold;
+      if (filters.status === "out-of-stock") return stock === 0;
+      return true;
+    });
+  }, [aggregatedRows, filters.status]);
+
+  useEffect(() => {
+    const visibleIds = new Set(visibleRows.map((row) => row.key));
+    setSelectedIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [visibleRows]);
+
+  const filteredClasses = useMemo(
+    () => classes.filter((schoolClass: any) => !filters.school || schoolClass.school_id === filters.school),
+    [classes, filters.school],
+  );
+
+  const resetFilters = () => {
+    setFilters({
+      school: "",
+      class: "",
+      gender: "",
+      category: "",
+      status: "all",
+      search: "",
+    });
+    setSearchInput("");
+  };
 
   const allIds = visibleRows.map((row) => row.key);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
@@ -348,10 +415,9 @@ const InventoryPage = () => {
         <Button
           variant="outline"
           className="h-10 text-xs tracking-[0.12em] uppercase"
-          onClick={initializeInventory}
-          disabled={initializing}
+          onClick={scrollToMovements}
         >
-          {initializing ? "Initializing..." : "Initialize Inventory"}
+          View Inventory Movements ↓
         </Button>
       </div>
 
@@ -369,9 +435,82 @@ const InventoryPage = () => {
 
       {(branches ?? []).length > 0 && (rows ?? []).length === 0 && !isLoading && (
         <div className="mb-4 border border-amber-600/40 bg-amber-600/5 px-4 py-3 text-sm text-amber-800">
-          No branch inventory rows found. Click Initialize Inventory to seed missing rows for active branches.
+          No branch inventory rows found. Seed inventory from product creation or movement actions.
         </div>
       )}
+
+      <div className="mb-6 grid gap-3 md:grid-cols-4">
+        <Select
+          value={filters.school || "all"}
+          onValueChange={(value) => setFilters({ school: value === "all" ? "" : value, class: "" })}
+        >
+          <SelectTrigger className="h-10"><SelectValue placeholder="All Schools" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Schools</SelectItem>
+            {schools.map((school: any) => (
+              <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.class || "all"} onValueChange={(value) => setFilters({ class: value === "all" ? "" : value })}>
+          <SelectTrigger className="h-10"><SelectValue placeholder="All Classes" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Classes</SelectItem>
+            {filteredClasses.map((schoolClass: any) => (
+              <SelectItem key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.gender || "all"} onValueChange={(value) => setFilters({ gender: value === "all" ? "" : value })}>
+          <SelectTrigger className="h-10"><SelectValue placeholder="All Genders" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Genders</SelectItem>
+            <SelectItem value="Male">Male</SelectItem>
+            <SelectItem value="Female">Female</SelectItem>
+            <SelectItem value="Unisex">Unisex</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.category || "all"} onValueChange={(value) => setFilters({ category: value === "all" ? "" : value })}>
+          <SelectTrigger className="h-10"><SelectValue placeholder="All Categories" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            {categories.map((category: string) => (
+              <SelectItem key={category} value={category}>{category}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.status}
+          onValueChange={(value: "all" | "in-stock" | "low-stock" | "out-of-stock") => setFilters({ status: value })}
+        >
+          <SelectTrigger className="h-10"><SelectValue placeholder="Stock Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="in-stock">In Stock</SelectItem>
+            <SelectItem value="low-stock">Low Stock</SelectItem>
+            <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="h-10 md:col-span-2"
+          placeholder="Search product"
+        />
+
+        <Button type="button" variant="outline" className="h-10 text-xs tracking-[0.12em] uppercase" onClick={resetFilters}>
+          Reset Filters
+        </Button>
+      </div>
+
+      <div className="mb-4 text-xs text-muted-foreground tracking-wide uppercase">
+        Showing {visibleRows.length} results
+      </div>
 
       <div className="border border-border">
         <Table>
@@ -410,7 +549,7 @@ const InventoryPage = () => {
                     <TableCell className="text-sm">{product?.name ?? "Product"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.schools?.name ?? "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.classes?.name ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{product?.gender ?? "Unisex"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{product?.gender ?? "-"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{product?.category ?? "—"}</TableCell>
                     <TableCell className="text-sm">{row.product_variants?.size ?? "default"}</TableCell>
                     <TableCell className="text-sm font-medium">{stock}</TableCell>
@@ -500,7 +639,11 @@ const InventoryPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="mt-8 border border-border">
+      <div
+        id="inventory-movements"
+        className={`mt-8 border border-border transition-colors duration-500 ${highlightMovements ? "bg-amber-50" : "bg-transparent"}`}
+      >
+        <div className="px-4 py-2 border-b border-border text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Activity Log</div>
         <div className="px-4 py-3 border-b border-border text-xs uppercase tracking-[0.12em]">Recent Inventory Movements</div>
         <Table>
           <TableHeader>
@@ -519,7 +662,7 @@ const InventoryPage = () => {
             {loadingMovements ? (
               <TableRow><TableCell colSpan={8} className="text-center py-6 text-sm text-muted-foreground">Loading movement history...</TableCell></TableRow>
             ) : (movements ?? []).length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-6 text-sm text-muted-foreground">No inventory movements found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-6 text-sm text-muted-foreground">No inventory movements yet</TableCell></TableRow>
             ) : (
               (movements ?? []).map((movement) => (
                 <TableRow key={movement.id}>
