@@ -106,7 +106,7 @@ select
   pv.sku as sku,
   coalesce(oi.quantity, 0)::integer as quantity,
   coalesce(oi.price, 0)::numeric as unit_price,
-  coalesce(oi.discount, 0)::numeric as discount_amount,
+  0::numeric as discount_amount,
   round((coalesce(oi.price, 0)::numeric * coalesce(oi.quantity, 0)::numeric), 2) as line_amount,
   round(
     case

@@ -17,7 +17,7 @@ create index if not exists idx_school_products_active on public.school_products 
 create index if not exists idx_school_product_variants_active on public.school_product_variants (school_id, variant_id) where is_active;
 
 -- RPC: archive_product_cascade
-create or replace function public.archive_product_cascade(p_product_id uuid, p_deleted_at timestamptz, p_deleted_by uuid)
+create or replace function public.archive_product_cascade(p_product_id uuid, p_deleted_at timestamptz, p_deleted_by uuid default null)
 returns void language plpgsql security definer as $$
 begin
   update public.products
@@ -39,7 +39,7 @@ end;
 $$;
 
 -- RPC: restore_product_cascade
-create or replace function public.restore_product_cascade(p_product_id uuid)
+create or replace function public.restore_product_cascade(p_product_id uuid, p_actor uuid default null)
 returns void language plpgsql security definer as $$
 begin
   update public.products set is_active = true, deleted_at = null, deleted_by = null where id = p_product_id;
@@ -52,7 +52,7 @@ end;
 $$;
 
 -- RPC: hard_delete_product_cascade (protect via RLS / role checks)
-create or replace function public.hard_delete_product_cascade(p_product_id uuid)
+create or replace function public.hard_delete_product_cascade(p_product_id uuid, p_actor uuid default null)
 returns void language plpgsql security definer as $$
 begin
   delete from public.school_product_variants

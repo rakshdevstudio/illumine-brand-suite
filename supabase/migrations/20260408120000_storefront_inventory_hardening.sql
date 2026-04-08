@@ -399,6 +399,7 @@ END;
 $$;
 
 -- 7) Shared storefront RPCs that respect archived products, active variants, and inventory-owned stock totals.
+DROP FUNCTION IF EXISTS public.get_store_class_products(uuid, uuid, text);
 CREATE OR REPLACE FUNCTION public.get_store_class_products(
   p_school_id uuid,
   p_class_id uuid,

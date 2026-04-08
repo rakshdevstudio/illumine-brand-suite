@@ -9,7 +9,7 @@ import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
-import { logger } from "@/lib/logger";
+import { getSafeErrorMessage, logger } from "@/lib/logger";
 
 type CheckoutForm = {
   customer_name: string;
@@ -52,6 +52,38 @@ const isMissingOrderColumnError = (error: { code?: string; message?: string } | 
     message.includes("customer_id") ||
     message.includes("email")
   );
+};
+
+const isStorefrontWriteAccessError = (error: {
+  code?: string;
+  details?: string;
+  hint?: string;
+  message?: string;
+  status?: number;
+} | null) => {
+  if (!error) return false;
+
+  const combinedMessage = [error.message, error.details, error.hint].filter(Boolean).join(" ").toLowerCase();
+
+  return (
+    error.status === 401 ||
+    error.code === "42501" ||
+    combinedMessage.includes("permission denied") ||
+    combinedMessage.includes("row-level security") ||
+    combinedMessage.includes("violates row-level security") ||
+    combinedMessage.includes("jwt") ||
+    combinedMessage.includes("not authenticated")
+  );
+};
+
+const getCheckoutFailureMessage = (error: unknown) => {
+  if (isStorefrontWriteAccessError(error as { code?: string; message?: string; status?: number } | null)) {
+    return import.meta.env.DEV
+      ? "Checkout is blocked by Supabase order permissions. Apply the latest migrations, then try again."
+      : "Checkout is temporarily unavailable. Please try again shortly.";
+  }
+
+  return getSafeErrorMessage(error, "Failed to place order. Please try again.");
 };
 
 const CheckoutPage = () => {
@@ -291,7 +323,7 @@ const CheckoutPage = () => {
       navigate(`/store/confirmation?order=${order.id}`, { replace: true });
     } catch (err) {
       logger.error("Failed to place order", err);
-      toast.error("Failed to place order. Please try again.");
+      toast.error(getCheckoutFailureMessage(err));
     } finally {
       setLoading(false);
     }
