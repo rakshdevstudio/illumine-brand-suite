@@ -22,6 +22,11 @@ export const CONTACT_DETAILS = {
   ],
   timing: "Mon- Sat: 10:00 AM - 18:00 PM",
   responsePromise: "We usually reply within 24 hours.",
+  mapCoordinates: {
+    latitude: 12.9716,
+    longitude: 77.537,
+  },
+  mapDirectionsUrl: "https://www.google.com/maps/search/?api=1&query=12.9716,77.5370",
   mapEmbedUrl:
     "https://www.google.com/maps?q=273%20Basement%20Floor%20KRISHNA%20PLAZA%205th%20A%20Cross%20St%208%20Block%20Income%20Tax%20Layout%20Naagarabhaavi%202nd%20stage%20Bengaluru%20Karnataka%20560072&z=15&output=embed",
   heroImageUrl: "/uniforms_image.png",

@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  ExternalLink,
   Mail,
   MapPin,
   MessageCircle,
@@ -57,6 +58,11 @@ const isPhoneValid = (value: string) => {
   const digits = getPhoneDigits(value);
   if (digits.length === 10) return true;
   return digits.length === 12 && digits.startsWith("91");
+};
+
+const openMaps = () => {
+  if (typeof window === "undefined") return;
+  window.open(CONTACT_DETAILS.mapDirectionsUrl, "_blank", "noopener,noreferrer");
 };
 
 const validateField = (
@@ -371,6 +377,19 @@ const ContactInfoPanel = ({
                   {line}
                 </p>
               ))}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={openMaps}
+                  aria-label="Get directions on Google Maps"
+                  className="group inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 text-sm text-slate-900 transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-[0_14px_30px_rgba(15,23,42,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/25"
+                >
+                  <span aria-hidden="true">📍</span>
+                  <span>Get Directions</span>
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-500 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </button>
+                <p className="mt-2 text-xs text-slate-500">Navigate instantly via Google Maps</p>
+              </div>
             </div>
           </div>
         </div>
