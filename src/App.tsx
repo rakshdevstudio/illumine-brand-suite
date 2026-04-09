@@ -24,6 +24,7 @@ import TrackOrderPage from "./pages/store/TrackOrderPage";
 import SchoolCodePage from "./pages/store/SchoolCodePage";
 import RequireSchoolContext from "./components/store/RequireSchoolContext";
 import ShopBySchoolPage from "./pages/store/ShopBySchoolPage";
+import ContactPage from "./pages/store/ContactPage";
 import ScrollToTop from "./components/store/ScrollToTop";
 import GoToTopButton from "./components/store/GoToTopButton";
 
@@ -43,6 +44,7 @@ import InvoicePage from "@/pages/admin/InvoicePage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
+import ContactEnquiriesPage from "./pages/admin/ContactEnquiriesPage";
 import ReportsLayoutPage from "./pages/admin/reports/ReportsLayoutPage";
 import SalesReportPage from "./pages/admin/reports/SalesReportPage";
 import InventoryReportPage from "./pages/admin/reports/InventoryReportPage";
@@ -184,6 +186,10 @@ const App = () => (
             <Route index element={<StorePage />} />
           </Route>
 
+          <Route path="/contact" element={<StoreLayout />}>
+            <Route index element={<ContactPage />} />
+          </Route>
+
           {/* Public entry landing */}
           <Route path="/shop-by-school" element={<StoreLayout />}>
             <Route index element={<ShopBySchoolPage />} />
@@ -225,6 +231,7 @@ const App = () => (
             <Route path="orders" element={<OrdersPage />} />
             <Route path="orders/:orderId" element={<OrdersPage />} />
             <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
+            <Route path="contact-enquiries" element={<ContactEnquiriesPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
             <Route path="reports" element={<ReportsLayoutPage />}>

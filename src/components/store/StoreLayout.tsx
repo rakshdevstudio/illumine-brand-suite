@@ -2,6 +2,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import StoreHeader from "./StoreHeader";
 import StoreFooter from "./StoreFooter";
 import StudentProfileModal from "./StudentProfileModal";
+import { ContactModal } from "./ContactExperience";
 import { useStudentProfile, StudentProfile } from "@/lib/student-profile";
 
 const StoreLayout = () => {
@@ -18,6 +19,7 @@ const StoreLayout = () => {
     <div className="min-h-screen flex flex-col bg-background">
       <StoreHeader />
       <StudentProfileModal open={showModal} onOpenChange={(o) => o ? openModal() : closeModal()} onProfileSet={handleProfileSet} />
+      <ContactModal />
       <main className="flex-1 overflow-x-hidden">
         <div className="min-h-full">
           <Outlet />

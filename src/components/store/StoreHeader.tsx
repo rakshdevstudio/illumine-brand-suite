@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { House, ShoppingBag, User } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useStudentProfile } from "@/lib/student-profile";
+import { useContactModal } from "@/lib/contact-modal";
 import illumeLogo from "@/assets/logo.png";
 import { STORE_ADD_TO_CART_EVENT, StoreAddToCartDetail } from "@/lib/store-interactions";
 import { useSchoolContext } from "@/lib/school-context";
@@ -30,6 +31,7 @@ const StoreHeader = () => {
   const [flyingItem, setFlyingItem] = useState<FlyingCartItem | null>(null);
   const school = useSchoolContext((s) => s.school);
   const clearSchool = useSchoolContext((s) => s.clearSchool);
+  const openContactModal = useContactModal((s) => s.openModal);
 
   useEffect(() => {
     const handleAddToCart = (event: Event) => {
@@ -69,7 +71,7 @@ const StoreHeader = () => {
   return (
     <>
       <header className="bg-surface-dark border-b border-surface-dark">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link to="/" className="flex items-center gap-2">
             <img
@@ -89,7 +91,15 @@ const StoreHeader = () => {
           </button>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 sm:gap-6">
+          <button
+            type="button"
+            onClick={openContactModal}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-white px-4 text-[11px] font-medium uppercase tracking-[0.2em] text-black shadow-[0_10px_24px_rgba(255,255,255,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(255,255,255,0.24)]"
+          >
+            <span className="hidden sm:inline">Contact Us</span>
+            <span className="sm:hidden">Contact</span>
+          </button>
           {school ? (
             <button
               onClick={() => {
@@ -104,14 +114,14 @@ const StoreHeader = () => {
           ) : (
             <Link
               to="/shop-by-school"
-              className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+              className="hidden sm:inline text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
             >
               Shop by School
             </Link>
           )}
           <Link
             to="/track-order"
-            className="text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
+            className="hidden sm:inline text-xs tracking-[0.14em] uppercase text-surface-dark-muted hover:text-surface-dark-foreground transition-colors"
           >
             Track Order
           </Link>
