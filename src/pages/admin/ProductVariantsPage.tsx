@@ -547,20 +547,18 @@ const ProductVariantsPage = () => {
       return;
     }
 
-    const movementType = bulkStockDelta > 0 ? "IN" : "ADJUSTMENT";
     setBulkAction("stock");
 
     try {
       for (const batch of chunk(selectedIds, 20)) {
         const results = await Promise.all(
           batch.map(async (variantId) => {
-            const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+            const { error } = await (supabase as any).rpc("adjust_inventory", {
               p_branch_id: bulkStockBranchId,
               p_variant_id: variantId,
-              p_type: movementType,
               p_quantity: bulkStockDelta,
-              p_reference_type: "MANUAL",
               p_reason: bulkStockReason.trim(),
+              p_reference_id: null,
             });
             if (error) throw error;
             return variantId;
@@ -754,14 +752,12 @@ const ProductVariantsPage = () => {
     }
 
     try {
-      const movementType = adjustAmount > 0 ? "IN" : "ADJUSTMENT";
-      const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+      const { error } = await (supabase as any).rpc("adjust_inventory", {
         p_branch_id: adjustBranchId,
         p_variant_id: adjusting.id,
-        p_type: movementType,
         p_quantity: adjustAmount,
-        p_reference_type: "MANUAL",
         p_reason: adjustReason.trim(),
+        p_reference_id: null,
       });
 
       if (error) throw error;

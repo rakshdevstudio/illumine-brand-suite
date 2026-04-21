@@ -73,7 +73,7 @@ export const deductStockAcrossBranches = async (
     if (available === 0) continue;
 
     const toDeduct = Math.min(remaining, available);
-    const { error: movementError } = await (supabase as any).rpc("apply_inventory_movement", {
+    const { error: movementError } = await (supabase as any).rpc("reserve_checkout_inventory_movement", {
       p_branch_id: row.branch_id,
       p_variant_id: variantId,
       p_type: "OUT",

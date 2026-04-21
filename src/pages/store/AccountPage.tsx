@@ -296,7 +296,7 @@ const AccountPage = () => {
                 </div>
                 <div>
                   <label className="text-xs tracking-[0.15em] text-muted-foreground uppercase block mb-2">Phone</label>
-                  <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-10" placeholder="+91 98765 43210" />
+                  <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-10" placeholder="+91 9972721666" />
                 </div>
               </div>
               <div className="flex gap-3">

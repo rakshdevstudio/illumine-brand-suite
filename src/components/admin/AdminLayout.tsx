@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, BarChart3, History, Boxes, MessagesSquare } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, ExternalLink, GraduationCap, Box, Layers, BookOpen, LogOut, Users, FlaskConical, AlertTriangle, BarChart3, History, Boxes, MessagesSquare, ReceiptText, UserRound, Truck, ShoppingBag, FileSpreadsheet, BookText, Wallet, Hourglass } from "lucide-react";
 import illumeLogo from "@/assets/logo.png";
 import { NavLink } from "@/components/NavLink";
 import AdminCommandPalette from "@/components/admin/AdminCommandPalette";
@@ -31,6 +31,12 @@ const navItems = [
   { title: "Inventory", url: "/admin/inventory", icon: Package, minRole: "staff" as const },
   { title: "Inventory Alerts", url: "/admin/inventory-alerts", icon: AlertTriangle, minRole: "staff" as const },
   { title: "Orders", url: "/admin/orders", icon: ShoppingCart, minRole: "staff" as const },
+  { title: "Invoices", url: "/admin/invoices", icon: ReceiptText, minRole: "staff" as const },
+  { title: "Customers", url: "/admin/customers", icon: Users, minRole: "staff" as const },
+  { title: "Students", url: "/admin/students", icon: UserRound, minRole: "staff" as const },
+  { title: "Vendors", url: "/admin/vendors", icon: Truck, minRole: "staff" as const },
+  { title: "Purchases", url: "/admin/purchases", icon: ShoppingBag, minRole: "staff" as const },
+  { title: "Ledger", url: "/admin/ledger", icon: BookText, minRole: "staff" as const },
   { title: "Contact Enquiries", url: "/admin/contact-enquiries", icon: MessagesSquare, minRole: "staff" as const },
   { title: "Users", url: "/admin/users", icon: Users, minRole: "admin" as const },
   { title: "Assignments", url: "/admin/product-assignments", icon: FlaskConical, minRole: "staff" as const },
@@ -38,7 +44,11 @@ const navItems = [
 
 const reportNavItems = [
   { title: "Sales Report", url: "/admin/reports/sales", icon: BarChart3 },
+  { title: "Outstanding", url: "/admin/reports/outstanding", icon: Wallet },
+  { title: "Aging", url: "/admin/reports/aging", icon: Hourglass },
   { title: "Inventory Report", url: "/admin/reports/inventory", icon: Boxes },
+  { title: "GST Report", url: "/admin/reports/gst", icon: FileSpreadsheet },
+  { title: "Customer Insights", url: "/admin/reports/customers", icon: Users },
 ];
 
 const roleLabels: Record<string, string> = {

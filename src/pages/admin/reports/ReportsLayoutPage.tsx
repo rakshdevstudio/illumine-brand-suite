@@ -1,11 +1,15 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { BarChart3, Boxes } from "lucide-react";
+import { BarChart3, Boxes, FileSpreadsheet, Hourglass, Users, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 
 const reportLinks = [
   { title: "Sales Report", url: "/admin/reports/sales", icon: BarChart3 },
+  { title: "Outstanding", url: "/admin/reports/outstanding", icon: Wallet },
+  { title: "Aging", url: "/admin/reports/aging", icon: Hourglass },
   { title: "Inventory Report", url: "/admin/reports/inventory", icon: Boxes },
+  { title: "GST Report", url: "/admin/reports/gst", icon: FileSpreadsheet },
+  { title: "Customer Insights", url: "/admin/reports/customers", icon: Users },
 ];
 
 const ReportsLayoutPage = () => {

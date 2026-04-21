@@ -222,7 +222,7 @@ const OnboardingPage = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="h-12 border-border"
-                placeholder="+91 98765 43210"
+                placeholder="+91 9972721666"
                 autoComplete="tel"
               />
             </div>

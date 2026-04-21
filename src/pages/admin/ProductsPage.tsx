@@ -354,13 +354,12 @@ const ProductsPage = () => {
             const createdVariant = (createdVariants ?? []).find((variant: any) => variant.size === draft.size);
             if (!createdVariant?.id) continue;
 
-            const { error: stockError } = await (supabase as any).rpc("apply_inventory_movement", {
+            const { error: stockError } = await (supabase as any).rpc("adjust_inventory", {
               p_branch_id: inventoryBranchId,
               p_variant_id: createdVariant.id,
-              p_type: "IN",
               p_quantity: draft.initialStock,
-              p_reference_type: "MANUAL",
               p_reason: "Initial stock seeded during product creation",
+              p_reference_id: null,
             });
 
             if (stockError) throw stockError;

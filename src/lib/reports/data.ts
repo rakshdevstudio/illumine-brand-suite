@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/lib/logger";
 import { safeQuery } from "@/lib/safeQuery";
 import type {
   AggregatedInventoryReportRow,
@@ -165,43 +166,6 @@ const isRelationMissingError = (error: any) => {
   return code === "PGRST301" || message.includes("not found") || message.includes("does not exist");
 };
 
-const buildSalesRowFromOrder = (order: any): SalesReportRow => {
-  const items = (order.order_items ?? [])
-    .map((item: any) => {
-      const name = item.products?.name ?? "Item";
-      const size = item.product_variants?.size ? ` (${item.product_variants.size})` : "";
-      return `${name}${size} x${item.quantity}`;
-    })
-    .join(", ");
-
-  const totalQuantity = (order.order_items ?? []).reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
-  const totalAmount = Number(order.total_amount || 0);
-
-  const schoolName = Array.isArray(order.schools) ? order.schools[0]?.name : order.schools?.name;
-  const branchName = Array.isArray(order.branches) ? order.branches[0]?.name : order.branches?.name;
-
-  const searchText = `${order.id} ${order.customer_name} ${order.phone} ${schoolName || ""} ${branchName || ""}`.trim();
-
-  return {
-    order_id: String(order.id),
-    order_id_text: String(order.id),
-    order_date: String((order.created_at || "").slice(0, 10)),
-    order_created_at: String(order.created_at || ""),
-    customer_name: String(order.customer_name || ""),
-    phone: String(order.phone || ""),
-    school_id: order.school_id ? String(order.school_id) : null,
-    school_name: schoolName || "Unassigned School",
-    branch_id: order.branch_id ? String(order.branch_id) : null,
-    branch_name: branchName || "Unassigned Branch",
-    items,
-    total_quantity: totalQuantity,
-    total_amount: totalAmount,
-    status: String(order.status || "PLACED"),
-    payment_mode: String(order.payment_mode || "UNKNOWN"),
-    search_text: searchText,
-  };
-};
-
 export const fetchSchoolOptions = async (): Promise<DimensionOption[]> => {
   const { data } = await safeQuery<any[]>(() => db.from("schools").select("id, name, code").order("name"), "reports/fetchSchoolOptions");
   return (data ?? []).map((row: any) => ({ id: String(row.id), name: String(row.name), secondary: row.code || null }));
@@ -268,32 +232,12 @@ export const fetchSalesReportRows = async (filters: SalesReportFilters): Promise
   } catch (error: any) {
     if (!isRelationMissingError(error)) throw error;
 
-    // Fallback: derive rows directly from orders/order_items when the view is unavailable.
-    const { data } = await safeQuery<any[]>(
-      () =>
-        db
-          .from("orders")
-          .select(
-            "id, created_at, customer_name, phone, school_id, branch_id, total_amount, status, payment_mode, " +
-              "order_items(id, product_id, quantity, price, product_variants(size), products(name)), schools(name), branches(name)"
-          )
-          .gte("created_at", `${filters.dateRange.from}T00:00:00`)
-          .lte("created_at", `${filters.dateRange.to}T23:59:59`)
-          .order("created_at", { ascending: false }),
-      "reports/fetchSalesReportRows/fallback"
-    );
-
-    let rows = (data ?? []).map(buildSalesRowFromOrder);
-
-    if (filters.schoolIds.length) rows = rows.filter((row) => row.school_id && filters.schoolIds.includes(row.school_id));
-    if (filters.status !== "all") rows = rows.filter((row) => (filters.status === "active" ? row.status !== "CANCELLED" : row.status === filters.status));
-    if (filters.paymentMode !== "all") rows = rows.filter((row) => row.payment_mode === filters.paymentMode);
-    if (search) {
-      const needle = search.toLowerCase();
-      rows = rows.filter((row) => row.search_text.toLowerCase().includes(needle));
-    }
-
-    return rows;
+    logger.warn("Sales report view unavailable; returning empty dataset to avoid order-based revenue fallback.", {
+      context: "reports/fetchSalesReportRows",
+      from: filters.dateRange.from,
+      to: filters.dateRange.to,
+    });
+    return [];
   }
 };
 
@@ -328,62 +272,12 @@ export const fetchSalesItemReportRows = async (filters: SalesReportFilters): Pro
   } catch (error: any) {
     if (!isRelationMissingError(error)) throw error;
 
-    const { data } = await safeQuery<any[]>(
-      () =>
-        db
-          .from("orders")
-          .select(
-            "id, created_at, customer_name, phone, school_id, branch_id, total_amount, status, payment_mode, " +
-              "order_items(id, product_id, variant_id, quantity, price, discount, product_variants(size, sku), products(name)), schools(name), branches(name)"
-          )
-          .gte("created_at", `${filters.dateRange.from}T00:00:00`)
-          .lte("created_at", `${filters.dateRange.to}T23:59:59`)
-          .order("created_at", { ascending: false }),
-      "reports/fetchSalesItemReportRows/fallback"
-    );
-
-    let rows: SalesItemReportRow[] = [];
-
-    (data ?? []).forEach((order: any) => {
-      const schoolName = Array.isArray(order.schools) ? order.schools[0]?.name : order.schools?.name;
-      const branchName = Array.isArray(order.branches) ? order.branches[0]?.name : order.branches?.name;
-      (order.order_items ?? []).forEach((item: any) => {
-        rows.push({
-          order_id: String(order.id),
-          order_id_text: String(order.id),
-          order_date: String((order.created_at || "").slice(0, 10)),
-          order_created_at: String(order.created_at || ""),
-          customer_name: String(order.customer_name || ""),
-          phone: String(order.phone || ""),
-          school_id: order.school_id ? String(order.school_id) : null,
-          school_name: schoolName || "Unassigned School",
-          branch_id: order.branch_id ? String(order.branch_id) : null,
-          branch_name: branchName || "Unassigned Branch",
-          product_id: String(item.product_id || ""),
-          product_name: String(item.products?.name || "Product"),
-          variant_id: String(item.variant_id || ""),
-          variant_size: String(item.product_variants?.size || "Default"),
-          sku: item.product_variants?.sku ? String(item.product_variants.sku) : null,
-          quantity: Number(item.quantity || 0),
-          unit_price: Number(item.price || 0),
-          line_amount: Number(item.price || 0) * Number(item.quantity || 0),
-          status: String(order.status || "PLACED"),
-          payment_mode: String(order.payment_mode || "UNKNOWN"),
-          discount_amount: Number(item.discount || 0),
-          revenue_share: 0,
-        });
-      });
+    logger.warn("Sales item report view unavailable; returning empty dataset to avoid order-based revenue fallback.", {
+      context: "reports/fetchSalesItemReportRows",
+      from: filters.dateRange.from,
+      to: filters.dateRange.to,
     });
-
-    if (filters.schoolIds.length) rows = rows.filter((row) => row.school_id && filters.schoolIds.includes(row.school_id));
-    if (filters.status !== "all") rows = rows.filter((row) => (filters.status === "active" ? row.status !== "CANCELLED" : row.status === filters.status));
-    if (filters.paymentMode !== "all") rows = rows.filter((row) => row.payment_mode === filters.paymentMode);
-    if (search) {
-      const needle = search.toLowerCase();
-      rows = rows.filter((row) => `${row.customer_name} ${row.phone} ${row.order_id}`.toLowerCase().includes(needle));
-    }
-
-    return rows;
+    return [];
   }
 };
 

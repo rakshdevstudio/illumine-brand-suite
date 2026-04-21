@@ -366,8 +366,8 @@ const TrackOrderPage = () => {
           <section className="rounded-lg border bg-white shadow-sm p-6 md:p-8 space-y-2 text-sm">
             <p className="font-medium">Need help with your order?</p>
             <p>
-              <a href="mailto:hello@illume.co.in" className="text-gray-500 hover:text-black transition-colors">
-                hello@illume.co.in
+              <a href="mailto:support@illumeonline.in" className="text-gray-500 hover:text-black transition-colors">
+                support@illumeonline.in
               </a>
             </p>
             <p>

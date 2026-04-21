@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Package } from "lucide-react";
+import { toast } from "sonner";
 
 type OrderItem = {
   id: string;
@@ -183,6 +185,20 @@ const OrderDetailsPage = () => {
     fetchOrder();
   }, [orderId]);
 
+  const { data: invoiceId } = useQuery({
+    queryKey: ["store-order-invoice-detail", orderId],
+    enabled: !!orderId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("order_id", orderId!)
+        .maybeSingle();
+
+      return data?.id ?? null;
+    },
+  });
+
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-24 text-center">
@@ -362,7 +378,20 @@ const OrderDetailsPage = () => {
       </div>
 
       {/* Actions */}
-      <div className="pt-4">
+      <div className="pt-4 flex flex-wrap gap-2">
+        {invoiceId && (
+          <Link to={`/store/invoice/${invoiceId}`}>
+            <Button className="text-xs tracking-[0.2em] uppercase h-12 px-8">View Invoice</Button>
+          </Link>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="text-xs tracking-[0.2em] uppercase h-12 px-8"
+          onClick={() => toast.info("PDF download will be available soon.")}
+        >
+          Download Invoice
+        </Button>
         <Link to="/store">
           <Button
             variant="outline"

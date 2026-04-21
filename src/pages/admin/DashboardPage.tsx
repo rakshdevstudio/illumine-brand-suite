@@ -94,6 +94,16 @@ interface KpiCardProps {
   sub?: string;
 }
 
+interface FinancialKpis {
+  today_revenue: number;
+  last_30d_revenue: number;
+  today_invoice_count: number;
+  last_30d_invoice_count: number;
+  outstanding_total: number;
+  today_collection: number;
+  last_30d_collection: number;
+}
+
 const KpiCard = ({ label, value, icon, sub }: KpiCardProps) => (
   <Card className="rounded-xl border border-border shadow-sm bg-white">
     <CardHeader className="flex flex-row items-center justify-between pb-2 pt-5 px-5">
@@ -114,7 +124,7 @@ const KpiCard = ({ label, value, icon, sub }: KpiCardProps) => (
 const DashboardPage = () => {
   const { isChecking } = useRequireAuth();
 
-  // Today's orders
+  // Today's orders count (operational metric only)
   const { data: todayOrders, error: todayOrdersError, isLoading: todayOrdersLoading } = useQuery({
     queryKey: ["dash-today-orders"],
     queryFn: async () => {
@@ -122,7 +132,7 @@ const DashboardPage = () => {
         () =>
           supabase
             .from("orders")
-            .select("id, total_amount")
+            .select("id")
             .gte("created_at", todayStart())
             .neq("status", "CANCELLED"),
         "admin-dashboard/today-orders"
@@ -131,20 +141,19 @@ const DashboardPage = () => {
     },
   });
 
-  // This month's orders
-  const { data: monthOrders, error: monthOrdersError, isLoading: monthOrdersLoading } = useQuery({
-    queryKey: ["dash-month-orders"],
+  // Financial KPIs from invoices + payments only
+  const { data: financialKpis, error: financialKpisError, isLoading: financialKpisLoading } = useQuery<FinancialKpis | null>({
+    queryKey: ["dash-financial-kpis"],
     queryFn: async () => {
-      const { data } = await safeQuery(
+      const { data } = await safeQuery<FinancialKpis>(
         () =>
-          supabase
-            .from("orders")
-            .select("id, total_amount")
-            .gte("created_at", monthStart())
-            .neq("status", "CANCELLED"),
-        "admin-dashboard/month-orders"
+          (supabase as any)
+            .from("view_dashboard_financial_kpis")
+            .select("today_revenue, last_30d_revenue, today_invoice_count, last_30d_invoice_count, outstanding_total, today_collection, last_30d_collection")
+            .single(),
+        "admin-dashboard/financial-kpis"
       );
-      return data ?? [];
+      return (data ?? null) as FinancialKpis | null;
     },
   });
 
@@ -202,35 +211,29 @@ const DashboardPage = () => {
     },
   });
 
-  const hasError = Boolean(todayOrdersError || monthOrdersError || recentOrdersError || orderItemsError || lowStockError);
+  const hasError = Boolean(todayOrdersError || financialKpisError || recentOrdersError || orderItemsError || lowStockError);
   const isLoading =
     isChecking ||
     todayOrdersLoading ||
-    monthOrdersLoading ||
+    financialKpisLoading ||
     recentOrdersLoading ||
     orderItemsLoading ||
     lowStockLoading;
 
   // ── computed ──
 
-  const todayRevenue = useMemo(
-    () => (todayOrders ?? []).reduce((s, o) => s + Number(o.total_amount || 0), 0),
-    [todayOrders]
-  );
+  const todayRevenue = useMemo(() => Number(financialKpis?.today_revenue || 0), [financialKpis]);
 
-  const monthRevenue = useMemo(
-    () => (monthOrders ?? []).reduce((s, o) => s + Number(o.total_amount || 0), 0),
-    [monthOrders]
-  );
+  const monthRevenue = useMemo(() => Number(financialKpis?.last_30d_revenue || 0), [financialKpis]);
 
   const topProducts = useMemo(() => {
-    const map = new Map<string, { name: string; qty: number }>();
+    const map = new Map<string, { id: string; name: string; qty: number }>();
     (orderItems ?? []).forEach((item: any) => {
       const id = item.product_id ?? item.products?.id;
       const name = item.products?.name ?? "Unknown";
       if (!id) return;
-      const prev = map.get(id) ?? { name, qty: 0 };
-      map.set(id, { name, qty: prev.qty + Number(item.quantity || 0) });
+      const prev = map.get(id) ?? { id, name, qty: 0 };
+      map.set(id, { ...prev, name, qty: prev.qty + Number(item.quantity || 0) });
     });
     return [...map.values()]
       .sort((a, b) => b.qty - a.qty)
@@ -264,7 +267,7 @@ const DashboardPage = () => {
           label="Today's Revenue"
           value={fmt(todayRevenue)}
           icon={<IndianRupee className="h-4 w-4" strokeWidth={1.5} />}
-          sub={`${todayOrders?.length ?? 0} orders`}
+          sub={`${Number(financialKpis?.today_invoice_count || 0)} invoices`}
         />
         <KpiCard
           label="Orders Today"
@@ -275,7 +278,7 @@ const DashboardPage = () => {
           label="Revenue (Last 30 Days)"
           value={fmt(monthRevenue)}
           icon={<TrendingUp className="h-4 w-4" strokeWidth={1.5} />}
-          sub={`${monthOrders?.length ?? 0} orders`}
+          sub={`${Number(financialKpis?.last_30d_invoice_count || 0)} invoices`}
         />
         <KpiCard
           label="Low Stock Items"
@@ -304,7 +307,7 @@ const DashboardPage = () => {
             ) : (
               <ol className="space-y-3">
                 {topProducts.map((p, i) => (
-                  <li key={p.name} className="flex items-center gap-3">
+                  <li key={p.id} className="flex items-center gap-3">
                     <span className="text-[10px] tracking-[0.15em] text-muted-foreground/60 w-4 text-right shrink-0">
                       {i + 1}
                     </span>

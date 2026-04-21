@@ -10,11 +10,11 @@ export const CONTACT_ENQUIRY_TYPES = [
 // Hero image generation prompt requested for the contact experience:
 // "Generate a high-quality realistic image of Indian school children wearing clean and well-fitted school uniforms, smiling and standing together in a bright school environment. The mood should be warm, welcoming, and trustworthy. Natural lighting, modern look, not overly staged, premium feel."
 export const CONTACT_DETAILS = {
-  phoneDisplay: "+91 98765 43210",
-  phoneHref: "tel:+919876543210",
+  phoneDisplay: "+91 9972721666",
+  phoneHref: "tel:+919972721666",
   whatsappHref:
-    "https://wa.me/919876543210?text=Hi%20Illume%2C%20I%27d%20like%20help%20with%20school%20uniforms.",
-  email: "hello@illume.co.in",
+    "https://wa.me/919972721666?text=Hi%20Illume%2C%20I%27d%20like%20help%20with%20school%20uniforms.",
+  email: "support@illumeonline.in",
   addressLines: [
     "273, Basement Floor, KRISHNA PLAZA",
     "5th A Cross St, 8 Block, Income Tax Layout",

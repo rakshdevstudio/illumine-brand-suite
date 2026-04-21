@@ -315,14 +315,12 @@ const InventoryPage = () => {
       return;
     }
 
-    const movementType = adjustAmount > 0 ? "IN" : "ADJUSTMENT";
-    const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+    const { error } = await (supabase as any).rpc("adjust_inventory", {
       p_branch_id: row.primary_branch_id,
       p_variant_id: row.variant_id,
-      p_type: movementType,
       p_quantity: adjustAmount,
-      p_reference_type: "MANUAL",
       p_reason: adjustReason.trim(),
+      p_reference_id: null,
     });
 
     if (error) {
@@ -349,17 +347,14 @@ const InventoryPage = () => {
     }
 
     const selectedRows = visibleRows.filter((row) => selectedIds.includes(row.key));
-    const movementType = bulkAdjust > 0 ? "IN" : "ADJUSTMENT";
-
     for (const row of selectedRows) {
       if (!row.primary_branch_id) continue;
-      const { error } = await (supabase as any).rpc("apply_inventory_movement", {
+      const { error } = await (supabase as any).rpc("adjust_inventory", {
         p_branch_id: row.primary_branch_id,
         p_variant_id: row.variant_id,
-        p_type: movementType,
         p_quantity: bulkAdjust,
-        p_reference_type: "MANUAL",
         p_reason: bulkReason.trim(),
+        p_reference_id: null,
       });
       if (error) {
         toast.error(`Failed for ${row.product_variants?.products?.name ?? "item"}`);

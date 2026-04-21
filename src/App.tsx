@@ -12,6 +12,7 @@ import { isAuthError, redirectToLogin } from "@/lib/safeQuery";
 // Store
 import StoreLayout from "./components/store/StoreLayout";
 import StorePage from "./pages/store/StorePage";
+import AboutPage from "./pages/store/AboutPage";
 import SchoolPage from "./pages/store/SchoolPage";
 import ClassGenderPage from "./pages/store/ClassGenderPage";
 import ClassProductsPage from "./pages/store/ClassProductsPage";
@@ -20,6 +21,7 @@ import CartPage from "@/pages/store/CartPage";
 import CheckoutPage from "./pages/store/CheckoutPage";
 import ConfirmationPage from "./pages/store/ConfirmationPage";
 import OrderDetailsPage from "./pages/store/OrderDetailsPage";
+import StoreInvoicePage from "./pages/store/InvoicePage";
 import TrackOrderPage from "./pages/store/TrackOrderPage";
 import SchoolCodePage from "./pages/store/SchoolCodePage";
 import RequireSchoolContext from "./components/store/RequireSchoolContext";
@@ -40,7 +42,14 @@ import ProductVariantsPage from "./pages/admin/ProductVariantsPage";
 import InventoryPage from "@/pages/admin/InventoryPage";
 import InventoryAlertsPage from "./pages/admin/InventoryAlertsPage";
 import OrdersPage from "./pages/admin/OrdersPage";
-import InvoicePage from "@/pages/admin/InvoicePage";
+import InvoicePage from "./pages/admin/InvoicePage";
+import InvoicesPage from "./pages/admin/InvoicesPage";
+import CustomersPage from "./pages/admin/CustomersPage";
+import CustomerDetailPage from "./pages/admin/CustomerDetailPage";
+import StudentsPage from "./pages/admin/StudentsPage";
+import VendorsPage from "./pages/admin/VendorsPage";
+import PurchasesPage from "./pages/admin/PurchasesPage";
+import LedgerPage from "./pages/admin/LedgerPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
@@ -48,6 +57,10 @@ import ContactEnquiriesPage from "./pages/admin/ContactEnquiriesPage";
 import ReportsLayoutPage from "./pages/admin/reports/ReportsLayoutPage";
 import SalesReportPage from "./pages/admin/reports/SalesReportPage";
 import InventoryReportPage from "./pages/admin/reports/InventoryReportPage";
+import GstReportPage from "./pages/admin/reports/GstReportPage";
+import CustomerInsightsPage from "./pages/admin/reports/CustomerInsightsPage";
+import OutstandingReportPage from "./pages/admin/reports/OutstandingReportPage";
+import AgingReportPage from "./pages/admin/reports/AgingReportPage";
 
 // Vendor Portal
 import VendorLoginPage from "./pages/vendor/VendorLoginPage";
@@ -190,6 +203,10 @@ const App = () => (
             <Route index element={<ContactPage />} />
           </Route>
 
+          <Route path="/about" element={<StoreLayout />}>
+            <Route index element={<AboutPage />} />
+          </Route>
+
           {/* Public entry landing */}
           <Route path="/shop-by-school" element={<StoreLayout />}>
             <Route index element={<ShopBySchoolPage />} />
@@ -209,6 +226,7 @@ const App = () => (
             <Route path="checkout" element={<CheckoutPage />} />
             <Route path="confirmation" element={<ConfirmationPage />} />
             <Route path="order/:orderId" element={<OrderDetailsPage />} />
+            <Route path="invoice/:invoiceId" element={<StoreInvoicePage />} />
           </Route>
 
           <Route path="/track-order" element={<RequireSchoolContext><StoreLayout /></RequireSchoolContext>}>
@@ -230,14 +248,25 @@ const App = () => (
             <Route path="inventory-alerts" element={<InventoryAlertsPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="orders/:orderId" element={<OrdersPage />} />
-            <Route path="orders/:orderId/invoice" element={<InvoicePage />} />
+            <Route path="invoices" element={<InvoicesPage />} />
+            <Route path="invoices/:id" element={<InvoicePage />} />
+            <Route path="customers" element={<CustomersPage />} />
+            <Route path="customers/:id" element={<CustomerDetailPage />} />
+            <Route path="students" element={<StudentsPage />} />
+            <Route path="vendors" element={<VendorsPage />} />
+            <Route path="purchases" element={<PurchasesPage />} />
+            <Route path="ledger" element={<LedgerPage />} />
             <Route path="contact-enquiries" element={<ContactEnquiriesPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
             <Route path="reports" element={<ReportsLayoutPage />}>
               <Route index element={<Navigate to="/admin/reports/sales" replace />} />
               <Route path="sales" element={<SalesReportPage />} />
+              <Route path="outstanding" element={<OutstandingReportPage />} />
+              <Route path="aging" element={<AgingReportPage />} />
               <Route path="inventory" element={<InventoryReportPage />} />
+              <Route path="gst" element={<GstReportPage />} />
+              <Route path="customers" element={<CustomerInsightsPage />} />
             </Route>
           </Route>
 

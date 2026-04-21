@@ -1,9 +1,11 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useCart } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useStudentProfile } from "@/lib/student-profile";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
@@ -21,6 +23,13 @@ type CheckoutForm = {
   address: string;
   city: string;
   pincode: string;
+};
+
+type CheckoutLookupStudent = {
+  id: string;
+  name: string;
+  class_name: string;
+  gender: "Male" | "Female" | "Unisex";
 };
 
 const EMPTY_FORM: CheckoutForm = {
@@ -94,7 +103,123 @@ const CheckoutPage = () => {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupStudents, setLookupStudents] = useState<CheckoutLookupStudent[]>([]);
+  const [lookupCustomerId, setLookupCustomerId] = useState<string | null>(null);
+  const [usingExistingStudent, setUsingExistingStudent] = useState(false);
+  const [autoFillPulse, setAutoFillPulse] = useState(false);
   const hasItemsRef = useRef(items.length > 0);
+  const autoFillTimeoutRef = useRef<number | null>(null);
+
+  const schoolId = studentProfile?.schoolId ?? null;
+
+  const { data: classes } = useQuery({
+    queryKey: ["checkout-classes", schoolId],
+    enabled: !!schoolId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("id, name")
+        .eq("school_id", schoolId!)
+        .eq("status", "active")
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  useEffect(() => {
+    if (!schoolId || !studentProfile) return;
+    setForm((prev) => ({
+      ...prev,
+      grade: prev.grade || studentProfile.className,
+      student_name: prev.student_name || "",
+    }));
+  }, [schoolId, studentProfile]);
+
+  useEffect(() => {
+    return () => {
+      if (autoFillTimeoutRef.current) {
+        window.clearTimeout(autoFillTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const pulseAutoFill = () => {
+    setAutoFillPulse(true);
+    if (autoFillTimeoutRef.current) {
+      window.clearTimeout(autoFillTimeoutRef.current);
+    }
+    autoFillTimeoutRef.current = window.setTimeout(() => {
+      setAutoFillPulse(false);
+      autoFillTimeoutRef.current = null;
+    }, 800);
+  };
+
+  useEffect(() => {
+    const phoneDigits = form.phone.replace(/\D/g, "");
+    if (phoneDigits.length !== 10) {
+      setLookupStudents([]);
+      setLookupCustomerId(null);
+      setUsingExistingStudent(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setLookupLoading(true);
+      try {
+        const { data, error } = await (supabase as any).rpc("find_checkout_customer_by_phone", {
+          p_phone: phoneDigits,
+        });
+
+        if (error) throw error;
+        if (!data) {
+          setLookupStudents([]);
+          setLookupCustomerId(null);
+          setUsingExistingStudent(false);
+          return;
+        }
+
+        const students = (data.students ?? [])
+          .map((student: any) => ({
+            id: String(student.id),
+            name: String(student.name || ""),
+            class_name: String(student.class_name || ""),
+            gender: (String(student.gender || "Unisex") as "Male" | "Female" | "Unisex"),
+          }))
+          .filter((student: CheckoutLookupStudent) => student.name);
+
+        setLookupCustomerId(data.customer_id ?? null);
+        setLookupStudents(students);
+
+        setForm((prev) => ({
+          ...prev,
+          customer_name: prev.customer_name || data.name || "",
+          email: prev.email || data.email || "",
+        }));
+
+        pulseAutoFill();
+
+        if (students.length > 0) {
+          const first = students[0];
+          setUsingExistingStudent(true);
+          setForm((prev) => ({
+            ...prev,
+            student_name: prev.student_name || first.name,
+            grade: prev.grade || first.class_name,
+          }));
+        } else {
+          setUsingExistingStudent(false);
+        }
+      } catch (lookupError) {
+        logger.warn("Checkout customer lookup failed", lookupError);
+      } finally {
+        setLookupLoading(false);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [form.phone]);
 
   const set = (field: keyof CheckoutForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => {
@@ -106,7 +231,11 @@ const CheckoutPage = () => {
     });
 
   const getInputClass = (field: keyof CheckoutForm) =>
-    `h-12 border ${errors[field] ? "border-destructive" : "border-border"} transition-[border-color,box-shadow] duration-200`;
+    `h-12 border ${errors[field] ? "border-destructive" : "border-border"} ${
+      autoFillPulse && ["customer_name", "email", "student_name", "grade"].includes(field)
+        ? "border-emerald-200 bg-emerald-50/40"
+        : ""
+    } transition-[border-color,box-shadow,background-color,opacity] duration-300`;
 
   const getTextareaClass = (field: keyof CheckoutForm) =>
     `w-full min-h-[80px] border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none transition-[border-color,box-shadow] duration-200 ${errors[field] ? "border-destructive" : "border-border"}`;
@@ -209,7 +338,6 @@ const CheckoutPage = () => {
         phone: orderPayload.phone,
         alternate_phone: orderPayload.alternatePhone || null,
         payment_mode: "ONLINE",
-        customer_id: customer?.id ?? null,
         student_name: orderPayload.studentName,
         student_class: orderPayload.grade,
         grade: orderPayload.grade,
@@ -217,7 +345,7 @@ const CheckoutPage = () => {
         city: orderPayload.city,
         pincode: orderPayload.pincode,
         school_id: effectiveSchoolId,
-        total_amount: orderTotal,
+        total_amount: 0,
         status: "PLACED",
       };
 
@@ -233,7 +361,7 @@ const CheckoutPage = () => {
           address: orderPayload.address,
           payment_mode: "ONLINE",
           school_id: effectiveSchoolId,
-          total_amount: orderTotal,
+          total_amount: 0,
           status: "PLACED",
         },
         {
@@ -242,7 +370,7 @@ const CheckoutPage = () => {
           address: orderPayload.address,
           payment_mode: "ONLINE",
           school_id: effectiveSchoolId,
-          total_amount: orderTotal,
+          total_amount: 0,
           status: "PLACED",
         },
       ];
@@ -259,7 +387,7 @@ const CheckoutPage = () => {
             ...payloadVariant,
           });
 
-        order = { id: createdOrderId, total_amount: orderTotal };
+        order = { id: createdOrderId, total_amount: 0 };
         orderErr = attempt.error;
 
         if (!orderErr) {
@@ -281,17 +409,63 @@ const CheckoutPage = () => {
         note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}`,
       });
 
-      // ── Step 3: insert order items ────────────────────────────────────────
-      const orderItems = items.map((item) => ({
-        order_id: order.id,
-        product_id: item.productId,
-        variant_id: item.variantId,
-        quantity: item.quantity,
-        price: Number(item.price ?? 0),
-      }));
+      // ── Step 3: insert order items sequentially with running total sync ───
+      // Invoice creation is trigger-driven on order_items insert; keeping order total
+      // aligned with inserted subtotal avoids trigger-order race conditions.
+      let runningOrderTotal = 0;
+      for (const item of items) {
+        const lineTotal = Number(item.price ?? 0) * item.quantity;
+        const nextRunningTotal = runningOrderTotal + lineTotal;
 
-      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
-      if (itemsErr) throw itemsErr;
+        const { error: preSyncErr } = await supabase
+          .from("orders")
+          .update({ total_amount: nextRunningTotal })
+          .eq("id", order.id);
+        if (preSyncErr) throw preSyncErr;
+
+        const { error: itemErr } = await supabase.from("order_items").insert({
+          order_id: order.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          quantity: item.quantity,
+          price: Number(item.price ?? 0),
+        });
+        if (itemErr) throw itemErr;
+
+        runningOrderTotal = nextRunningTotal;
+      }
+
+      if (Math.abs(orderTotal - runningOrderTotal) > 0.001) {
+        const { error: syncOrderTotalErr } = await supabase
+          .from("orders")
+          .update({ total_amount: orderTotal })
+          .eq("id", order.id);
+
+        if (syncOrderTotalErr) {
+          logger.warn("Unable to sync final order total after item inserts; continuing checkout flow.", syncOrderTotalErr);
+        }
+      }
+
+      order.total_amount = orderTotal;
+
+      const { error: crmLinkError } = await (supabase as any).rpc("attach_checkout_entities_to_order", {
+        p_order_id: order.id,
+        p_customer_name: orderPayload.fullName,
+        p_customer_phone: phoneDigits,
+        p_customer_email: orderPayload.email,
+        p_student_name: orderPayload.studentName,
+        p_school_id: effectiveSchoolId,
+        p_class_name: orderPayload.grade,
+        p_gender:
+          studentProfile?.gender === "boys"
+            ? "Male"
+            : studentProfile?.gender === "girls"
+              ? "Female"
+              : "Unisex",
+        p_alternate_phone: orderPayload.alternatePhone || null,
+      });
+
+      if (crmLinkError) throw crmLinkError;
 
       // ── Step 4: deduct stock globally across branches ─
       for (const item of items) {
@@ -340,6 +514,10 @@ const CheckoutPage = () => {
         Checkout
       </h1>
 
+      <p className="-mt-8 mb-8 text-sm text-muted-foreground/80">
+        Already ordered before? Enter your phone number for a faster checkout.
+      </p>
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Full Name */}
         <div>
@@ -382,10 +560,20 @@ const CheckoutPage = () => {
             value={form.phone}
             onChange={set("phone")}
             className={getInputClass("phone")}
-            placeholder="+91 98765 43210"
+            placeholder="+91 9972721666"
             autoComplete="tel"
           />
           {errors.phone && <p className="mt-2 text-xs text-destructive">{errors.phone}</p>}
+          {lookupLoading && (
+            <p className="mt-2 text-xs text-muted-foreground/85 animate-pulse transition-opacity duration-300">
+              Fetching your details...
+            </p>
+          )}
+          {!lookupLoading && lookupCustomerId && (
+            <p className="mt-2 text-xs text-emerald-600 transition-opacity duration-300">
+              ✓ Welcome back, {form.customer_name || "there"} - details auto-filled
+            </p>
+          )}
         </div>
 
         {/* Alternate Phone */}
@@ -417,6 +605,47 @@ const CheckoutPage = () => {
             autoComplete="off"
           />
           {errors.student_name && <p className="mt-2 text-xs text-destructive">{errors.student_name}</p>}
+          {lookupStudents.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] tracking-[0.12em] uppercase text-muted-foreground">Saved Students</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-[10px] uppercase tracking-[0.14em]"
+                  onClick={() => setUsingExistingStudent((prev) => !prev)}
+                >
+                  {usingExistingStudent ? "Add New Student" : "Use Existing"}
+                </Button>
+              </div>
+              {usingExistingStudent && (
+                <Select
+                  value={`${form.student_name}__${form.grade}`}
+                  onValueChange={(value) => {
+                    const found = lookupStudents.find((student) => `${student.name}__${student.class_name}` === value);
+                    if (!found) return;
+                    setForm((prev) => ({
+                      ...prev,
+                      student_name: found.name,
+                      grade: found.class_name,
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select existing student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lookupStudents.map((student) => (
+                      <SelectItem key={student.id} value={`${student.name}__${student.class_name}`}>
+                        {student.name} · {student.class_name} · {student.gender}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Grade / Class */}
@@ -424,13 +653,26 @@ const CheckoutPage = () => {
           <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
             Grade / Class <span className="text-destructive">*</span>
           </label>
-          <Input
-            value={form.grade}
-            onChange={set("grade")}
-            className={getInputClass("grade")}
-            placeholder="e.g. Class 10, Nursery, Grade 5"
-            autoComplete="off"
-          />
+          {classes && classes.length > 0 ? (
+            <Select value={form.grade} onValueChange={(value) => setForm((prev) => ({ ...prev, grade: value }))}>
+              <SelectTrigger className={getInputClass("grade")}>
+                <SelectValue placeholder="Select class" />
+              </SelectTrigger>
+              <SelectContent>
+                {classes.map((klass: any) => (
+                  <SelectItem key={klass.id} value={klass.name}>{klass.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={form.grade}
+              onChange={set("grade")}
+              className={getInputClass("grade")}
+              placeholder="e.g. Class 10, Nursery, Grade 5"
+              autoComplete="off"
+            />
+          )}
           {errors.grade && <p className="mt-2 text-xs text-destructive">{errors.grade}</p>}
         </div>
 

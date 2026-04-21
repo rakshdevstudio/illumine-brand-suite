@@ -89,6 +89,12 @@ const StoreHeader = () => {
             <House className="h-3.5 w-3.5" strokeWidth={1.5} />
             <span className="hidden sm:inline">Home</span>
           </button>
+          <Link
+            to="/about"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] tracking-[0.2em] uppercase text-surface-dark-muted transition-colors hover:text-surface-dark-foreground"
+          >
+            <span>About</span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-6">

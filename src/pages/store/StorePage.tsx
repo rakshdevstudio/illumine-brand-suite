@@ -1039,8 +1039,8 @@ const StorePage = () => {
             <p className="text-sm tracking-[0.28em] uppercase font-light mb-1">Illume</p>
             <p className="text-xs text-muted-foreground tracking-[0.16em] uppercase">School Uniforms</p>
           </div>
-          <a href="mailto:hello@illume.co.in" className="text-xs tracking-[0.16em] uppercase text-muted-foreground hover:text-foreground transition-colors">
-            hello@illume.co.in
+          <a href="mailto:support@illumeonline.in" className="text-xs tracking-[0.16em] uppercase text-muted-foreground hover:text-foreground transition-colors">
+            support@illumeonline.in
           </a>
           <p className="text-xs text-muted-foreground tracking-[0.12em] uppercase">
             © {new Date().getFullYear()} Illume. All Rights Reserved.

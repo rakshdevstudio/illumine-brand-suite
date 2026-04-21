@@ -311,6 +311,137 @@ export type Database = {
           },
         ]
       }
+      invoice_items: {
+        Row: {
+          cgst_amount: number
+          gst_percentage: number
+          id: string
+          invoice_id: string
+          product_id: string
+          quantity: number
+          sgst_amount: number
+          total: number
+          unit_price: number
+          variant_id: string | null
+        }
+        Insert: {
+          cgst_amount?: number
+          gst_percentage: number
+          id?: string
+          invoice_id: string
+          product_id: string
+          quantity: number
+          sgst_amount?: number
+          total: number
+          unit_price: number
+          variant_id?: string | null
+        }
+        Update: {
+          cgst_amount?: number
+          gst_percentage?: number
+          id?: string
+          invoice_id?: string
+          product_id?: string
+          quantity?: number
+          sgst_amount?: number
+          total?: number
+          unit_price?: number
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          address: string
+          cgst: number
+          customer_id: string | null
+          created_at: string
+          customer_name: string
+          id: string
+          invoice_number: string
+          order_id: string
+          phone: string
+          sgst: number
+          student_id: string | null
+          subtotal: number
+          total: number
+        }
+        Insert: {
+          address: string
+          cgst?: number
+          customer_id?: string | null
+          created_at?: string
+          customer_name: string
+          id?: string
+          invoice_number: string
+          order_id: string
+          phone: string
+          sgst?: number
+          student_id?: string | null
+          subtotal?: number
+          total?: number
+        }
+        Update: {
+          address?: string
+          cgst?: number
+          customer_id?: string | null
+          created_at?: string
+          customer_name?: string
+          id?: string
+          invoice_number?: string
+          order_id?: string
+          phone?: string
+          sgst?: number
+          student_id?: string | null
+          subtotal?: number
+          total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           created_at: string
@@ -442,12 +573,14 @@ export type Database = {
           dispatch_status: string
           grade: string | null
           id: string
+          invoice_id: string | null
           phone: string
           pincode: string | null
           school_id: string | null
           student_class: string | null
           student_name: string | null
           status: string
+          student_id: string | null
           total_amount: number
           updated_at: string
         }
@@ -462,12 +595,14 @@ export type Database = {
           dispatch_status?: string
           grade?: string | null
           id?: string
+          invoice_id?: string | null
           phone: string
           pincode?: string | null
           school_id?: string | null
           student_class?: string | null
           student_name?: string | null
           status?: string
+          student_id?: string | null
           total_amount?: number
           updated_at?: string
         }
@@ -482,12 +617,14 @@ export type Database = {
           dispatch_status?: string
           grade?: string | null
           id?: string
+          invoice_id?: string | null
           phone?: string
           pincode?: string | null
           school_id?: string | null
           student_class?: string | null
           student_name?: string | null
           status?: string
+          student_id?: string | null
           total_amount?: number
           updated_at?: string
         }
@@ -507,10 +644,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_school_id_fkey"
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
             referencedColumns: ["id"]
           },
         ]
@@ -660,6 +811,7 @@ export type Database = {
           created_at: string
           description: string | null
           gender: string
+          gst_percentage: number
           id: string
           image_url: string | null
           is_universal: boolean
@@ -675,6 +827,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           gender?: string
+          gst_percentage?: number
           id?: string
           image_url?: string | null
           is_universal?: boolean
@@ -690,6 +843,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           gender?: string
+          gst_percentage?: number
           id?: string
           image_url?: string | null
           is_universal?: boolean
@@ -796,6 +950,59 @@ export type Database = {
         }
         Relationships: []
       }
+      students: {
+        Row: {
+          class_id: string
+          created_at: string
+          customer_id: string
+          gender: string
+          id: string
+          name: string
+          name_normalized: string
+          school_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          customer_id: string
+          gender: string
+          id?: string
+          name: string
+          school_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          customer_id?: string
+          gender?: string
+          id?: string
+          name?: string
+          school_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "students_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "students_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -819,6 +1026,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      attach_checkout_entities_to_order: {
+        Args: {
+          p_alternate_phone?: string
+          p_class_name: string
+          p_customer_email: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_gender: string
+          p_order_id: string
+          p_school_id: string
+          p_student_name: string
+        }
+        Returns: {
+          out_customer_id: string
+          out_invoice_id: string
+          out_student_id: string
+        }[]
+      }
+      createInvoiceFromOrder: { Args: { order_id: string }; Returns: string }
+      create_invoice_from_order: { Args: { p_order_id: string }; Returns: string }
+      find_checkout_customer_by_phone: { Args: { p_phone: string }; Returns: Json }
+      getinvoicewithitems: { Args: { p_invoice_id: string }; Returns: Json }
       get_user_role: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -828,6 +1057,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      next_invoice_number: {
+        Args: { p_created_at?: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role:

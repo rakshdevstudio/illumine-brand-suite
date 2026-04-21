@@ -211,16 +211,28 @@ const OrdersPage = () => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  const { data: orders, isLoading } = useQuery({
+  const { data: orders, isLoading, error: ordersError } = useQuery({
     queryKey: ["admin-all-orders"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
+          .order("created_at", { ascending: false });
+        
+        if (error) {
+          console.error("Orders query failed:", error);
+          throw error;
+        }
+        
+        console.log("Orders loaded:", data?.length, "found");
+        return data || [];
+      } catch (err) {
+        console.error("Unexpected error in orders query:", err);
+        throw err;
+      }
     },
+    retry: 1,
   });
 
   const { data: orderItems } = useQuery({
@@ -498,22 +510,6 @@ const OrdersPage = () => {
             <Button variant="outline" size="sm" className="text-xs" onClick={() => setSelectedOrder(order.id)}>
               View
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => navigate(`/admin/orders/${order.id}/invoice`)}
-            >
-              Download Invoice
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => navigate(`/admin/orders/${order.id}/invoice?autoprint=1`)}
-            >
-              Print Invoice
-            </Button>
             {lifecycleAction && (
               <Button
                 variant="outline"
@@ -608,6 +604,12 @@ const OrdersPage = () => {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+              </TableRow>
+            ) : ordersError ? (
+              <TableRow>
+                <TableCell colSpan={9} className="text-center py-8 text-sm text-red-600">
+                  Error loading orders: {(ordersError as Error)?.message || "Unknown error"}
+                </TableCell>
               </TableRow>
             ) : processedOrders.length === 0 ? (
               <TableRow>

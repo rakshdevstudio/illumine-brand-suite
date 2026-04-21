@@ -1,457 +1,498 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { Link, useParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import illumeLogo from "@/assets/logo.png";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { InvoiceDocument, type InvoiceView } from "@/components/invoice/InvoiceDocument";
+import { exportToExcel, formatInvoiceForExport, generateExportFilename } from "@/lib/invoice-export";
+import { toast } from "sonner";
+import { Download } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value || 0);
-
-const formatPdfCurrency = (value: number) => {
-  const numeric = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value || 0);
-  return `INR ${numeric}`;
-};
-
-const toPdfText = (value: string) =>
-  value
-    .replace(/₹/g, "INR ")
-    .replace(/–/g, "-")
-    .replace(/—/g, "-")
-    .replace(/©/g, "(c)")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .normalize("NFKD")
-    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
-
-const formatInvoiceDate = (value: string) =>
-  new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-
-const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | null | undefined> | undefined) => {
-  const result = {
-    studentName: "",
-    grade: "",
-    alternatePhone: "",
-  };
-
-  if (!notes?.length) return result;
-
-  for (const entry of notes) {
-    const note = entry?.note || "";
-    if (!note) continue;
-
-    const studentNameMatch = note.match(/Student Name:\s*(.+)/i);
-    const gradeMatch = note.match(/Grade:\s*(.+)/i);
-    const alternateMatch = note.match(/Alternate Phone:\s*(.+)/i);
-
-    if (studentNameMatch?.[1] && !result.studentName) result.studentName = studentNameMatch[1].trim();
-    if (gradeMatch?.[1] && !result.grade) result.grade = gradeMatch[1].trim();
-    if (alternateMatch?.[1] && !result.alternatePhone) result.alternatePhone = alternateMatch[1].trim();
-
-    if (result.studentName && result.grade && result.alternatePhone) break;
-  }
-
-  return result;
-};
-
-type InvoiceOrderItem = {
-  id?: string | number;
-  quantity: number;
-  price: number;
-  products?: { name?: string | null };
-  product_variants?: { size?: string | null };
-};
-
-type InvoiceOrder = {
+type InvoiceFinanceMeta = {
   id: string;
-  customer_name: string;
-  phone: string;
-  alternate_phone: string | null;
-  student_name: string | null;
-  grade: string | null;
-  address: string;
-  city: string;
-  pincode: string;
-  total_amount: number;
+  status: string;
+  paid_amount: number;
+  balance_amount: number;
+  total: number;
+};
+
+type InvoicePaymentRow = {
+  id: string;
+  amount: number;
+  payment_mode: string;
+  payment_date: string;
+  notes: string | null;
+  idempotency_key: string;
   created_at: string;
-  order_notes: Array<{ note?: string | null }>;
-  order_items: InvoiceOrderItem[];
 };
 
 const InvoicePage = () => {
-  const { orderId } = useParams<{ orderId: string }>();
-  const [searchParams] = useSearchParams();
-  const hasPrintedRef = useRef(false);
+  const { id } = useParams<{ id: string }>();
+  const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMode, setPaymentMode] = useState("bank");
+  const [paymentRef, setPaymentRef] = useState("");
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundNotes, setRefundNotes] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelConfirmText, setCancelConfirmText] = useState("");
 
-  const { data: order, isLoading, error } = useQuery<InvoiceOrder | null>({
-    queryKey: ["admin-invoice", orderId],
-    enabled: !!orderId,
+  const { data: invoice, isLoading, error } = useQuery<InvoiceView | null>({
+    queryKey: ["admin-invoice-detail", id],
+    enabled: !!id,
     queryFn: async () => {
-    const withStudentFields = "id, customer_name, phone, alternate_phone, student_name, grade, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
-      const legacyFields = "id, customer_name, phone, address, city, pincode, total_amount, created_at, order_notes(note, created_at), order_items(quantity, price, products(name), product_variants(size))";
-      const client = supabase as any;
+      const { data, error } = await supabase.rpc("getinvoicewithitems", {
+        p_invoice_id: id!,
+      });
 
-      let { data, error } = await client
-        .from("orders")
-        .select(withStudentFields)
-        .eq("id", orderId!)
-        .single();
-
-      if (error?.code === "PGRST204") {
-        const msg = (error.message || "").toLowerCase();
-        const missingStudentCols =
-          msg.includes("alternate_phone") || msg.includes("student_name") || msg.includes("grade");
-
-        if (missingStudentCols) {
-          const fallback = await client
-            .from("orders")
-            .select(legacyFields)
-            .eq("id", orderId!)
-            .single();
-
-          const fallbackData = fallback.data
-            ? {
-                ...fallback.data,
-                alternate_phone: null,
-                student_name: null,
-                grade: null,
-              }
-            : null;
-
-          if (fallback.error) throw fallback.error;
-          return fallbackData as InvoiceOrder | null;
-        }
+      if (!error) {
+        return (data ?? null) as InvoiceView | null;
       }
 
-      if (error) throw error;
-      return data as InvoiceOrder | null;
+      if (error.code !== "404" && !String(error.message || "").includes("404")) {
+        throw error;
+      }
+
+      const fallback = await supabase
+        .from("invoices")
+        .select(
+          "id, order_id, invoice_number, customer_name, phone, address, subtotal, cgst, sgst, total, created_at, invoice_items(id, quantity, unit_price, gst_percentage, cgst_amount, sgst_amount, total, products(name), product_variants(size))",
+        )
+        .eq("id", id!)
+        .single();
+
+      if (fallback.error) throw fallback.error;
+      const row: any = fallback.data;
+      if (!row) return null;
+
+      return {
+        ...row,
+        invoice_items: (row.invoice_items ?? []).map((item: any) => ({
+          id: item.id,
+          product_name: item.products?.name || "Product",
+          variant_size: item.product_variants?.size || "-",
+          quantity: Number(item.quantity || 0),
+          unit_price: Number(item.unit_price || 0),
+          gst_percentage: Number(item.gst_percentage || 0),
+          cgst_amount: Number(item.cgst_amount || 0),
+          sgst_amount: Number(item.sgst_amount || 0),
+          total: Number(item.total || 0),
+        })),
+      } as InvoiceView;
     },
   });
 
-  const noteDerivedStudent = useMemo(() => parseStudentFieldsFromNotes(order?.order_notes), [order]);
+  const { data: financeMeta } = useQuery<InvoiceFinanceMeta | null>({
+    queryKey: ["admin-invoice-finance", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("invoices")
+        .select("id, status, paid_amount, balance_amount, total")
+        .eq("id", id!)
+        .single();
+      if (error) throw error;
+      return (data ?? null) as InvoiceFinanceMeta | null;
+    },
+  });
 
-  const studentName = order?.student_name || noteDerivedStudent.studentName || "-";
-  const grade = order?.grade || noteDerivedStudent.grade || "-";
-  const alternatePhoneRaw = order?.alternate_phone || noteDerivedStudent.alternatePhone || "";
-  const alternatePhone = alternatePhoneRaw && alternatePhoneRaw !== "—" ? alternatePhoneRaw : "-";
-  const invoiceTypeLabel = "INVOICE";
+  const { data: paymentHistory = [] } = useQuery<InvoicePaymentRow[]>({
+    queryKey: ["admin-invoice-payments", id],
+    enabled: isAdmin && !!id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("payments")
+        .select("id, amount, payment_mode, payment_date, notes, idempotency_key, created_at")
+        .eq("reference_type", "invoice")
+        .eq("reference_id", id!)
+        .order("created_at", { ascending: false });
 
-  const invoiceNumber = useMemo(() => {
-    if (!order?.id) return "ILLUME-PREVIEW";
-    return `ILLUME-${order.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
-  }, [order?.id]);
+      if (error) throw error;
+      return (data ?? []) as InvoicePaymentRow[];
+    },
+  });
 
-  const shortOrderId = useMemo(() => {
-    if (!order?.id) return "-";
-    return order.id.replace(/-/g, "").slice(0, 8).toUpperCase();
-  }, [order?.id]);
-
-  const items = order?.order_items ?? [];
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0),
-    [items],
-  );
-  const shipping = 0;
-  const tax = 0;
-  const total = Number(order?.total_amount ?? subtotal + shipping + tax);
-
-  useEffect(() => {
-    const shouldAutoPrint = searchParams.get("autoprint") === "1";
-    if (!order || !shouldAutoPrint || hasPrintedRef.current) return;
-
-    hasPrintedRef.current = true;
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 150);
-
-    return () => window.clearTimeout(timer);
-  }, [order, searchParams]);
-
-  const handlePrint = () => {
-    window.print();
+  const refreshInvoice = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin-invoice-detail", id] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-invoice-finance", id] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-invoice-payments", id] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-invoices"] }),
+      queryClient.invalidateQueries({ queryKey: ["erp-ledger-entries"] }),
+    ]);
   };
 
-  const handleDownloadPdf = async () => {
-    if (!order) return;
+  const recordPayment = useMutation({
+    mutationFn: async () => {
+      const amount = Number(paymentAmount || 0);
+      if (!id) throw new Error("Invoice id missing");
+      if (!amount || amount <= 0) throw new Error("Enter a valid payment amount");
+      const idempotencyKey = paymentIdempotencyKey || crypto.randomUUID();
+      const combinedNotes = [paymentRef.trim(), paymentNotes.trim()].filter(Boolean).join(" | ") || null;
 
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595.28, 841.89]);
-    const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const medium = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    try {
-      const logoBytes = await fetch(illumeLogo).then((res) => res.arrayBuffer());
-      const isJpeg = /\.jpe?g($|\?)/i.test(illumeLogo);
-      const logoImage = isJpeg ? await pdfDoc.embedJpg(logoBytes) : await pdfDoc.embedPng(logoBytes);
-
-      page.drawRectangle({
-        x: 40,
-        y: 760,
-        width: 42,
-        height: 42,
-        color: rgb(0, 0, 0),
+      const { error } = await (supabase as any).rpc("record_payment", {
+        p_reference_type: "invoice",
+        p_reference_id: id,
+        p_amount: amount,
+        p_mode: paymentMode,
+        p_idempotency_key: idempotencyKey,
+        p_notes: combinedNotes,
       });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Payment recorded.");
+      setPaymentAmount("");
+      setPaymentMode("bank");
+      setPaymentRef("");
+      setPaymentIdempotencyKey("");
+      setPaymentNotes("");
+      setPaymentOpen(false);
+      await refreshInvoice();
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to record payment."),
+  });
 
-      page.drawImage(logoImage, {
-        x: 44,
-        y: 764,
-        width: 34,
-        height: 34,
+  const recordRefund = useMutation({
+    mutationFn: async () => {
+      const amount = Number(refundAmount || 0);
+      if (!id) throw new Error("Invoice id missing");
+      if (!amount || amount <= 0) throw new Error("Enter a valid refund amount");
+
+      const { error } = await (supabase as any).rpc("record_refund", {
+        p_invoice_id: id,
+        p_amount: amount,
+        p_mode: "bank",
+        p_reference_no: null,
+        p_notes: refundNotes || null,
       });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Refund recorded.");
+      setRefundAmount("");
+      setRefundNotes("");
+      setRefundOpen(false);
+      await refreshInvoice();
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to record refund."),
+  });
 
-      page.drawImage(logoImage, {
-        x: 220,
-        y: 325,
-        width: 160,
-        height: 160,
-        opacity: 0.08,
+  const cancelInvoice = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("Invoice id missing");
+      if (!cancelReason.trim()) throw new Error("Cancellation reason is required");
+      if (cancelConfirmText.trim() !== "CANCEL") throw new Error('Type "CANCEL" to confirm');
+
+      const { error } = await (supabase as any).rpc("cancel_invoice_with_reversal", {
+        p_invoice_id: id,
+        p_reason: cancelReason.trim(),
       });
-    } catch {
-      // Logo is optional for PDF rendering.
-    }
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Invoice cancelled with reversal entry.");
+      setCancelReason("");
+      setCancelConfirmText("");
+      setCancelOpen(false);
+      await refreshInvoice();
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to cancel invoice."),
+  });
 
-    const draw = (text: string, x: number, y: number, size = 10, weight: "regular" | "medium" = "regular") => {
-      page.drawText(toPdfText(text), {
-        x,
-        y,
-        size,
-        font: weight === "medium" ? medium : regular,
-        color: rgb(0.1, 0.1, 0.1),
-      });
-    };
-
-    const line = (y: number) => {
-      page.drawLine({
-        start: { x: 40, y },
-        end: { x: 555, y },
-        thickness: 1,
-        color: rgb(0.85, 0.85, 0.85),
-      });
-    };
-
-    draw("ILLUME", 88, 786, 16, "medium");
-    draw(invoiceTypeLabel, 430, 786, 14, "medium");
-    draw("Premium School Uniforms", 88, 770, 10);
-
-    draw(`Invoice # ${invoiceNumber}`, 40, 738, 10, "medium");
-    draw(`Date: ${formatInvoiceDate(order.created_at)}`, 40, 722, 10);
-    draw(`Order ID: ${shortOrderId}`, 40, 706, 10);
-
-    line(690);
-
-    draw("Bill To", 40, 670, 11, "medium");
-    draw(order.customer_name || "-", 40, 652, 10);
-    draw(`Phone: ${order.phone || "-"}`, 40, 636, 10);
-    draw(`Alternate Phone: ${alternatePhone}`, 40, 620, 10);
-    draw(`Student Name: ${studentName}`, 40, 604, 10);
-    draw(`Grade: ${grade}`, 40, 588, 10);
-    draw(order.address || "-", 40, 572, 10);
-    draw(`${order.city || "-"} ${order.pincode || ""}`.trim(), 40, 556, 10);
-
-    line(538);
-
-    draw("Product", 40, 518, 10, "medium");
-    draw("Size", 290, 518, 10, "medium");
-    draw("Qty", 350, 518, 10, "medium");
-    draw("Price", 410, 518, 10, "medium");
-    draw("Subtotal", 490, 518, 10, "medium");
-
-    let y = 498;
-    for (const item of items) {
-      const productName = item.products?.name || "Product";
-      const size = item.product_variants?.size || "default";
-      const qty = Number(item.quantity || 0);
-      const price = Number(item.price || 0);
-      const rowSubtotal = qty * price;
-
-      draw(productName, 40, y, 10);
-      draw(size, 290, y, 10);
-      draw(String(qty), 350, y, 10);
-      draw(formatPdfCurrency(price), 410, y, 10);
-      draw(formatPdfCurrency(rowSubtotal), 490, y, 10);
-      y -= 18;
-
-      if (y < 210) break;
-    }
-
-    line(y + 6);
-
-    draw("Subtotal", 420, y - 18, 10);
-    draw(formatPdfCurrency(subtotal), 490, y - 18, 10);
-
-    draw("Shipping", 420, y - 36, 10);
-    draw(formatPdfCurrency(shipping), 490, y - 36, 10);
-
-    draw("Tax", 420, y - 54, 10);
-    draw(formatPdfCurrency(tax), 490, y - 54, 10);
-
-    line(y - 68);
-
-    draw("TOTAL", 420, y - 88, 11, "medium");
-    draw(formatPdfCurrency(total), 490, y - 88, 11, "medium");
-
-    line(y - 102);
-
-    draw("Thank you for choosing Illume.", 40, y - 130, 10);
-    draw("hello@illume.co.in", 40, y - 146, 10);
-    draw("www.illumeonline.in", 40, y - 162, 10);
-    draw("(c) Illume", 40, y - 178, 10);
-
-    const bytes = await pdfDoc.save();
-    const pdfBytes = Uint8Array.from(bytes);
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const safeInvoiceId = invoiceNumber.replace(/[^A-Z0-9-]/gi, "");
-    link.href = url;
-    link.download = `Invoice_ILLUME_${safeInvoiceId}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  const displayFinance = useMemo(() => {
+    const total = Number(financeMeta?.total ?? invoice?.total ?? 0);
+    const paid = Number(financeMeta?.paid_amount ?? 0);
+    const outstanding = Number(financeMeta?.balance_amount ?? Math.max(total - paid, 0));
+    return { total, paid, outstanding, status: financeMeta?.status || "draft" };
+  }, [financeMeta, invoice]);
 
   if (isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading invoice...</div>;
+    return <p className="text-sm text-muted-foreground">Loading invoice...</p>;
   }
 
-  if (error || !order) {
+  if (error || !invoice) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-destructive">Failed to load invoice data.</p>
-        <Link to="/admin/orders" className="text-xs tracking-[0.15em] uppercase underline">Back to Orders</Link>
+        <p className="text-sm text-destructive">Invoice not found.</p>
+        <Link to="/admin/invoices">
+          <Button variant="outline">Back to Invoices</Button>
+        </Link>
       </div>
     );
   }
 
+  const handleExportInvoice = async () => {
+    try {
+      const formattedInvoice = formatInvoiceForExport(invoice);
+      const filename = generateExportFilename(`invoice-${invoice.invoice_number}`);
+      exportToExcel([formattedInvoice], filename);
+      toast.success("Invoice exported successfully");
+    } catch (err) {
+      console.error("Export failed:", err);
+      toast.error("Failed to export invoice");
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          .print-card { box-shadow: none !important; border-color: #e5e7eb !important; }
-          body { background: white !important; }
-        }
-      `}</style>
-
-      <div className="no-print flex flex-wrap items-center gap-3">
-        <Link to="/admin/orders">
-          <Button variant="outline" size="sm" className="text-xs">Back to Orders</Button>
+    <div className="space-y-4">
+      <style>
+        {`@page { size: A4; margin: 10mm; }
+          @media print {
+            html, body { background: #fff !important; overflow: visible !important; }
+            body * { visibility: hidden !important; }
+            #invoice-print-root, #invoice-print-root * { visibility: visible !important; }
+            #invoice-print-root {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 190mm !important;
+              max-width: 190mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #fff !important;
+            }
+          }`}
+      </style>
+      <div className="print:hidden flex items-center gap-2">
+        <Link to="/admin/invoices">
+          <Button variant="outline">Back to Invoices</Button>
         </Link>
-        <Button variant="outline" size="sm" className="text-xs" onClick={handlePrint}>Print Invoice</Button>
-        <Button size="sm" className="text-xs" onClick={handleDownloadPdf}>Download PDF</Button>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={handleExportInvoice}
+          className="gap-2"
+        >
+          <Download className="w-4 h-4" />
+          Export Invoice
+        </Button>
+
+        {isAdmin ? (
+        <Dialog
+          open={paymentOpen}
+          onOpenChange={(open) => {
+            setPaymentOpen(open);
+            if (open) {
+              setPaymentIdempotencyKey(crypto.randomUUID());
+            }
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button variant="outline">Record Payment</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record Payment</DialogTitle>
+              <DialogDescription>
+                Canonical receipt posting with idempotency protection and ledger sync.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment-amount">Amount</Label>
+                <Input
+                  id="payment-amount"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-mode">Mode</Label>
+                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                  <SelectTrigger id="payment-mode">
+                    <SelectValue placeholder="Select mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="bank">Bank</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-ref">Reference</Label>
+                <Input
+                  id="payment-ref"
+                  value={paymentRef}
+                  onChange={(e) => setPaymentRef(e.target.value)}
+                  placeholder="UTR / Transaction ID"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-notes">Notes</Label>
+                <Textarea
+                  id="payment-notes"
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  placeholder="Optional notes"
+                />
+              </div>
+              <Button onClick={() => recordPayment.mutate()} disabled={recordPayment.isPending}>
+                {recordPayment.isPending ? "Saving..." : "Save Payment"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        ) : (
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Financial actions: admin only</p>
+        )}
+
+        {isAdmin && (
+        <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">Record Refund</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record Refund</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="refund-amount">Amount</Label>
+                <Input
+                  id="refund-amount"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="refund-notes">Reason / Notes</Label>
+                <Textarea
+                  id="refund-notes"
+                  value={refundNotes}
+                  onChange={(e) => setRefundNotes(e.target.value)}
+                  placeholder="Refund reason"
+                />
+              </div>
+              <Button onClick={() => recordRefund.mutate()} disabled={recordRefund.isPending}>
+                {recordRefund.isPending ? "Saving..." : "Save Refund"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        )}
+
+        {isAdmin && (
+        <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+          <DialogTrigger asChild>
+            <Button variant="destructive">Cancel Invoice</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cancel Invoice</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason">Cancellation Reason</Label>
+                <Textarea
+                  id="cancel-reason"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Mandatory for audit trail"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cancel-confirm">Type CANCEL to confirm</Label>
+                <Input
+                  id="cancel-confirm"
+                  value={cancelConfirmText}
+                  onChange={(e) => setCancelConfirmText(e.target.value)}
+                  placeholder="CANCEL"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                onClick={() => cancelInvoice.mutate()}
+                disabled={cancelInvoice.isPending || cancelConfirmText.trim() !== "CANCEL"}
+              >
+                {cancelInvoice.isPending ? "Cancelling..." : "Cancel and Reverse"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        )}
       </div>
 
-      <div className="print-card relative bg-background border border-border max-w-5xl mx-auto p-6 md:p-10 space-y-6 overflow-hidden">
-        <img
-          src={illumeLogo}
-          alt="Illume watermark"
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-48 opacity-[0.055] grayscale"
-        />
-
-        <header className="relative z-10 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="h-12 w-12 bg-black flex items-center justify-center rounded-sm">
-              <img src={illumeLogo} alt="Illume" className="h-10 w-auto" />
-            </div>
-            <div>
-              <h1 className="text-lg font-medium tracking-wide">ILLUME</h1>
-              <p className="text-sm text-muted-foreground">Premium School Uniforms</p>
-            </div>
-          </div>
-          <h2 className="text-lg md:text-xl font-medium tracking-[0.14em]">{invoiceTypeLabel}</h2>
-        </header>
-
-        <div className="relative z-10 text-sm space-y-1">
-          <p><span className="font-medium">Invoice #</span> {invoiceNumber}</p>
-          <p><span className="font-medium">Date:</span> {formatInvoiceDate(order.created_at)}</p>
-          <p><span className="font-medium">Order ID:</span> {shortOrderId}</p>
+      <div className="print:hidden grid gap-3 md:grid-cols-4">
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</p>
+          <p className="text-sm font-medium mt-1">{displayFinance.status}</p>
         </div>
-
-        <div className="relative z-10 border-t border-border" />
-
-        <section className="relative z-10 text-sm space-y-1">
-          <p className="font-medium">Bill To</p>
-          <p>{order.customer_name || "-"}</p>
-          <p>Phone: {order.phone || "-"}</p>
-          <p>Alternate Phone: {alternatePhone}</p>
-          <p>Student Name: {studentName}</p>
-          <p>Grade: {grade}</p>
-          <p>{order.address || "-"}</p>
-          <p>{`${order.city || "-"} ${order.pincode || ""}`.trim()}</p>
-        </section>
-
-        <div className="relative z-10 border-t border-border" />
-
-        <section className="relative z-10 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 font-medium">Product</th>
-                <th className="text-left py-2 font-medium">Size</th>
-                <th className="text-right py-2 font-medium">Qty</th>
-                <th className="text-right py-2 font-medium">Price</th>
-                <th className="text-right py-2 font-medium">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: InvoiceOrderItem, index: number) => {
-                const qty = Number(item.quantity || 0);
-                const unit = Number(item.price || 0);
-                const rowTotal = qty * unit;
-                return (
-                  <tr key={`${item.id ?? "item"}-${index}`} className="border-b border-border/60 last:border-0">
-                    <td className="py-2">{item.products?.name || "Product"}</td>
-                    <td className="py-2">{item.product_variants?.size || "default"}</td>
-                    <td className="py-2 text-right">{qty}</td>
-                    <td className="py-2 text-right">{formatCurrency(unit)}</td>
-                    <td className="py-2 text-right">{formatCurrency(rowTotal)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
-
-        <div className="relative z-10 border-t border-border" />
-
-        <section className="relative z-10 ml-auto w-full max-w-xs text-sm space-y-1">
-          <div className="flex items-center justify-between">
-            <span>Subtotal</span>
-            <span>{formatCurrency(subtotal)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Shipping</span>
-            <span>{formatCurrency(shipping)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Tax</span>
-            <span>{formatCurrency(tax)}</span>
-          </div>
-          <div className="border-t border-border my-2" />
-          <div className="flex items-center justify-between font-medium text-base">
-            <span>TOTAL</span>
-            <span>{formatCurrency(total)}</span>
-          </div>
-        </section>
-
-        <div className="relative z-10 border-t border-border" />
-
-        <footer className="relative z-10 text-sm text-muted-foreground space-y-1">
-          <p>Thank you for choosing Illume.</p>
-          <p>hello@illume.co.in</p>
-          <p>
-            <a
-              href="https://www.illumeonline.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-500 hover:text-black transition-colors"
-            >
-              www.illumeonline.in
-            </a>
-          </p>
-          <p>© Illume</p>
-        </footer>
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
+          <p className="text-sm font-medium mt-1">₹{displayFinance.total.toFixed(2)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Paid</p>
+          <p className="text-sm font-medium mt-1 text-green-600">₹{displayFinance.paid.toFixed(2)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Outstanding</p>
+          <p className="text-sm font-medium mt-1 text-amber-600">₹{displayFinance.outstanding.toFixed(2)}</p>
+        </div>
       </div>
+
+      {isAdmin && paymentHistory.length > 0 && (
+        <div className="print:hidden rounded-md border border-border">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-medium">Payment history</p>
+            <p className="text-xs text-muted-foreground">Latest canonical receipts against this invoice.</p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Mode</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Idempotency Key</TableHead>
+                <TableHead>Notes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paymentHistory.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>{new Date(payment.payment_date || payment.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="capitalize">{payment.payment_mode}</TableCell>
+                  <TableCell className="text-right">₹{Number(payment.amount || 0).toFixed(2)}</TableCell>
+                  <TableCell className="font-mono text-xs">{payment.idempotency_key}</TableCell>
+                  <TableCell>{payment.notes || "-"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <InvoiceDocument invoice={invoice} />
     </div>
   );
 };
