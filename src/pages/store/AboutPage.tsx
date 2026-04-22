@@ -34,7 +34,7 @@ const fadeUp = {
 };
 
 const stats = [
-  { value: "50+", label: "schools served", icon: Building2 },
+  { value: "100+", label: "schools served", icon: Building2 },
   { value: "7 years", label: "refining the system", icon: Clock3 },
   { value: "4-step", label: "ordering clarity", icon: Layers3 },
   { value: "100%", label: "inventory visibility", icon: BadgeCheck },
