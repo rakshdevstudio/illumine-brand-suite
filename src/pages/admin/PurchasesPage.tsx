@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SmartVariantSelectorController } from "@/components/admin/purchases/SmartVariantSelector";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 12;
@@ -31,11 +32,25 @@ type VariantRef = {
   product_id: string;
   sku: string | null;
   size: string | null;
-  products: { name: string } | null;
+  status?: string | null;
+  products: { name: string; school_id?: string | null } | null;
+};
+
+type SchoolRef = { id: string; name: string };
+
+type ProductRef = {
+  id: string;
+  name: string;
+  school_id: string | null;
+  status?: string | null;
 };
 
 type PurchaseLine = {
+  selectorInstanceId: string;
+  schoolId: string;
+  productId: string;
   variantId: string;
+  variantIdentity: string;
   quantity: string;
   unitCost: string;
   gstPercentage: string;
@@ -45,6 +60,17 @@ type BranchRef = { id: string; name: string; state_code: string | null };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(value || 0);
+
+const createEmptyLine = (): PurchaseLine => ({
+  selectorInstanceId: crypto.randomUUID(),
+  schoolId: "",
+  productId: "",
+  variantId: "",
+  variantIdentity: "",
+  quantity: "",
+  unitCost: "",
+  gstPercentage: "5",
+});
 
 const PurchasesPage = () => {
   const queryClient = useQueryClient();
@@ -58,7 +84,7 @@ const PurchasesPage = () => {
   const [vendorStateCode, setVendorStateCode] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<PurchaseLine[]>([{ variantId: "", quantity: "1", unitCost: "1", gstPercentage: "18" }]);
+  const [lines, setLines] = useState<PurchaseLine[]>([createEmptyLine()]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["erp-purchases"],
@@ -81,14 +107,49 @@ const PurchasesPage = () => {
     },
   });
 
+  const { data: schools = [] } = useQuery({
+    queryKey: ["erp-purchase-schools-ref"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("schools").select("id, name").order("name");
+      if (error) throw error;
+      return (data ?? []) as SchoolRef[];
+    },
+  });
+
+  const selectedSchoolIds = useMemo(
+    () => Array.from(new Set(lines.map((line) => line.schoolId).filter(Boolean))),
+    [lines],
+  );
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["erp-purchase-products-ref", selectedSchoolIds.join("|")],
+    enabled: selectedSchoolIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, name, school_id, status")
+        .in("school_id", selectedSchoolIds)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as ProductRef[];
+    },
+  });
+
+  const selectedProductIds = useMemo(
+    () => Array.from(new Set(lines.map((line) => line.productId).filter(Boolean))),
+    [lines],
+  );
+
   const { data: variants = [] } = useQuery({
-    queryKey: ["erp-purchase-variants-ref"],
+    queryKey: ["erp-purchase-variants-ref", selectedProductIds.join("|")],
+    enabled: selectedProductIds.length > 0,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("product_variants")
-        .select("id, product_id, sku, size, products(name)")
-        .order("created_at", { ascending: false })
-        .limit(500);
+        .select("id, product_id, sku, size, status, products(name)")
+        .in("product_id", selectedProductIds)
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as VariantRef[];
     },
@@ -105,6 +166,18 @@ const PurchasesPage = () => {
 
   const selectedBranch = useMemo(() => branches.find((b) => b.id === branchId) || null, [branches, branchId]);
   const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId) || null, [vendors, vendorId]);
+  const schoolById = useMemo(() => new Map(schools.map((school) => [school.id, school])), [schools]);
+
+  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const variantsByProductId = useMemo(() => {
+    const grouped = new Map<string, VariantRef[]>();
+    variants.forEach((variant) => {
+      const bucket = grouped.get(variant.product_id) ?? [];
+      bucket.push(variant);
+      grouped.set(variant.product_id, bucket);
+    });
+    return grouped;
+  }, [variants]);
 
   useEffect(() => {
     if (!branchId && branches.length > 0) {
@@ -124,6 +197,40 @@ const PurchasesPage = () => {
       setVendorStateCode(selectedVendor.state_code.toUpperCase());
     }
   }, [selectedVendor?.state_code]);
+
+  useEffect(() => {
+    setLines((current) => {
+      let changed = false;
+      const next = current.map((line) => {
+        let lineChanged = false;
+        let schoolId = line.schoolId;
+        let productId = line.productId;
+        let variantId = line.variantId;
+
+        if (schoolId && !productId) {
+          const schoolProducts = products.filter((product) => product.school_id === schoolId);
+          if (schoolProducts.length === 1) {
+            productId = schoolProducts[0].id;
+            lineChanged = true;
+            changed = true;
+          }
+        }
+
+        if (productId && !variantId) {
+          const productVariants = variantsByProductId.get(productId) ?? [];
+          if (productVariants.length === 1) {
+            variantId = productVariants[0].id;
+            lineChanged = true;
+            changed = true;
+          }
+        }
+
+        return lineChanged ? { ...line, schoolId, productId, variantId } : line;
+      });
+
+      return changed ? next : current;
+    });
+  }, [products, variantsByProductId]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -155,7 +262,7 @@ const PurchasesPage = () => {
         .map((line) => {
           const variant = variants.find((v) => v.id === line.variantId);
           return {
-            product_id: variant?.product_id,
+            product_id: variant?.product_id ?? line.productId,
             variant_id: line.variantId,
             quantity: Number(line.quantity || 0),
             unit_cost: Number(line.unitCost || 0),
@@ -190,7 +297,7 @@ const PurchasesPage = () => {
       setVendorStateCode("");
       setPurchaseDate(new Date().toISOString().slice(0, 10));
       setNotes("");
-      setLines([{ variantId: "", quantity: "1", unitCost: "1", gstPercentage: "18" }]);
+      setLines([createEmptyLine()]);
       setCreateOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["erp-purchases"] }),
@@ -204,8 +311,15 @@ const PurchasesPage = () => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   };
 
-  const addLine = () => setLines((prev) => [...prev, { variantId: "", quantity: "1", unitCost: "1", gstPercentage: "18" }]);
-  const removeLine = (index: number) => setLines((prev) => prev.filter((_, i) => i !== index));
+  const addLine = () => setLines((prev) => [...prev, createEmptyLine()]);
+  const removeLine = (index: number) => {
+    setLines((prev) => {
+      if (prev.length <= 1) {
+        return [createEmptyLine()];
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   const onExport = () => {
     const headers = ["Purchase #", "Vendor", "Status", "Purchase Date", "Subtotal", "CGST", "SGST", "Total"];
@@ -310,35 +424,54 @@ const PurchasesPage = () => {
 
               <div className="space-y-2">
                 <Label>Items</Label>
+                <div className="grid gap-2 md:grid-cols-[1.3fr_1.3fr_1.7fr_0.7fr_0.8fr_0.8fr_auto] text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <span>School</span>
+                  <span>Product</span>
+                  <span>Variant</span>
+                  <span>Qty</span>
+                  <span>Unit Cost</span>
+                  <span>GST %</span>
+                  <span>Remove</span>
+                </div>
                 <div className="space-y-3">
                   {lines.map((line, idx) => (
-                    <div key={idx} className="grid gap-2 md:grid-cols-12">
-                      <div className="md:col-span-5">
-                        <Select value={line.variantId} onValueChange={(value) => updateLine(idx, { variantId: value })}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select variant" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {variants.map((variant) => (
-                              <SelectItem key={variant.id} value={variant.id}>
-                                {(variant.products?.name || "Product") + " · " + (variant.size || "-") + " · " + (variant.sku || "-")}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    <div key={line.selectorInstanceId} className="grid gap-2 md:grid-cols-[1.3fr_1.3fr_1.7fr_0.7fr_0.8fr_0.8fr_auto]">
+                      <div>
+                        <Input aria-label="School" value={schoolById.get(line.schoolId)?.name ?? "—"} readOnly placeholder="School" />
                       </div>
-                      <div className="md:col-span-2">
-                        <Input type="number" min={1} value={line.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" />
+                      <div>
+                        <Input aria-label="Product" value={productById.get(line.productId)?.name ?? "—"} readOnly placeholder="Product" />
                       </div>
-                      <div className="md:col-span-2">
-                        <Input type="number" min={0.01} step="0.01" value={line.unitCost} onChange={(e) => updateLine(idx, { unitCost: e.target.value })} placeholder="Unit Cost" />
+                      <div>
+                        <SmartVariantSelectorController
+                          selectorInstanceId={line.selectorInstanceId}
+                          selectedVariantId={line.variantId}
+                          selectedSchoolId={line.schoolId}
+                          selectedProductId={line.productId}
+                          triggerLabel={line.variantIdentity || "Select variant"}
+                          onSelect={({ dto, identity }) => {
+                            updateLine(idx, {
+                              schoolId: dto.schoolId,
+                              productId: dto.productId,
+                              variantId: dto.variantId,
+                              variantIdentity: `${identity.primary} • ${identity.tertiary}`,
+                              gstPercentage: "5",
+                            });
+                          }}
+                        />
                       </div>
-                      <div className="md:col-span-2">
-                        <Input type="number" min={0} step="0.01" value={line.gstPercentage} onChange={(e) => updateLine(idx, { gstPercentage: e.target.value })} placeholder="GST %" />
+                      <div>
+                        <Input aria-label="Quantity" type="number" min={1} value={line.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} placeholder="Qty" />
                       </div>
-                      <div className="md:col-span-1">
-                        <Button type="button" variant="outline" onClick={() => removeLine(idx)} disabled={lines.length === 1}>
-                          -
+                      <div>
+                        <Input aria-label="Unit Cost" type="number" min={0.01} step="0.01" value={line.unitCost} onChange={(e) => updateLine(idx, { unitCost: e.target.value })} placeholder="Unit Cost" />
+                      </div>
+                      <div>
+                        <Input aria-label="GST Percentage" type="number" min={0} step="0.01" value={line.gstPercentage} onChange={(e) => updateLine(idx, { gstPercentage: e.target.value })} placeholder="GST %" />
+                      </div>
+                      <div>
+                        <Button type="button" variant="outline" onClick={() => removeLine(idx)}>
+                          Remove
                         </Button>
                       </div>
                     </div>

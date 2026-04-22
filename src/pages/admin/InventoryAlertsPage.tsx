@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ const InventoryAlertsPage = () => {
   const [schoolFilter, setSchoolFilter] = useState(ALL_FILTER_VALUE);
   const [classFilter, setClassFilter] = useState(ALL_FILTER_VALUE);
   const [genderFilter, setGenderFilter] = useState(ALL_FILTER_VALUE);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   const { data: schools = [] } = useQuery({
     queryKey: ["inventory-alerts-schools"],
@@ -159,6 +161,33 @@ const InventoryAlertsPage = () => {
   });
 
   const rows = variants ?? [];
+  const getRowKey = (variant: any) =>
+    `${variant.variant_id}:${variant.school_id ?? "na"}:${variant.class_id ?? "na"}:${variant.gender ?? "na"}`;
+
+  const visibleRowKeys = useMemo(() => rows.map((variant: any) => getRowKey(variant)), [rows]);
+  const selectedVisibleCount = useMemo(
+    () => visibleRowKeys.filter((key) => selectedRowKeys.includes(key)).length,
+    [visibleRowKeys, selectedRowKeys],
+  );
+  const allVisibleSelected = visibleRowKeys.length > 0 && selectedVisibleCount === visibleRowKeys.length;
+  const headerCheckboxState: boolean | "indeterminate" =
+    selectedVisibleCount > 0 && !allVisibleSelected ? "indeterminate" : allVisibleSelected;
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+      setSelectedRowKeys((current) => Array.from(new Set([...current, ...visibleRowKeys])));
+      return;
+    }
+
+    setSelectedRowKeys((current) => current.filter((key) => !visibleRowKeys.includes(key)));
+  };
+
+  const toggleSelectOne = (rowKey: string, checked: boolean) => {
+    setSelectedRowKeys((current) =>
+      checked ? Array.from(new Set([...current, rowKey])) : current.filter((key) => key !== rowKey),
+    );
+  };
+
   const thresholdColumnAvailable = !thresholdColumnForcedUnavailable && (
     rows.length === 0 || rows.some((variant: any) => Object.prototype.hasOwnProperty.call(variant, "alert_threshold"))
   );
@@ -270,10 +299,33 @@ const InventoryAlertsPage = () => {
         </div>
       )}
 
+      {selectedVisibleCount > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <p className="text-xs tracking-[0.14em] uppercase text-muted-foreground">
+            {selectedVisibleCount} row{selectedVisibleCount === 1 ? "" : "s"} selected
+          </p>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            onClick={() => setSelectedRowKeys((current) => current.filter((key) => !visibleRowKeys.includes(key)))}
+          >
+            Clear Selection
+          </Button>
+        </div>
+      )}
+
       <div className="border border-border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={headerCheckboxState}
+                  onCheckedChange={(value) => toggleSelectAllVisible(Boolean(value))}
+                  aria-label="Select all visible inventory alerts"
+                />
+              </TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Product</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Size</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
@@ -288,31 +340,39 @@ const InventoryAlertsPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-destructive">
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-destructive">
                   {(error as Error)?.message || "Failed to load inventory alerts"}
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">
                   No variants found
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((variant: any) => {
+                const rowKey = getRowKey(variant);
                 const threshold = getLowStockThreshold(variant.alert_threshold);
                 const lowStock = isLowStock(variant.current_stock, variant.alert_threshold);
                 const draftValue = getDraftValue(variant);
                 const isDirty = draftValue !== String(threshold);
 
                 return (
-                  <TableRow key={variant.variant_id} className={lowStock ? "bg-red-50" : undefined}>
+                  <TableRow key={rowKey} className={lowStock ? "bg-red-50" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedRowKeys.includes(rowKey)}
+                        onCheckedChange={(value) => toggleSelectOne(rowKey, Boolean(value))}
+                        aria-label={`Select ${variant.product_name || "product"} ${variant.size || "variant"}`}
+                      />
+                    </TableCell>
                     <TableCell className="text-sm font-medium">{variant.product_name || "Product"}</TableCell>
                     <TableCell className="text-sm">{variant.size}</TableCell>
                     <TableCell className="text-sm">{variant.school}</TableCell>

@@ -38,6 +38,16 @@ type VariantDraft = {
   priceOverride: string;
 };
 
+type ProductFormState = {
+  name: string;
+  category: string;
+  price: string;
+  description: string;
+  school_id: string;
+  class_id: string;
+  gender: string;
+};
+
 const createVariantDraft = (): VariantDraft => ({
   tempId: crypto.randomUUID(),
   size: "",
@@ -76,7 +86,12 @@ const ProductsPage = () => {
   const [archiveTarget, setArchiveTarget] = useState<any>(null);
   const [hardDeleteTarget, setHardDeleteTarget] = useState<any>(null);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
-  const [form, setForm] = useState({
+  const [searchTerm, setSearchTerm] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [form, setForm] = useState<ProductFormState>({
     name: "",
     category: "",
     price: "",
@@ -167,6 +182,72 @@ const ProductsPage = () => {
       .filter(Boolean);
     return Array.from(new Set([...defaultCategories, ...fromProducts])).sort((a, b) => a.localeCompare(b));
   }, [products]);
+
+  const schoolOptions = useMemo(() => {
+    const schoolIds = Array.from(new Set((products ?? []).map((product: any) => product.school_id).filter(Boolean)));
+
+    return schoolIds
+      .map((schoolId) => ({
+        value: String(schoolId),
+        label: schools?.find((school) => school.id === schoolId)?.name ?? String(schoolId),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [products, schools]);
+
+  const classOptions = useMemo(() => {
+    const classIds = Array.from(new Set((products ?? []).map((product: any) => product.class_id).filter(Boolean)));
+
+    return classIds
+      .map((classId) => ({
+        value: String(classId),
+        label: classes?.find((classItem: any) => classItem.id === classId)?.name ?? String(classId),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [products, classes]);
+
+  const filteredProducts = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return (products ?? []).filter((product: any) => {
+      const productName = String(product.name ?? "").toLowerCase();
+      const productSku = String(product.sku ?? "").toLowerCase();
+      const productCategory = String(product.category ?? "");
+      const productStatus = String(product.status ?? (product.archived ? "archived" : "")).toLowerCase();
+      const productStock = typeof product.stock === "number" ? product.stock : null;
+      const isProductActive = productStock !== null
+        ? productStock > 0
+        : productStatus === "active" || (!productStatus && !product.archived);
+      const isProductOutOfStock = productStock !== null
+        ? productStock <= 0
+        : ["out_of_stock", "out-of-stock", "inactive", "archived"].includes(productStatus);
+
+      if (query && !productName.includes(query) && !productSku.includes(query)) {
+        return false;
+      }
+
+      if (schoolFilter !== "all" && String(product.school_id ?? "") !== schoolFilter) {
+        return false;
+      }
+
+      if (classFilter !== "all" && String(product.class_id ?? "") !== classFilter) {
+        return false;
+      }
+
+      if (categoryFilter !== "all" && productCategory !== categoryFilter) {
+        return false;
+      }
+
+      if (statusFilter === "active" && !isProductActive) {
+        return false;
+      }
+
+      if (statusFilter === "out-of-stock" && !isProductOutOfStock) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [products, searchTerm, schoolFilter, classFilter, categoryFilter, statusFilter]);
 
   const getSchoolName = (schoolId: string | null) => {
     if (!schoolId) return "None";
@@ -493,8 +574,16 @@ const ProductsPage = () => {
 
   const canDelete = isAdmin || isSuperAdmin;
 
-  const allIds = (products ?? []).map((p) => p.id);
+  const allIds = filteredProducts.map((p) => p.id);
   const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setSchoolFilter("all");
+    setClassFilter("all");
+    setCategoryFilter("all");
+    setStatusFilter("all");
+  };
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -615,6 +704,71 @@ const ProductsPage = () => {
         </div>
       </div>
 
+      <div className="mb-4 border border-border bg-background p-4">
+        <div className="grid gap-3 lg:grid-cols-5">
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search products..."
+            className="h-10 lg:col-span-2"
+          />
+          <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="All schools" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All schools</SelectItem>
+              {schoolOptions.map((school) => (
+                <SelectItem key={school.value} value={school.value}>{school.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={classFilter} onValueChange={setClassFilter}>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="All classes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All classes</SelectItem>
+              {classOptions.map((classItem) => (
+                <SelectItem key={classItem.value} value={classItem.value}>{classItem.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {categoryOptions.map((category) => (
+                <SelectItem key={category} value={category}>{category}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-10">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+            Clear Filters
+          </Button>
+          {searchTerm && <span className="rounded-full border border-border bg-muted px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Search: {searchTerm}</span>}
+          {schoolFilter !== "all" && <span className="rounded-full border border-border bg-muted px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">School: {schoolOptions.find((school) => school.value === schoolFilter)?.label ?? schoolFilter}</span>}
+          {classFilter !== "all" && <span className="rounded-full border border-border bg-muted px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Class: {classOptions.find((classItem) => classItem.value === classFilter)?.label ?? classFilter}</span>}
+          {categoryFilter !== "all" && <span className="rounded-full border border-border bg-muted px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Category: {categoryFilter}</span>}
+          {statusFilter !== "all" && <span className="rounded-full border border-border bg-muted px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Status: {statusFilter === "active" ? "Active" : "Out of Stock"}</span>}
+        </div>
+      </div>
+
       <div className="border border-border">
         <Table>
           <TableHeader>
@@ -642,12 +796,12 @@ const ProductsPage = () => {
               <TableRow>
                 <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
-            ) : products?.length === 0 ? (
+            ) : filteredProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No products</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No products match the current filters</TableCell>
               </TableRow>
             ) : (
-              products?.map((product) => (
+              filteredProducts.map((product) => (
                 <TableRow key={product.id}>
                   <TableCell>
                     <Checkbox
