@@ -95,6 +95,55 @@ const getCheckoutFailureMessage = (error: unknown) => {
   return getSafeErrorMessage(error, "Failed to place order. Please try again.");
 };
 
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isInvoiceCreationRaceError = (error: unknown) => {
+  const message = getSafeErrorMessage(error, "");
+  return (
+    message.includes("Invoice total must match order total") ||
+    message.includes("Order not fully inserted yet")
+  );
+};
+
+const getPersistedOrderItemsSnapshot = async (orderId: string) => {
+  const { data, error } = await supabase
+    .from("order_items")
+    .select("quantity, price")
+    .eq("order_id", orderId);
+
+  if (error) throw error;
+
+  const rows = data ?? [];
+  const total = rows.reduce(
+    (sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 0),
+    0,
+  );
+
+  return {
+    count: rows.length,
+    total,
+  };
+};
+
+const waitForPersistedOrderItems = async (orderId: string, expectedTotal: number, expectedCount: number) => {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const snapshot = await getPersistedOrderItemsSnapshot(orderId);
+    if (
+      snapshot.count >= expectedCount &&
+      Math.abs(snapshot.total - expectedTotal) <= 0.01
+    ) {
+      return snapshot;
+    }
+
+    await sleep(250);
+  }
+
+  const finalSnapshot = await getPersistedOrderItemsSnapshot(orderId);
+  throw new Error(
+    `Order items not fully persisted before invoice creation. order_total=${expectedTotal.toFixed(2)}, items_total=${finalSnapshot.total.toFixed(2)}, item_count=${finalSnapshot.count}`,
+  );
+};
+
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
@@ -448,7 +497,9 @@ const CheckoutPage = () => {
 
       order.total_amount = orderTotal;
 
-      const { error: crmLinkError } = await (supabase as any).rpc("attach_checkout_entities_to_order", {
+      await waitForPersistedOrderItems(order.id, orderTotal, items.length);
+
+      const { data: checkoutLinkResult, error: crmLinkError } = await (supabase as any).rpc("attach_checkout_entities_to_order", {
         p_order_id: order.id,
         p_customer_name: orderPayload.fullName,
         p_customer_phone: phoneDigits,
@@ -466,6 +517,47 @@ const CheckoutPage = () => {
       });
 
       if (crmLinkError) throw crmLinkError;
+
+      const attachedInvoiceId =
+        Array.isArray(checkoutLinkResult) && checkoutLinkResult.length > 0
+          ? checkoutLinkResult[0]?.out_invoice_id ?? null
+          : null;
+
+      let invoiceId = attachedInvoiceId;
+
+      if (!invoiceId) {
+        let lastInvoiceError: unknown = null;
+
+        for (let attempt = 0; attempt < 3 && !invoiceId; attempt += 1) {
+          try {
+            await waitForPersistedOrderItems(order.id, orderTotal, items.length);
+
+            const { data: createdInvoiceId, error: invoiceError } = await (supabase as any).rpc("create_invoice_from_order", {
+              p_order_id: order.id,
+            });
+
+            if (invoiceError) throw invoiceError;
+            invoiceId = createdInvoiceId;
+          } catch (invoiceAttemptError) {
+            lastInvoiceError = invoiceAttemptError;
+
+            if (!isInvoiceCreationRaceError(invoiceAttemptError) || attempt === 2) {
+              throw invoiceAttemptError;
+            }
+
+            logger.warn("Invoice creation raced order item persistence; retrying after a short wait.", invoiceAttemptError);
+            await sleep(400);
+          }
+        }
+
+        if (!invoiceId && lastInvoiceError) {
+          throw lastInvoiceError;
+        }
+      }
+
+      if (!invoiceId) {
+        throw new Error("Invoice was not created for the completed order.");
+      }
 
       // ── Step 4: deduct stock globally across branches ─
       for (const item of items) {

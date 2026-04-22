@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SmartVariantSelectorController } from "@/components/admin/purchases/SmartVariantSelector";
 import { toast } from "sonner";
+import { PurchaseDetailDrawer } from "@/components/admin/purchases/PurchaseDetailDrawer";
 
 const PAGE_SIZE = 12;
 
@@ -75,6 +76,8 @@ const createEmptyLine = (): PurchaseLine => ({
 const PurchasesPage = () => {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
@@ -346,6 +349,11 @@ const PurchasesPage = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleRowClick = (purchaseId: string) => {
+    setSelectedPurchaseId(purchaseId);
+    setIsDrawerOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -424,10 +432,15 @@ const PurchasesPage = () => {
 
               <div className="space-y-2">
                 <Label>Items</Label>
+                <p className="text-sm text-muted-foreground">Click “+ Select item” to add products to this purchase.</p>
+
+                {/* The conditional logic for the empty state was removed from here to ensure the item line is always visible. */}
+                {/* The empty state is now handled by the initial state of the `lines` array. */}
+
                 <div className="grid gap-2 md:grid-cols-[1.3fr_1.3fr_1.7fr_0.7fr_0.8fr_0.8fr_auto] text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                   <span>School</span>
                   <span>Product</span>
-                  <span>Variant</span>
+                  <span>Item</span>
                   <span>Qty</span>
                   <span>Unit Cost</span>
                   <span>GST %</span>
@@ -448,7 +461,7 @@ const PurchasesPage = () => {
                           selectedVariantId={line.variantId}
                           selectedSchoolId={line.schoolId}
                           selectedProductId={line.productId}
-                          triggerLabel={line.variantIdentity || "Select variant"}
+                          triggerLabel={line.variantIdentity || "+ Select item"}
                           onSelect={({ dto, identity }) => {
                             updateLine(idx, {
                               schoolId: dto.schoolId,
@@ -489,6 +502,12 @@ const PurchasesPage = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      <PurchaseDetailDrawer
+        purchaseId={selectedPurchaseId}
+        isOpen={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+      />
 
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -541,7 +560,7 @@ const PurchasesPage = () => {
               </TableRow>
             )}
             {paged.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} onClick={() => handleRowClick(row.id)} className="cursor-pointer">
                 <TableCell>{row.purchase_number}</TableCell>
                 <TableCell>{row.vendors?.name ?? "-"}</TableCell>
                 <TableCell className="capitalize">{row.status}</TableCell>

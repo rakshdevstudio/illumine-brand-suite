@@ -8,6 +8,8 @@ import type {
   InventoryReportDailyRow,
   InventoryReportFilters,
   ReportStatusFilter,
+  SchoolAffiliationRecord,
+  SchoolAffiliationSummary,
   SalesReportFilters,
   SalesItemReportRow,
   SalesReportRow,
@@ -61,6 +63,22 @@ const normalizeSalesRow = (row: any): SalesReportRow => ({
   status: String(row.status || "PLACED"),
   payment_mode: String(row.payment_mode || "UNKNOWN"),
   search_text: String(row.search_text || ""),
+});
+
+const normalizeSchoolAffiliationRecord = (row: any): SchoolAffiliationRecord => ({
+  id: String(row.id),
+  school_id: String(row.school_id),
+  commission_percentage: toNumber(row.commission_percentage),
+  created_at: String(row.created_at),
+  updated_at: String(row.updated_at),
+});
+
+const normalizeSchoolAffiliationSummary = (row: any, schoolId: string): SchoolAffiliationSummary => ({
+  school_id: row?.school_id ? String(row.school_id) : schoolId,
+  revenue_incl: toNumber(row?.revenue_incl),
+  revenue_excl: toNumber(row?.revenue_excl),
+  gst: toNumber(row?.gst),
+  order_count: toNumber(row?.order_count),
 });
 
 const normalizeInventoryDailyRow = (row: any): InventoryReportDailyRow => ({
@@ -279,6 +297,61 @@ export const fetchSalesItemReportRows = async (filters: SalesReportFilters): Pro
     });
     return [];
   }
+};
+
+export const fetchSchoolAffiliationRecord = async (schoolId: string): Promise<SchoolAffiliationRecord | null> => {
+  if (!schoolId) return null;
+
+  const { data } = await safeQuery<any>(
+    () =>
+      db
+        .from("school_affiliations")
+        .select("id, school_id, commission_percentage, created_at, updated_at")
+        .eq("school_id", schoolId)
+        .maybeSingle(),
+    "reports/fetchSchoolAffiliationRecord",
+  );
+
+  return data ? normalizeSchoolAffiliationRecord(data) : null;
+};
+
+export const upsertSchoolAffiliationRecord = async (schoolId: string, commissionPercentage: number): Promise<SchoolAffiliationRecord> => {
+  const payload = {
+    school_id: schoolId,
+    commission_percentage: Number(commissionPercentage.toFixed(2)),
+  };
+
+  const { data } = await safeQuery<any>(
+    () =>
+      db
+        .from("school_affiliations")
+        .upsert(payload, { onConflict: "school_id" })
+        .select("id, school_id, commission_percentage, created_at, updated_at")
+        .single(),
+    "reports/upsertSchoolAffiliationRecord",
+  );
+
+  return normalizeSchoolAffiliationRecord(data);
+};
+
+export const fetchSchoolAffiliationSummary = async ({
+  schoolId,
+  dateRange,
+}: {
+  schoolId: string;
+  dateRange: SalesReportFilters["dateRange"];
+}): Promise<SchoolAffiliationSummary> => {
+  const { data } = await safeQuery<any[]>(
+    () =>
+      db.rpc("get_school_affiliation_summary", {
+        p_date_from: dateRange.from,
+        p_date_to: dateRange.to,
+        p_school_id: schoolId,
+      }),
+    "reports/fetchSchoolAffiliationSummary",
+  );
+
+  return normalizeSchoolAffiliationSummary((data ?? [])[0], schoolId);
 };
 
 export const fetchInventoryReportRows = async (filters: InventoryReportFilters): Promise<InventoryReportDailyRow[]> => {

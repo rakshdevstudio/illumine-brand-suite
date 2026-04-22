@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   AlertsPanel,
   FilterField,
-  FilterMultiSelect,
   ReportEmptyState,
   ReportExportPanel,
   ReportFiltersPanel,
@@ -22,6 +21,7 @@ import {
   ReportTableSkeleton,
   SmartInsightsPanel,
 } from "@/components/admin/reports/ReportUI";
+import { SchoolAffiliationIntelligence } from "@/components/admin/reports/SchoolAffiliationIntelligence";
 import { exportReportCsv, exportReportXlsx } from "@/lib/reports/export";
 import type { ReportExportConfig } from "@/lib/reports/export";
 import { fetchSalesItemReportRows, fetchSalesReportRows, fetchSchoolOptions } from "@/lib/reports/data";
@@ -42,6 +42,7 @@ import type { SmartInsight } from "@/types/reports";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useSchoolAffiliationIntelligence } from "@/hooks/useSchoolAffiliationIntelligence";
 
 const GROUP_OPTIONS: Array<{ value: SalesGroupBy; label: string }> = [
   { value: "date", label: "Date" },
@@ -77,6 +78,17 @@ const SalesReportPage = () => {
     queryKey: ["report-sales-items", filters],
     enabled: viewMode === "item",
     queryFn: () => fetchSalesItemReportRows(filters),
+  });
+
+  const selectedSchoolId = filters.schoolIds[0] ?? null;
+  const selectedSchool = useMemo(
+    () => schools.find((school) => school.id === selectedSchoolId) ?? null,
+    [schools, selectedSchoolId],
+  );
+
+  const affiliationIntelligence = useSchoolAffiliationIntelligence({
+    schoolId: selectedSchoolId,
+    dateRange: filters.dateRange,
   });
 
   useEffect(() => {
@@ -138,7 +150,7 @@ const SalesReportPage = () => {
   const paginated = useMemo(() => paginateRows(tableRows, page), [page, tableRows]);
 
   const filtersLabel = useMemo(() => {
-    const schoolLabel = filters.schoolIds.length ? `${filters.schoolIds.length} schools` : "All schools";
+    const schoolLabel = selectedSchool?.name ?? "All schools";
     return [
       `${filters.dateRange.from} to ${filters.dateRange.to}`,
       schoolLabel,
@@ -148,7 +160,7 @@ const SalesReportPage = () => {
     ]
       .filter(Boolean)
       .join(" | ");
-  }, [filters]);
+  }, [filters, selectedSchool]);
 
   const orderColumns = useMemo(
     () => ["Order ID", "Order Date", "Customer Name", "School", "Items", "Total Quantity", "Total Amount", "Order Status", "Payment Mode"],
@@ -323,29 +335,30 @@ const SalesReportPage = () => {
       title="Sales Report"
       description="Order-level revenue reporting with school, payment-mode, and customer search controls built for daily business reviews."
     >
+      <SchoolAffiliationIntelligence
+        schools={schools}
+        selectedSchoolId={selectedSchoolId}
+        onSchoolChange={(schoolId) =>
+          setFilters((current) => ({
+            ...current,
+            schoolIds: schoolId ? [schoolId] : [],
+          }))
+        }
+        dateRange={filters.dateRange}
+        onDateRangeChange={(dateRange) => setFilters((current) => ({ ...current, dateRange }))}
+        summary={affiliationIntelligence.summary}
+        isLoading={affiliationIntelligence.isLoading}
+        isRefreshing={affiliationIntelligence.isRefreshing}
+        draftCommissionPercentage={affiliationIntelligence.draftCommissionPercentage}
+        parsedCommissionPercentage={affiliationIntelligence.parsedCommissionPercentage}
+        updateDraftCommissionPercentage={affiliationIntelligence.updateDraftCommissionPercentage}
+        commissionPayable={affiliationIntelligence.commissionPayable}
+        validationMessage={affiliationIntelligence.validationMessage}
+        saveState={affiliationIntelligence.saveState}
+      />
+
       <ReportFiltersPanel onReset={resetFilters}>
-        <div className="grid gap-4 xl:grid-cols-6 md:grid-cols-2">
-          <FilterField label="From Date">
-            <Input
-              type="date"
-              value={filters.dateRange.from}
-              onChange={(event) => setFilters((current) => ({ ...current, dateRange: { ...current.dateRange, from: event.target.value } }))}
-              className="h-11 rounded-2xl border-black/10 bg-white"
-              required
-            />
-          </FilterField>
-          <FilterField label="To Date">
-            <Input
-              type="date"
-              value={filters.dateRange.to}
-              onChange={(event) => setFilters((current) => ({ ...current, dateRange: { ...current.dateRange, to: event.target.value } }))}
-              className="h-11 rounded-2xl border-black/10 bg-white"
-              required
-            />
-          </FilterField>
-          <FilterField label="Schools">
-            <FilterMultiSelect label="Schools" options={schools} selectedValues={filters.schoolIds} onChange={(schoolIds) => setFilters((current) => ({ ...current, schoolIds }))} placeholder="All schools" />
-          </FilterField>
+        <div className="grid gap-4 xl:grid-cols-3 md:grid-cols-2">
           <FilterField label="Order Status">
             <Select value={filters.status} onValueChange={(status) => setFilters((current) => ({ ...current, status: status as SalesReportFilters["status"] }))}>
               <SelectTrigger className="h-11 rounded-2xl border-black/10 bg-white">

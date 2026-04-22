@@ -116,20 +116,7 @@ BEGIN
     alternate_phone = COALESCE(NULLIF(btrim(p_alternate_phone), ''), o.alternate_phone)
   WHERE o.id = p_order_id;
 
-  v_invoice_id := public.create_invoice_from_order(p_order_id);
-
-  IF v_invoice_id IS NOT NULL THEN
-    -- Required by invoice guard trigger in financial hardening migrations.
-    PERFORM set_config('app.bypass_invoice_guard', 'on', true);
-
-    UPDATE public.invoices AS i
-    SET
-      customer_id = v_customer_id,
-      student_id = v_student_id
-    WHERE i.id = v_invoice_id;
-  END IF;
-
-  RETURN QUERY SELECT v_customer_id, v_student_id, v_invoice_id;
+  RETURN QUERY SELECT v_customer_id, v_student_id, NULL::uuid;
 END;
 $$;
 

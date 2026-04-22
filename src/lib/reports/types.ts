@@ -35,6 +35,22 @@ export type SalesReportFilters = {
   search: string;
 };
 
+export type SchoolAffiliationRecord = {
+  id: string;
+  school_id: string;
+  commission_percentage: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SchoolAffiliationSummary = {
+  school_id: string;
+  revenue_incl: number;
+  revenue_excl: number;
+  gst: number;
+  order_count: number;
+};
+
 export type InventoryReportFilters = {
   dateRange: DateRange;
   productIds: string[];
