@@ -57,7 +57,7 @@ export type DetailedPurchase = {
 
 // Helper to fetch detailed purchase data
 const fetchPurchaseDetails = async (purchaseId: string): Promise<DetailedPurchase> => {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("purchases")
     .select(
       `
@@ -97,7 +97,7 @@ const fetchPurchaseDetails = async (purchaseId: string): Promise<DetailedPurchas
     .single();
 
   if (error) throw new Error(error.message);
-  return data as DetailedPurchase;
+  return data as unknown as DetailedPurchase;
 };
 
 // Formatter for currency
