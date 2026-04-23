@@ -5,12 +5,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SmartVariantSelectorController } from "@/components/admin/purchases/SmartVariantSelector";
 import { toast } from "sonner";
 import { PurchaseDetailDrawer } from "@/components/admin/purchases/PurchaseDetailDrawer";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 12;
 
@@ -22,6 +24,7 @@ type PurchaseRow = {
   subtotal: number;
   cgst: number;
   sgst: number;
+  igst: number;
   total: number;
   vendors: { name: string } | null;
 };
@@ -94,7 +97,7 @@ const PurchasesPage = () => {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("purchases")
-        .select("id, purchase_number, status, purchase_date, subtotal, cgst, sgst, total, vendors(name)")
+        .select("id, purchase_number, status, purchase_date, subtotal, cgst, sgst, igst, total, vendors(name)")
         .order("purchase_date", { ascending: false });
       if (error) throw error;
       return (data ?? []) as PurchaseRow[];
@@ -325,7 +328,7 @@ const PurchasesPage = () => {
   };
 
   const onExport = () => {
-    const headers = ["Purchase #", "Vendor", "Status", "Purchase Date", "Subtotal", "CGST", "SGST", "Total"];
+    const headers = ["Purchase #", "Vendor", "Status", "Purchase Date", "Subtotal", "CGST", "SGST", "IGST", "Total"];
     const lines = rows.map((row) => [
       row.purchase_number,
       row.vendors?.name ?? "",
@@ -334,6 +337,7 @@ const PurchasesPage = () => {
       String(row.subtotal),
       String(row.cgst),
       String(row.sgst),
+      String(row.igst),
       String(row.total),
     ]);
     const csv = [headers, ...lines]
@@ -527,6 +531,7 @@ const PurchasesPage = () => {
             <SelectItem value="confirmed">Confirmed</SelectItem>
             <SelectItem value="received">Received</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
+            <SelectItem value="voided">Voided</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -559,17 +564,42 @@ const PurchasesPage = () => {
                 </TableCell>
               </TableRow>
             )}
-            {paged.map((row) => (
-              <TableRow key={row.id} onClick={() => handleRowClick(row.id)} className="cursor-pointer">
-                <TableCell>{row.purchase_number}</TableCell>
-                <TableCell>{row.vendors?.name ?? "-"}</TableCell>
-                <TableCell className="capitalize">{row.status}</TableCell>
-                <TableCell>{new Date(row.purchase_date).toLocaleDateString("en-IN")}</TableCell>
-                <TableCell>{formatCurrency(row.subtotal)}</TableCell>
-                <TableCell>{formatCurrency((row.cgst || 0) + (row.sgst || 0))}</TableCell>
-                <TableCell>{formatCurrency(row.total)}</TableCell>
-              </TableRow>
-            ))}
+            {paged.map((row) => {
+              const normalizedStatus = row.status?.toLowerCase() ?? "";
+              const isVoided = normalizedStatus === "voided";
+
+              return (
+                <TableRow
+                  key={row.id}
+                  onClick={() => handleRowClick(row.id)}
+                  className={cn(
+                    "cursor-pointer transition-colors hover:bg-muted/40",
+                    isVoided && "bg-slate-50/80 opacity-60",
+                  )}
+                >
+                  <TableCell>{row.purchase_number}</TableCell>
+                  <TableCell>{row.vendors?.name ?? "-"}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={cn("capitalize", {
+                        "bg-green-100 text-green-800": normalizedStatus === "received",
+                        "bg-yellow-100 text-yellow-800": normalizedStatus === "confirmed" || normalizedStatus === "draft",
+                        "bg-red-100 text-red-800": normalizedStatus === "cancelled",
+                        "bg-rose-100 text-rose-800": normalizedStatus === "voided",
+                      })}
+                    >
+                      {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{new Date(row.purchase_date).toLocaleDateString("en-IN")}</TableCell>
+                  <TableCell>{formatCurrency(row.subtotal)}</TableCell>
+                  <TableCell>{formatCurrency((row.cgst || 0) + (row.sgst || 0) + (row.igst || 0))}</TableCell>
+                  <TableCell className={cn(isVoided && "line-through decoration-muted-foreground")}>
+                    {formatCurrency(row.total)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

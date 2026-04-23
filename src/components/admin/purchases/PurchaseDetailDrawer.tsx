@@ -5,10 +5,12 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -20,6 +22,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Loader2, OctagonX } from "lucide-react";
+import { ConfirmVoidPurchaseModal } from "@/components/admin/purchases/ConfirmVoidPurchaseModal";
+import { useVoidPurchase } from "@/hooks/useVoidPurchase";
 
 // Type definition for the detailed purchase data
 export type DetailedPurchase = {
@@ -118,6 +123,7 @@ export function PurchaseDetailDrawer({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
 }) {
+  const [confirmVoidOpen, setConfirmVoidOpen] = useState(false);
   const {
     data: purchase,
     isLoading,
@@ -127,6 +133,11 @@ export function PurchaseDetailDrawer({
     queryFn: () => fetchPurchaseDetails(purchaseId!),
     enabled: !!purchaseId && isOpen, // Only fetch when a purchaseId is provided and the drawer is open
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const { voidPurchase, isVoiding } = useVoidPurchase({
+    purchaseId,
+    onSuccess: () => setConfirmVoidOpen(false),
   });
 
   const renderContent = () => {
@@ -143,10 +154,23 @@ export function PurchaseDetailDrawer({
     }
 
     const lineItems = purchase.purchase_items || [];
+    const isVoided = purchase.status?.toLowerCase() === "voided";
 
     return (
       <ScrollArea className="h-[calc(100vh-8rem)]">
         <div className="p-6 space-y-6">
+          {isVoided && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-rose-900 shadow-sm">
+              <OctagonX className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">This purchase has been voided.</p>
+                <p className="text-xs leading-5 text-rose-800/90">
+                  Inventory and accounting impact were reversed while preserving this purchase for audit review.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Section 1: Header */}
           <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
             <div>
@@ -163,15 +187,21 @@ export function PurchaseDetailDrawer({
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-sm text-muted-foreground">Subtotal</p>
-              <p className="text-lg font-bold">{formatCurrency(purchase.subtotal)}</p>
+              <p className={cn("text-lg font-bold", isVoided && "text-muted-foreground line-through")}>
+                {formatCurrency(purchase.subtotal)}
+              </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Tax</p>
-              <p className="text-lg font-bold">{formatCurrency((purchase.cgst || 0) + (purchase.sgst || 0) + (purchase.igst || 0))}</p>
+              <p className={cn("text-lg font-bold", isVoided && "text-muted-foreground line-through")}>
+                {formatCurrency((purchase.cgst || 0) + (purchase.sgst || 0) + (purchase.igst || 0))}
+              </p>
             </div>
-            <div className="rounded-md bg-primary/10 p-2">
-              <p className="text-sm text-primary">Total</p>
-              <p className="text-xl font-extrabold text-primary">{formatCurrency(purchase.total)}</p>
+            <div className={cn("rounded-md bg-primary/10 p-2", isVoided && "bg-rose-50")}>
+              <p className={cn("text-sm text-primary", isVoided && "text-rose-700")}>Total</p>
+              <p className={cn("text-xl font-extrabold text-primary", isVoided && "text-rose-700 line-through")}>
+                {formatCurrency(purchase.total)}
+              </p>
             </div>
           </div>
 
@@ -247,37 +277,82 @@ export function PurchaseDetailDrawer({
     );
   };
 
+  const normalizedStatus = purchase?.status?.toLowerCase() ?? "";
+
   return (
-    <Drawer open={isOpen} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="w-full max-w-2xl mt-0 h-full ml-auto">
-        <DrawerHeader className="p-6 border-b sticky top-0 bg-background z-10">
-          <DrawerTitle className="text-2xl flex items-center justify-between">
-            {purchase ? purchase.purchase_number : "Purchase Details"}
-            {purchase && (
-              <Badge
-                className={cn({
-                  "bg-green-100 text-green-800": purchase.status?.toLowerCase() === "received",
-                  "bg-yellow-100 text-yellow-800": purchase.status?.toLowerCase() === "pending",
-                  "bg-red-100 text-red-800": purchase.status?.toLowerCase() === "cancelled",
-                })}
-              >
-                {purchase.status}
-              </Badge>
-            )}
-          </DrawerTitle>
-          <DrawerDescription>
-            {purchase ? `Purchased on ${format(new Date(purchase.purchase_date), "dd MMMM yyyy")}` : "Loading purchase details"}
-          </DrawerDescription>
-          {!purchase && (
-            <div className="mt-3 space-y-2">
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-64" />
+    <>
+      <ConfirmVoidPurchaseModal
+        open={confirmVoidOpen}
+        onOpenChange={setConfirmVoidOpen}
+        purchaseNumber={purchase?.purchase_number ?? "Purchase"}
+        total={purchase?.total ?? 0}
+        isVoiding={isVoiding}
+        onConfirm={voidPurchase}
+      />
+      <Drawer
+        open={isOpen}
+        onOpenChange={(nextOpen) => {
+          if (isVoiding && !nextOpen) return;
+          if (!nextOpen) setConfirmVoidOpen(false);
+          onOpenChange(nextOpen);
+        }}
+        direction="right"
+      >
+        <DrawerContent className="w-full max-w-2xl mt-0 h-full ml-auto">
+          <DrawerHeader className="p-6 border-b sticky top-0 bg-background z-10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <DrawerTitle className="text-2xl flex items-center gap-3">
+                  <span>{purchase ? purchase.purchase_number : "Purchase Details"}</span>
+                  {purchase && (
+                    <Badge
+                      className={cn("capitalize", {
+                        "bg-green-100 text-green-800": normalizedStatus === "received",
+                        "bg-yellow-100 text-yellow-800": normalizedStatus === "pending",
+                        "bg-red-100 text-red-800": normalizedStatus === "cancelled",
+                        "bg-rose-100 text-rose-800": normalizedStatus === "voided",
+                      })}
+                    >
+                      {purchase.status}
+                    </Badge>
+                  )}
+                </DrawerTitle>
+                <DrawerDescription>
+                  {purchase ? `Purchased on ${format(new Date(purchase.purchase_date), "dd MMMM yyyy")}` : "Loading purchase details"}
+                </DrawerDescription>
+              </div>
+
+              {purchase && normalizedStatus !== "voided" && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="rounded-full shadow-sm"
+                  onClick={() => setConfirmVoidOpen(true)}
+                  disabled={isVoiding}
+                  aria-label={`Void purchase ${purchase.purchase_number}`}
+                >
+                  {isVoiding ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Voiding...
+                    </>
+                  ) : (
+                    "Void"
+                  )}
+                </Button>
+              )}
             </div>
-          )}
-        </DrawerHeader>
-        {renderContent()}
-      </DrawerContent>
-    </Drawer>
+            {!purchase && (
+              <div className="mt-3 space-y-2">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            )}
+          </DrawerHeader>
+          {renderContent()}
+        </DrawerContent>
+      </Drawer>
+    </>
   );
 }
 
