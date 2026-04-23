@@ -298,6 +298,7 @@ const ProductVariantsPage = () => {
     setSearch,
     clearSearch,
     recentSearches,
+    clearRecentSearches,
   } = useVariantSearch({ filters });
 
   const { data: schools, error: schoolsError } = useQuery({
@@ -879,6 +880,7 @@ const ProductVariantsPage = () => {
           value={search}
           onChange={setSearch}
           onClear={clearSearch}
+          onClearRecentSearches={clearRecentSearches}
           isFetching={variantsFetching}
           recentSearches={recentSearches}
           onSelectRecentSearch={setSearch}

@@ -7,6 +7,7 @@ type SearchInputProps = {
   value: string;
   onChange: (value: string) => void;
   onClear: () => void;
+  onClearRecentSearches?: () => void;
   placeholder?: string;
   isFetching?: boolean;
   recentSearches?: string[];
@@ -18,6 +19,7 @@ export const SearchInput = ({
   value,
   onChange,
   onClear,
+  onClearRecentSearches,
   placeholder = "Search variants (product, size, class...)",
   isFetching = false,
   recentSearches = [],
@@ -74,6 +76,17 @@ export const SearchInput = ({
               {term}
             </Button>
           ))}
+          {onClearRecentSearches && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground"
+              onClick={onClearRecentSearches}
+            >
+              Clear recent
+            </Button>
+          )}
         </div>
       )}
     </div>

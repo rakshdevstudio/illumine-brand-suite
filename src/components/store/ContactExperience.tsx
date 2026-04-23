@@ -106,6 +106,7 @@ const validateForm = (values: ContactFormValues): ContactFormErrors => {
 };
 
 const FloatingInput = ({
+  name,
   label,
   type = "text",
   value,
@@ -114,6 +115,7 @@ const FloatingInput = ({
   autoComplete,
   error,
 }: {
+  name: string;
   label: string;
   type?: string;
   value: string;
@@ -131,6 +133,7 @@ const FloatingInput = ({
       <div className="relative">
         <input
           id={id}
+          name={name}
           type={type}
           value={value}
           autoComplete={autoComplete}
@@ -163,12 +166,14 @@ const FloatingInput = ({
 };
 
 const FloatingTextarea = ({
+  name,
   label,
   value,
   onChange,
   onBlur,
   error,
 }: {
+  name: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -184,6 +189,7 @@ const FloatingTextarea = ({
       <div className="relative">
         <textarea
           id={id}
+          name={name}
           value={value}
           rows={5}
           onChange={(event) => onChange(event.target.value)}
@@ -215,6 +221,7 @@ const FloatingTextarea = ({
 };
 
 const FloatingSelect = ({
+  name,
   label,
   value,
   options,
@@ -222,6 +229,7 @@ const FloatingSelect = ({
   onBlur,
   error,
 }: {
+  name: string;
   label: string;
   value: string;
   options: readonly string[];
@@ -238,6 +246,7 @@ const FloatingSelect = ({
       <div className="relative">
         <select
           id={id}
+          name={name}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onFocus={() => setIsFocused(true)}
@@ -570,6 +579,7 @@ const ContactFormCard = ({
 
           <div className="grid gap-5 md:grid-cols-2">
             <FloatingInput
+              name="name"
               label="Name"
               value={values.name}
               onChange={(value) => setFieldValue("name", value)}
@@ -578,6 +588,7 @@ const ContactFormCard = ({
               error={errors.name}
             />
             <FloatingInput
+              name="phone"
               label="Phone"
               type="tel"
               value={values.phone}
@@ -587,6 +598,7 @@ const ContactFormCard = ({
               error={errors.phone}
             />
             <FloatingInput
+              name="email"
               label="Email"
               type="email"
               value={values.email}
@@ -596,6 +608,7 @@ const ContactFormCard = ({
               error={errors.email}
             />
             <FloatingSelect
+              name="type"
               label="Enquiry Type"
               value={values.type}
               options={CONTACT_ENQUIRY_TYPES}
@@ -606,6 +619,7 @@ const ContactFormCard = ({
           </div>
 
           <FloatingTextarea
+            name="message"
             label="Message"
             value={values.message}
             onChange={(value) => setFieldValue("message", value)}

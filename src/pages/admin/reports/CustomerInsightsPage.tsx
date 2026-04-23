@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type CustomerOutstandingRow = {
@@ -55,14 +56,28 @@ const CustomerInsightsPage = () => {
   });
 
   const { data: customerInvoices = [], isFetching: invoicesLoading } = useQuery({
-    queryKey: ["erp-customer-invoices-outstanding", selectedCustomer?.customer_id],
-    enabled: !!selectedCustomer?.customer_id,
+    queryKey: [
+      "erp-customer-invoices-outstanding",
+      selectedCustomer?.customer_id ?? null,
+      selectedCustomer?.phone ?? null,
+      selectedCustomer?.customer_name ?? null,
+    ],
+    enabled: !!selectedCustomer,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      let request = (supabase as any)
         .from("v_invoice_outstanding")
         .select("invoice_id, invoice_number, invoice_date, due_date, total, paid_amount, outstanding, payment_status, is_overdue")
-        .eq("customer_id", selectedCustomer?.customer_id)
         .order("invoice_date", { ascending: false });
+
+      if (selectedCustomer?.customer_id) {
+        request = request.eq("customer_id", selectedCustomer.customer_id);
+      } else if (selectedCustomer?.phone) {
+        request = request.eq("phone", selectedCustomer.phone);
+      } else if (selectedCustomer?.customer_name) {
+        request = request.ilike("customer_name", selectedCustomer.customer_name);
+      }
+
+      const { data, error } = await request;
       if (error) throw error;
       return (data ?? []) as CustomerInvoiceOutstandingRow[];
     },
@@ -188,8 +203,13 @@ const CustomerInsightsPage = () => {
             {isLoading && (
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading customer insights...</TableCell></TableRow>
             )}
-            {rows.map((row) => (
-              <TableRow key={`${row.customer_id ?? "unknown"}-${row.customer_name}`}>
+            {rows.map((row, index) => {
+              const rowKey = row.customer_id
+                ? `customer-${row.customer_id}`
+                : `customer-unknown-${row.customer_name}-${row.phone ?? "no-phone"}-${row.last_invoice_date ?? "no-invoice-date"}-${index}`;
+
+              return (
+              <TableRow key={rowKey}>
                 <TableCell>
                   <div className="text-sm">{row.customer_name || "-"}</div>
                   <div className="text-xs text-muted-foreground">{row.phone || "-"}</div>
@@ -206,20 +226,37 @@ const CustomerInsightsPage = () => {
                   </Button>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       </div>
 
-      {selectedCustomer && (
-        <div className="space-y-3 rounded-md border border-border bg-background p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">{selectedCustomer.customer_name}</p>
-              <p className="text-xs text-muted-foreground">{selectedCustomer.phone || "-"}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)}>Close</Button>
+      <Dialog open={!!selectedCustomer} onOpenChange={(open) => !open && setSelectedCustomer(null)}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="text-base tracking-[0.08em] uppercase">Customer Invoice Insights</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Customer</CardTitle></CardHeader>
+              <CardContent className="text-sm font-medium">{selectedCustomer?.customer_name ?? "-"}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Phone</CardTitle></CardHeader>
+              <CardContent className="text-sm font-medium">{selectedCustomer?.phone ?? "-"}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Outstanding</CardTitle></CardHeader>
+              <CardContent className="text-sm font-semibold text-red-700">{formatCurrency(selectedCustomer?.total_outstanding ?? 0)}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Overdue</CardTitle></CardHeader>
+              <CardContent className="text-sm font-semibold text-red-700">{formatCurrency(selectedCustomer?.overdue_outstanding ?? 0)}</CardContent>
+            </Card>
           </div>
+
           <div className="rounded-md border border-border/70 overflow-hidden">
             <Table>
               <TableHeader>
@@ -236,11 +273,11 @@ const CustomerInsightsPage = () => {
               <TableBody>
                 {invoicesLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">Loading invoices...</TableCell>
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">Loading invoices...</TableCell>
                   </TableRow>
                 ) : customerInvoices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">No invoices found.</TableCell>
+                    <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">No invoices found for this customer.</TableCell>
                   </TableRow>
                 ) : (
                   customerInvoices.map((invoice) => (
@@ -263,8 +300,8 @@ const CustomerInsightsPage = () => {
               </TableBody>
             </Table>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex items-center justify-between">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Page {currentPage} / {totalPages}</p>

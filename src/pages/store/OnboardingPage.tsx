@@ -248,10 +248,12 @@ const OnboardingPage = () => {
 
             {/* School */}
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+              <label htmlFor="onboarding-school" className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
                 School <span className="text-destructive">*</span>
               </label>
               <select
+                id="onboarding-school"
+                name="schoolId"
                 value={schoolId}
                 onChange={(e) => handleSchoolChange(e.target.value)}
                 required
@@ -266,10 +268,12 @@ const OnboardingPage = () => {
 
             {/* Class */}
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+              <label htmlFor="onboarding-class" className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
                 Class <span className="text-destructive">*</span>
               </label>
               <select
+                id="onboarding-class"
+                name="classId"
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
                 required

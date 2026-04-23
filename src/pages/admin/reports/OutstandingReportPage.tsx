@@ -149,7 +149,10 @@ const OutstandingReportPage = () => {
         <Input placeholder="Search customer / invoice" value={search} onChange={(e) => setSearch(e.target.value)} />
         <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <label htmlFor="outstanding-status-filter" className="sr-only">Outstanding status filter</label>
         <select
+          id="outstanding-status-filter"
+          name="statusFilter"
           className="h-10 rounded-md border border-input bg-background px-3 text-sm"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}

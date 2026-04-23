@@ -218,6 +218,9 @@ const AdminCommandPalette = () => {
         <div className="flex items-center border-b px-3">
           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
           <input
+            id="admin-command-search"
+            name="adminCommandSearch"
+            aria-label="Search admin command palette"
             placeholder="Search orders, products, schools, customers..."
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}

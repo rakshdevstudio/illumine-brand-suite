@@ -1017,8 +1017,10 @@ const ProductsPage = () => {
                 </div>
               </div>
               <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Description</label>
+              <label htmlFor="product-description" className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Description</label>
               <textarea
+                id="product-description"
+                name="description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="w-full min-h-[96px] border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-vertical"

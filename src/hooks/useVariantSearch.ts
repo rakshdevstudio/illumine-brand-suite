@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -36,6 +36,12 @@ const SEARCH_PARAM_KEY = "search";
 const SEARCH_LIMIT = 100;
 
 const sanitizeSearchTerm = (value: string) => value.replace(/[%*,()]/g, " ").trim();
+const tokenizeSearchTerm = (value: string) =>
+  value
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
 
 const readRecentSearches = (): string[] => {
   try {
@@ -52,23 +58,29 @@ const writeRecentSearches = (items: string[]) => {
   window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(items.slice(0, 8)));
 };
 
+const clearStoredRecentSearches = () => {
+  window.localStorage.removeItem(RECENT_SEARCHES_KEY);
+};
+
 export const useVariantSearch = ({ filters }: { filters: VariantSearchFilters }) => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const initialSearch = useMemo(() => searchParams.get(SEARCH_PARAM_KEY) ?? "", [searchParams]);
-  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [inputValue, setInputValue] = useState("");
   const [recentSearches, setRecentSearches] = useState<string[]>(() => (typeof window === "undefined" ? [] : readRecentSearches()));
-  const debouncedSearch = useDebounce(searchInput, 300);
+  const debouncedSearch = useDebounce(inputValue, 300);
   const lastErrorMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const urlSearch = searchParams.get(SEARCH_PARAM_KEY) ?? "";
-    if (urlSearch !== searchInput) {
-      setSearchInput(urlSearch);
+    if (typeof window === "undefined") return;
+    const urlSearch = new URLSearchParams(window.location.search).get(SEARCH_PARAM_KEY) ?? "";
+    if (urlSearch) {
+      setInputValue(urlSearch);
     }
-  }, [searchParams, searchInput]);
+  }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     setSearchParams(
       (currentParams) => {
         const next = new URLSearchParams(currentParams);
@@ -78,6 +90,10 @@ export const useVariantSearch = ({ filters }: { filters: VariantSearchFilters })
           next.set(SEARCH_PARAM_KEY, normalizedSearch);
         } else {
           next.delete(SEARCH_PARAM_KEY);
+        }
+
+        if (next.toString() === currentParams.toString()) {
+          return currentParams;
         }
 
         return next;
@@ -112,11 +128,40 @@ export const useVariantSearch = ({ filters }: { filters: VariantSearchFilters })
       if (filters.product !== ALL_FILTER_VALUE) request = request.eq("product_id", filters.product);
 
       if (normalizedSearch) {
-        request = request
-          .or(
-            `products.name.ilike.*${normalizedSearch}*,size.ilike.*${normalizedSearch}*,products.schools.name.ilike.*${normalizedSearch}*,products.classes.name.ilike.*${normalizedSearch}*,products.gender.ilike.*${normalizedSearch}*`,
-          )
-          .limit(SEARCH_LIMIT);
+        const productSearchQuery = (supabase as any)
+          .from("products")
+          .select("id, name, gender, schools(name), classes(name)")
+          .limit(SEARCH_LIMIT * 5);
+
+        if (filters.school !== ALL_FILTER_VALUE) productSearchQuery.eq("school_id", filters.school);
+        if (filters.class !== ALL_FILTER_VALUE) productSearchQuery.eq("class_id", filters.class);
+        if (filters.gender !== ALL_FILTER_VALUE) productSearchQuery.eq("gender", filters.gender);
+        if (filters.product !== ALL_FILTER_VALUE) productSearchQuery.eq("id", filters.product);
+
+        const { data: productRows, error: productSearchError } = await productSearchQuery;
+        if (productSearchError) throw productSearchError;
+
+        const searchTokens = tokenizeSearchTerm(normalizedSearch);
+        const matchedProductIds = (productRows ?? [])
+          .filter((product: any) => {
+            const productName = String(product?.name ?? "").toLowerCase();
+            const productGender = String(product?.gender ?? "").toLowerCase();
+            const schoolName = String(product?.schools?.name ?? "").toLowerCase();
+            const className = String(product?.classes?.name ?? "").toLowerCase();
+            const haystack = `${productName} ${className} ${schoolName} ${productGender}`.trim();
+
+            if (!haystack) return false;
+            return searchTokens.every((token) => haystack.includes(token));
+          })
+          .map((product: any) => String(product.id))
+          .slice(0, 150);
+
+        const searchClauses = [`size.ilike.%${normalizedSearch}%`];
+        if (matchedProductIds.length > 0) {
+          searchClauses.push(`product_id.in.(${matchedProductIds.join(",")})`);
+        }
+
+        request = request.or(searchClauses.join(",")).limit(SEARCH_LIMIT);
       }
 
       const { data, error } = await request;
@@ -144,20 +189,27 @@ export const useVariantSearch = ({ filters }: { filters: VariantSearchFilters })
   }, [debouncedSearch]);
 
   const setSearch = (value: string) => {
-    setSearchInput(value);
+    setInputValue(value);
   };
 
-  const clearSearch = () => setSearchInput("");
+  const clearSearch = () => setInputValue("");
+
+  const clearRecentSearches = () => {
+    if (typeof window === "undefined") return;
+    clearStoredRecentSearches();
+    setRecentSearches([]);
+  };
 
   return {
     variants: (query.data ?? []) as VariantSearchRow[],
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error,
-    search: searchInput,
+    search: inputValue,
     debouncedSearch,
     setSearch,
     clearSearch,
     recentSearches,
+    clearRecentSearches,
   };
 };

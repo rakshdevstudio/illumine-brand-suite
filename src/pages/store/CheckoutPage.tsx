@@ -770,10 +770,12 @@ const CheckoutPage = () => {
 
         {/* Address */}
         <div>
-          <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
+          <label htmlFor="checkout-address" className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">
             Delivery Address <span className="text-destructive">*</span>
           </label>
           <textarea
+            id="checkout-address"
+            name="address"
             value={form.address}
             onChange={set("address")}
             className={getTextareaClass("address")}
