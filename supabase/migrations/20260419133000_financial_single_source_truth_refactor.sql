@@ -27,6 +27,8 @@ ALTER TABLE public.invoices DROP CONSTRAINT IF EXISTS invoices_balance_formula_c
 ALTER TABLE public.payments DROP CONSTRAINT IF EXISTS payments_amount_positive_chk;
 
 -- Pre-normalize legacy rows so strict invoice invariants can be added safely.
+SELECT set_config('app.bypass_invoice_guard', 'on', true);
+
 WITH canonical_invoice_payments AS (
   SELECT
     p.reference_id AS invoice_id,
@@ -798,8 +800,8 @@ $$;
 -- 9) Reporting layer: views only from invoices + payments
 -- -----------------------------------------------------------------------------
 DROP VIEW IF EXISTS public.view_revenue_summary;
-DROP VIEW IF EXISTS public.view_outstanding_summary;
 DROP VIEW IF EXISTS public.view_aging_buckets;
+DROP VIEW IF EXISTS public.view_outstanding_summary;
 DROP VIEW IF EXISTS public.view_gst_summary;
 DROP VIEW IF EXISTS public.view_dashboard_financial_kpis;
 

@@ -236,7 +236,7 @@ const buildProductOption = (product: any): ProductOption => {
   };
 };
 
-const renderHighlightedText = (value: string | null | undefined, searchTerm: string) => {
+const highlightVariantText = (value: string | null | undefined, searchTerm: string) => {
   const text = String(value ?? "");
   const term = searchTerm.trim();
 
@@ -980,11 +980,11 @@ const ProductVariantsPage = () => {
                         aria-label={`Select variant ${v.size}`}
                       />
                     </TableCell>
-                    <TableCell className="text-sm">{renderHighlightedText(v.products?.name, search)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.schools?.name, search)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.classes?.name || "—", search)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.gender ?? "-", search)}</TableCell>
-                    <TableCell className="text-sm">{renderHighlightedText(v.size, search)}</TableCell>
+                    <TableCell className="text-sm">{highlightVariantText(v.products?.name, search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{highlightVariantText(v.products?.schools?.name, search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{highlightVariantText(v.products?.classes?.name || "—", search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{highlightVariantText(v.products?.gender ?? "-", search)}</TableCell>
+                    <TableCell className="text-sm">{highlightVariantText(v.size, search)}</TableCell>
                     <TableCell className="text-sm font-medium">{liveStock}</TableCell>
                     <TableCell className="text-sm">
                       {formatPrice(effectivePrice)}

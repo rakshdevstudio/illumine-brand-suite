@@ -20,6 +20,8 @@ ALTER TABLE public.invoices
   ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'issued';
 
 -- Re-sync invoice paid and balance values from payment history.
+SELECT set_config('app.bypass_invoice_guard', 'on', true);
+
 WITH payment_totals AS (
   SELECT
     ip.invoice_id,
