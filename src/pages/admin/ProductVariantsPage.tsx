@@ -20,7 +20,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Check, ChevronDown, Plus, Minus } from "lucide-react";
-import { safeQuery } from "@/lib/safeQuery";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { logActivity } from "@/lib/activity-log";
@@ -30,6 +29,8 @@ import BulkActionBar from "@/components/admin/BulkActionBar";
 import { logger } from "@/lib/logger";
 import { useCatalogFilters } from "@/hooks/useCatalogFilters";
 import { ALL_FILTER_VALUE } from "@/lib/storefront";
+import { SearchInput } from "@/components/admin/variants/SearchInput";
+import { useVariantSearch } from "@/hooks/useVariantSearch";
 
 const chunk = <T,>(items: T[], size = 25) => {
   const batches: T[][] = [];
@@ -235,6 +236,32 @@ const buildProductOption = (product: any): ProductOption => {
   };
 };
 
+const renderHighlightedText = (value: string | null | undefined, searchTerm: string) => {
+  const text = String(value ?? "");
+  const term = searchTerm.trim();
+
+  if (!term) return text;
+
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp(escapedTerm, "i");
+  if (!matcher.test(text)) return text;
+
+  const splitter = new RegExp(`(${escapedTerm})`, "ig");
+  return (
+    <span>
+      {text.split(splitter).map((part, index) =>
+        index % 2 === 1 ? (
+          <mark key={`${part}-${index}`} className="rounded bg-amber-200/80 px-0.5 text-inherit">
+            {part}
+          </mark>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        )
+      )}
+    </span>
+  );
+};
+
 const ProductVariantsPage = () => {
   const { session, isChecking } = useRequireAuth();
   const { isAdmin, isSuperAdmin } = useAuth();
@@ -262,25 +289,22 @@ const ProductVariantsPage = () => {
   const classFilter = filters.class;
   const productFilter = filters.product;
 
-  const { data: variants, isLoading, error: variantsError } = useQuery({
-    queryKey: ["admin-variants"],
-    queryFn: async () => {
-      const { data } = await safeQuery(
-        () =>
-          supabase
-            .from("product_variants")
-            .select("*, products(name, price, gender, school_id, class_id, schools(name), classes(name))")
-            .order("created_at", { ascending: false }),
-        "admin-product-variants/list"
-      );
-      return data ?? [];
-    },
-  });
+  const {
+    variants,
+    isLoading: variantsLoading,
+    isFetching: variantsFetching,
+    error: variantsError,
+    search,
+    setSearch,
+    clearSearch,
+    recentSearches,
+  } = useVariantSearch({ filters });
 
   const { data: schools, error: schoolsError } = useQuery({
     queryKey: ["admin-schools-select"],
     queryFn: async () => {
-      const { data } = await safeQuery(() => supabase.from("schools").select("id, name").order("name"), "admin-product-variants/schools");
+      const { data, error } = await supabase.from("schools").select("id, name").order("name");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -288,10 +312,8 @@ const ProductVariantsPage = () => {
   const { data: classes, error: classesError } = useQuery({
     queryKey: ["admin-classes-select"],
     queryFn: async () => {
-      const { data } = await safeQuery(
-        () => supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order"),
-        "admin-product-variants/classes"
-      );
+      const { data, error } = await supabase.from("classes").select("id, name, school_id").eq("status", "active").order("sort_order");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -299,10 +321,8 @@ const ProductVariantsPage = () => {
   const { data: products, error: productsError } = useQuery({
     queryKey: ["admin-products-select"],
     queryFn: async () => {
-      const { data } = await safeQuery(
-        () => supabase.from("products").select("id, name, gender, school_id, class_id, schools(name), classes(name)").order("name"),
-        "admin-product-variants/products"
-      );
+      const { data, error } = await supabase.from("products").select("id, name, gender, school_id, class_id, schools(name), classes(name)").order("name");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -310,10 +330,8 @@ const ProductVariantsPage = () => {
   const { data: branches, error: branchesError } = useQuery({
     queryKey: ["admin-branches-select"],
     queryFn: async () => {
-      const { data } = await safeQuery(
-        () => supabase.from("branches").select("id, name, is_active").order("name"),
-        "admin-product-variants/branches"
-      );
+      const { data, error } = await supabase.from("branches").select("id, name, is_active").order("name");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -321,10 +339,8 @@ const ProductVariantsPage = () => {
   const { data: branchInventoryRows, error: branchInventoryError } = useQuery({
     queryKey: ["admin-variant-stock-totals"],
     queryFn: async () => {
-      const { data } = await safeQuery(
-        () => supabase.from("branch_inventory").select("variant_id, stock"),
-        "admin-product-variants/branch-inventory"
-      );
+      const { data, error } = await supabase.from("branch_inventory").select("variant_id, stock");
+      if (error) throw error;
       return data ?? [];
     },
   });
@@ -406,14 +422,7 @@ const ProductVariantsPage = () => {
     ? `Creating variant for: ${selectedProduct.name} | ${selectedProduct.className} | ${selectedProduct.genderLabel}`
     : "";
 
-  const filteredVariants = useMemo(() => {
-    if (!variants) return [];
-    let filtered = variants as any[];
-    if (schoolFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.products?.school_id === schoolFilter);
-    if (classFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.products?.class_id === classFilter);
-    if (productFilter !== ALL_FILTER_VALUE) filtered = filtered.filter((v) => v.product_id === productFilter);
-    return filtered;
-  }, [variants, schoolFilter, classFilter, productFilter]);
+  const filteredVariants = useMemo(() => variants ?? [], [variants]);
 
   useEffect(() => {
     const nextFilters: Partial<typeof filters> = {};
@@ -431,7 +440,7 @@ const ProductVariantsPage = () => {
     }
   }, [classFilter, filteredClassesForFilter, filteredProductsForFilter, filters, productFilter, replaceFilters]);
 
-  const allVariantIds = useMemo(() => (variants ?? []).map((variant: any) => variant.id), [variants]);
+  const allVariantIds = useMemo(() => (filteredVariants ?? []).map((variant: any) => variant.id), [filteredVariants]);
   const visibleVariantIds = useMemo(() => filteredVariants.map((variant: any) => variant.id), [filteredVariants]);
   const headerCheckboxState = useMemo(() => getHeaderState(visibleVariantIds), [getHeaderState, visibleVariantIds]);
 
@@ -447,7 +456,7 @@ const ProductVariantsPage = () => {
     );
   }
 
-  if (variantsError || schoolsError || classesError || productsError || branchesError || branchInventoryError) {
+  if ((variantsError && filteredVariants.length === 0) || schoolsError || classesError || productsError || branchesError || branchInventoryError) {
     return <ErrorState message="Session expired. Please login again." />;
   }
 
@@ -456,7 +465,7 @@ const ProductVariantsPage = () => {
 
   const refreshVariantQueries = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+      queryClient.invalidateQueries({ queryKey: ["variants"] }),
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
     ]);
   };
@@ -467,8 +476,8 @@ const ProductVariantsPage = () => {
     if (selectedIds.length === 0 || bulkAction) return;
     setBulkAction(nextStatus === "active" ? "enable" : "disable");
 
-    const previousVariants = queryClient.getQueryData<any[]>(["admin-variants"]);
-    queryClient.setQueryData<any[]>(["admin-variants"], (old = []) =>
+    const previousVariants = queryClient.getQueryData<any[]>(["variants"]);
+    queryClient.setQueryData<any[]>(["variants"], (old = []) =>
       old.map((variant: any) => (selectedIds.includes(variant.id) ? { ...variant, status: nextStatus } : variant))
     );
 
@@ -488,7 +497,7 @@ const ProductVariantsPage = () => {
       clearSelection();
       await refreshVariantQueries();
     } catch (error: any) {
-      if (previousVariants) queryClient.setQueryData(["admin-variants"], previousVariants);
+      if (previousVariants) queryClient.setQueryData(["variants"], previousVariants);
       toast.error(error?.message || "Bulk status update failed");
     } finally {
       setBulkAction(null);
@@ -584,7 +593,7 @@ const ProductVariantsPage = () => {
       setBulkStockReason("");
 
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+        queryClient.invalidateQueries({ queryKey: ["variants"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-variant-stock-totals"] }),
@@ -768,7 +777,7 @@ const ProductVariantsPage = () => {
       setAdjustReason("");
       setAdjustBranchId("");
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin-variants"] }),
+        queryClient.invalidateQueries({ queryKey: ["variants"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-branch-inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-variant-stock-totals"] }),
@@ -865,6 +874,22 @@ const ProductVariantsPage = () => {
         </Button>
       </div>
 
+      <div className="mb-6 space-y-3 rounded-[24px] border border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-4 shadow-[0_20px_70px_-52px_rgba(15,23,42,0.45)]">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          onClear={clearSearch}
+          isFetching={variantsFetching}
+          recentSearches={recentSearches}
+          onSelectRecentSearch={setSearch}
+          placeholder="Search variants (product, size, class...)"
+        />
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>{search.trim() ? `Showing results for “${search.trim()}”` : "Browse all variants"}</span>
+          {variantsFetching && <span className="animate-pulse uppercase tracking-[0.18em]">Updating results</span>}
+        </div>
+      </div>
+
       {/* Cascading Filters */}
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <div className="flex items-center gap-2">
@@ -934,13 +959,13 @@ const ProductVariantsPage = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {variantsLoading ? (
               <TableRow>
                 <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : filteredVariants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No variants</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No variants found</TableCell>
               </TableRow>
             ) : (
               filteredVariants.map((v: any) => {
@@ -955,11 +980,11 @@ const ProductVariantsPage = () => {
                         aria-label={`Select variant ${v.size}`}
                       />
                     </TableCell>
-                    <TableCell className="text-sm">{v.products?.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.products?.schools?.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.products?.classes?.name || "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.products?.gender ?? "-"}</TableCell>
-                    <TableCell className="text-sm">{v.size}</TableCell>
+                    <TableCell className="text-sm">{renderHighlightedText(v.products?.name, search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.schools?.name, search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.classes?.name || "—", search)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{renderHighlightedText(v.products?.gender ?? "-", search)}</TableCell>
+                    <TableCell className="text-sm">{renderHighlightedText(v.size, search)}</TableCell>
                     <TableCell className="text-sm font-medium">{liveStock}</TableCell>
                     <TableCell className="text-sm">
                       {formatPrice(effectivePrice)}
