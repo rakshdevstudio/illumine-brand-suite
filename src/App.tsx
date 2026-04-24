@@ -76,24 +76,33 @@ import PosLoginPage from "./pages/pos/PosLoginPage";
 import PosDashboard from "./pages/pos/PosDashboard";
 import { useSchoolContext } from "./lib/school-context";
 
+const signOutLocallyAndRedirect = async () => {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } finally {
+    redirectToLogin();
+  }
+};
+
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
       if (isAuthError(error)) {
-        void supabase.auth.signOut().finally(() => redirectToLogin());
+        void signOutLocallyAndRedirect();
       }
     },
   }),
   mutationCache: new MutationCache({
     onError: (error) => {
       if (isAuthError(error)) {
-        void supabase.auth.signOut().finally(() => redirectToLogin());
+        void signOutLocallyAndRedirect();
       }
     },
   }),
 });
 
 const isProtectedPath = (path: string) =>
+  path.startsWith("/admin") ||
   path.startsWith("/vendor") ||
   path.startsWith("/school") ||
   path.startsWith("/pos") ||

@@ -3,5 +3,8 @@ project_id = "rkbkorssqydpetilwltc"
 [functions.manage-admin-users]
 verify_jwt = false
 
+[functions.get-products]
+verify_jwt = false
+
 [functions.send-order-confirmation]
 verify_jwt = false

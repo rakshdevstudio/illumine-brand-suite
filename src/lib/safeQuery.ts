@@ -48,8 +48,11 @@ export const redirectToLogin = () => {
 };
 
 const handleAuthFailure = async () => {
-  await supabase.auth.signOut();
-  redirectToLogin();
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } finally {
+    redirectToLogin();
+  }
 };
 
 export async function safeQuery<T>(

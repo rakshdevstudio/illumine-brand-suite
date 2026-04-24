@@ -5,7 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { isLowStock } from "@/lib/inventory";
-import { safeQuery } from "@/lib/safeQuery";
+import { isAuthError, safeQuery } from "@/lib/safeQuery";
+import { getSafeErrorMessage } from "@/lib/logger";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { IndianRupee, ShoppingBag, TrendingUp, AlertTriangle, ArrowRight, Medal } from "lucide-react";
 
@@ -85,6 +86,68 @@ const parseStudentFieldsFromNotes = (notes: Array<{ note?: string | null } | nul
   return result;
 };
 
+const chunkArray = <T,>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+};
+
+const retryDashboardQuery = (failureCount: number, error: unknown) =>
+  !isAuthError(error) && failureCount < 1;
+
+const getDashboardLowStockVariants = async () => {
+  const { data: inventoryRows } = await safeQuery(
+    () => supabase.from("branch_inventory").select("variant_id, stock"),
+    "admin-dashboard/low-stock"
+  );
+
+  const stockByVariantId = new Map<string, number>();
+
+  for (const row of inventoryRows ?? []) {
+    const variantId = String((row as { variant_id?: string | null }).variant_id ?? "");
+    if (!variantId) continue;
+
+    stockByVariantId.set(
+      variantId,
+      (stockByVariantId.get(variantId) ?? 0) + Number((row as { stock?: number | null }).stock ?? 0)
+    );
+  }
+
+  const variantIds = [...stockByVariantId.keys()];
+  if (variantIds.length === 0) return [];
+
+  const variantMetaById = new Map<string, any>();
+
+  for (const chunk of chunkArray(variantIds, 200)) {
+    const { data: variantRows } = await safeQuery(
+      () =>
+        supabase
+          .from("product_variants")
+          .select("id, size, low_stock_threshold, products(name)")
+          .in("id", chunk),
+      "admin-dashboard/low-stock-meta"
+    );
+
+    for (const row of variantRows ?? []) {
+      variantMetaById.set(String((row as { id: string }).id), row);
+    }
+  }
+
+  return variantIds
+    .map((variantId) => ({
+      id: variantId,
+      stock: stockByVariantId.get(variantId) ?? 0,
+      product_variants: variantMetaById.get(variantId) ?? null,
+    }))
+    .filter((variant: any) => isLowStock(Number(variant.stock ?? 0), variant.product_variants?.low_stock_threshold))
+    .sort((a, b) => Number(a.stock ?? 0) - Number(b.stock ?? 0))
+    .slice(0, 100);
+};
+
 // ── KPI card ─────────────────────────────────────────────────────────────────
 
 interface KpiCardProps {
@@ -122,10 +185,11 @@ const KpiCard = ({ label, value, icon, sub }: KpiCardProps) => (
 // ── main ─────────────────────────────────────────────────────────────────────
 
 const DashboardPage = () => {
-  const { isChecking } = useRequireAuth();
+  const { session, isChecking } = useRequireAuth();
+  const canLoadDashboard = !isChecking && Boolean(session?.user);
 
   // Today's orders count (operational metric only)
-  const { data: todayOrders, error: todayOrdersError, isLoading: todayOrdersLoading } = useQuery({
+  const { data: todayOrders = [], error: todayOrdersError, isLoading: todayOrdersLoading } = useQuery({
     queryKey: ["dash-today-orders"],
     queryFn: async () => {
       const { data } = await safeQuery(
@@ -139,6 +203,8 @@ const DashboardPage = () => {
       );
       return data ?? [];
     },
+    enabled: canLoadDashboard,
+    retry: retryDashboardQuery,
   });
 
   // Financial KPIs from invoices + payments only
@@ -155,10 +221,12 @@ const DashboardPage = () => {
       );
       return (data ?? null) as FinancialKpis | null;
     },
+    enabled: canLoadDashboard,
+    retry: retryDashboardQuery,
   });
 
   // Recent 5 orders
-  const { data: recentOrders, error: recentOrdersError, isLoading: recentOrdersLoading } = useQuery({
+  const { data: recentOrders = [], error: recentOrdersError, isLoading: recentOrdersLoading } = useQuery({
     queryKey: ["dash-recent-orders"],
     queryFn: async () => {
       const { data } = await safeQuery(
@@ -175,10 +243,12 @@ const DashboardPage = () => {
         ...parseStudentFieldsFromNotes(order.order_notes),
       }));
     },
+    enabled: canLoadDashboard,
+    retry: retryDashboardQuery,
   });
 
   // Top selling products via order_items
-  const { data: orderItems, error: orderItemsError, isLoading: orderItemsLoading } = useQuery({
+  const { data: orderItems = [], error: orderItemsError, isLoading: orderItemsLoading } = useQuery({
     queryKey: ["dash-order-items-top"],
     queryFn: async () => {
       const { data } = await safeQuery(
@@ -190,28 +260,24 @@ const DashboardPage = () => {
       );
       return data ?? [];
     },
+    enabled: canLoadDashboard,
+    retry: retryDashboardQuery,
   });
 
   // Low stock
-  const { data: lowStockVariants, error: lowStockError, isLoading: lowStockLoading } = useQuery({
+  const { data: lowStockVariants = [], error: lowStockError, isLoading: lowStockLoading } = useQuery({
     queryKey: ["dash-low-stock"],
-    queryFn: async () => {
-      const { data } = await safeQuery(
-        () =>
-          supabase
-            .from("branch_inventory")
-            .select("id, stock, product_variants(size, low_stock_threshold, products(name))")
-            .order("stock", { ascending: true })
-            .limit(100),
-        "admin-dashboard/low-stock"
-      );
-      return (data ?? []).filter((v: any) =>
-        isLowStock(v.stock, v.product_variants?.low_stock_threshold)
-      );
-    },
+    queryFn: getDashboardLowStockVariants,
+    enabled: canLoadDashboard,
+    retry: retryDashboardQuery,
   });
 
-  const hasError = Boolean(todayOrdersError || financialKpisError || recentOrdersError || orderItemsError || lowStockError);
+  const dashboardError =
+    todayOrdersError ||
+    financialKpisError ||
+    recentOrdersError ||
+    orderItemsError ||
+    lowStockError;
   const isLoading =
     isChecking ||
     todayOrdersLoading ||
@@ -228,7 +294,7 @@ const DashboardPage = () => {
 
   const topProducts = useMemo(() => {
     const map = new Map<string, { id: string; name: string; qty: number }>();
-    (orderItems ?? []).forEach((item: any) => {
+    orderItems.forEach((item: any) => {
       const id = item.product_id ?? item.products?.id;
       const name = item.products?.name ?? "Unknown";
       if (!id) return;
@@ -240,6 +306,10 @@ const DashboardPage = () => {
       .slice(0, 5);
   }, [orderItems]);
 
+  if (!isChecking && !session?.user) {
+    return <ErrorState message="Session expired. Please login again." />;
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-[220px] flex items-center justify-center">
@@ -248,8 +318,16 @@ const DashboardPage = () => {
     );
   }
 
-  if (hasError) {
-    return <ErrorState message="Session expired. Please login again." />;
+  if (dashboardError) {
+    return (
+      <ErrorState
+        message={
+          isAuthError(dashboardError)
+            ? "Session expired. Please login again."
+            : getSafeErrorMessage(dashboardError, "Could not load dashboard right now.")
+        }
+      />
+    );
   }
 
   return (

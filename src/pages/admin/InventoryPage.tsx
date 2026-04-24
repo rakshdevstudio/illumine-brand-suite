@@ -21,6 +21,22 @@ type BranchInventoryRow = {
   variant_id: string;
   stock: number;
   updated_at: string;
+  product_variants?: {
+    id?: string;
+    size?: string | null;
+    low_stock_threshold?: number | null;
+    products?: {
+      id?: string;
+      name?: string;
+      category?: string;
+      price?: number;
+      gender?: string | null;
+      school_id?: string | null;
+      class_id?: string | null;
+      schools?: { name?: string } | null;
+      classes?: { name?: string } | null;
+    } | null;
+  } | null;
 };
 
 type VariantMeta = {
@@ -28,10 +44,13 @@ type VariantMeta = {
   size?: string | null;
   low_stock_threshold?: number | null;
   products?: {
+    id?: string;
     name?: string;
     category?: string;
     price?: number;
     gender?: string | null;
+    school_id?: string | null;
+    class_id?: string | null;
     schools?: { name?: string } | null;
     classes?: { name?: string } | null;
   } | null;
@@ -47,10 +66,13 @@ type AggregatedInventoryRow = {
     size?: string | null;
     low_stock_threshold?: number | null;
     products?: {
+      id?: string;
       name?: string;
       category?: string;
       price?: number;
       gender?: string | null;
+      school_id?: string | null;
+      class_id?: string | null;
       schools?: { name?: string } | null;
       classes?: { name?: string } | null;
     } | null;
@@ -74,6 +96,16 @@ type InventoryMovementRow = {
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
+
+const chunkArray = <T,>(items: T[], size: number) => {
+  if (items.length === 0) return [] as T[][];
+
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
 
 const InventoryPage = () => {
   const queryClient = useQueryClient();
@@ -172,24 +204,58 @@ const InventoryPage = () => {
     staleTime: 5 * 60_000,
   });
 
-  const { data: rows, isLoading } = useQuery({
-    queryKey: ["admin-branch-inventory", filters.school, filters.class, filters.gender, filters.category, filters.search],
+  const { data: rows, isLoading, error: rowsError } = useQuery({
+    queryKey: ["admin-branch-inventory"],
     queryFn: async () => {
-      let query = supabase
+      const { data: inventoryRows, error: inventoryError } = await supabase
         .from("branch_inventory")
-        .select("id, branch_id, product_id, variant_id, stock, updated_at, product_variants!inner(id, size, low_stock_threshold, products!inner(name, category, price, gender, school_id, class_id, schools(name), classes(name)))")
+        .select("id, branch_id, product_id, variant_id, stock, updated_at")
         .order("updated_at", { ascending: false });
 
-      if (filters.school) query = query.eq("product_variants.products.school_id", filters.school);
-      if (filters.class) query = query.eq("product_variants.products.class_id", filters.class);
-      if (filters.gender) query = query.eq("product_variants.products.gender", filters.gender);
-      if (filters.category) query = query.eq("product_variants.products.category", filters.category);
-      if (filters.search) query = query.ilike("product_variants.products.name", `%${filters.search}%`);
+      if (inventoryError) throw inventoryError;
 
-      const { data, error } = await query;
+      const baseRows = (inventoryRows ?? []) as BranchInventoryRow[];
+      const variantIds = Array.from(
+        new Set(
+          baseRows
+            .map((row) => row.variant_id)
+            .filter((variantId): variantId is string => typeof variantId === "string" && variantId.length > 0),
+        ),
+      );
 
-      if (error) throw error;
-      return (data ?? []) as BranchInventoryRow[];
+      if (variantIds.length === 0) {
+        return baseRows;
+      }
+
+      const variantMetaById = new Map<string, VariantMeta>();
+
+      for (const chunk of chunkArray(variantIds, 200)) {
+        const { data: variantMetaRows, error: variantMetaError } = await supabase
+          .from("product_variants")
+          .select("id, size, low_stock_threshold, products(id, name, category, price, gender, school_id, class_id, schools(name), classes(name))")
+          .in("id", chunk);
+
+        if (variantMetaError) throw variantMetaError;
+
+        for (const row of (variantMetaRows ?? []) as VariantMeta[]) {
+          variantMetaById.set(row.id, row);
+        }
+      }
+
+      return baseRows.map((row) => {
+        const meta = variantMetaById.get(row.variant_id);
+        return {
+          ...row,
+          product_variants: meta
+            ? {
+                id: meta.id,
+                size: meta.size,
+                low_stock_threshold: meta.low_stock_threshold,
+                products: meta.products,
+              }
+            : null,
+        };
+      }) as BranchInventoryRow[];
     },
   });
 
@@ -254,17 +320,35 @@ const InventoryPage = () => {
   }, [rows]);
 
   const visibleRows = useMemo(() => {
-    if (filters.status === "all") return aggregatedRows;
-
     return aggregatedRows.filter((row) => {
+      const product = row.product_variants?.products;
       const stock = Number(row.stock ?? 0);
       const threshold = Number(row.product_variants?.low_stock_threshold ?? 5);
+
+      if (filters.school && product?.school_id !== filters.school) return false;
+      if (filters.class && product?.class_id !== filters.class) return false;
+      if (filters.gender && product?.gender !== filters.gender) return false;
+      if (filters.category && product?.category !== filters.category) return false;
+
+      if (filters.search) {
+        const haystack = [
+          product?.name ?? "",
+          product?.category ?? "",
+          row.product_variants?.size ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(filters.search.toLowerCase())) return false;
+      }
+
+      if (filters.status === "all") return true;
       if (filters.status === "in-stock") return stock > threshold;
       if (filters.status === "low-stock") return stock > 0 && stock <= threshold;
       if (filters.status === "out-of-stock") return stock === 0;
       return true;
     });
-  }, [aggregatedRows, filters.status]);
+  }, [aggregatedRows, filters.category, filters.class, filters.gender, filters.school, filters.search, filters.status]);
 
   useEffect(() => {
     const visibleIds = new Set(visibleRows.map((row) => row.key));
@@ -428,7 +512,13 @@ const InventoryPage = () => {
         </div>
       )}
 
-      {(branches ?? []).length > 0 && (rows ?? []).length === 0 && !isLoading && (
+      {rowsError && (
+        <div className="mb-4 border border-red-600/40 bg-red-600/5 px-4 py-3 text-sm text-red-800">
+          Failed to load branch inventory. {rowsError instanceof Error ? rowsError.message : "Unknown error"}
+        </div>
+      )}
+
+      {(branches ?? []).length > 0 && !rowsError && (rows ?? []).length === 0 && !isLoading && (
         <div className="mb-4 border border-amber-600/40 bg-amber-600/5 px-4 py-3 text-sm text-amber-800">
           No branch inventory rows found. Seed inventory from product creation or movement actions.
         </div>

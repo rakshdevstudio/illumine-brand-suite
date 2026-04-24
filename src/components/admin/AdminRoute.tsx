@@ -18,12 +18,7 @@ const AdminRoute = ({ children }: AdminRouteProps) => {
   }
 
   if (!session?.user) {
-    return <Navigate to="/" replace />;
-  }
-
-  const metadataRole = String(session.user.user_metadata?.role ?? "").toLowerCase();
-  if (metadataRole !== "admin") {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   return <>{children}</>;
