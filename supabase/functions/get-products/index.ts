@@ -118,6 +118,11 @@ const buildSupabaseAdmin = () =>
         persistSession: false,
         autoRefreshToken: false,
       },
+      global: {
+        headers: {
+          Authorization: `Bearer ${getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+      },
     },
   );
 
@@ -179,7 +184,7 @@ const fetchProducts = async (
 const fetchBranchId = async (
   supabase: ReturnType<typeof createClient>,
   schoolId: string,
-  requestId: string
+  requestId: string,
 ): Promise<string | null> => {
   const { data, error } = await supabase
     .from("schools")
@@ -196,7 +201,15 @@ const fetchBranchId = async (
     return null;
   }
 
-  return (data as { branch_id?: string } | null)?.branch_id ?? null;
+  const branchId = (data as { branch_id?: string } | null)?.branch_id ?? null;
+
+  console.info("[FETCH_BRANCH_RESULT]", {
+    request_id: requestId,
+    school_id: schoolId,
+    branch_id: branchId,
+  });
+
+  return branchId;
 };
 
 const fetchStockByVariant = async (
@@ -206,49 +219,43 @@ const fetchStockByVariant = async (
   schoolId?: string,
 ) => {
   const stockByVariant = new Map<string, number>();
-
-  if (variantIds.length === 0) {
-    return stockByVariant;
-  }
+  if (variantIds.length === 0) return stockByVariant;
 
   let branchId: string | null = null;
+  if (schoolId) branchId = await fetchBranchId(supabase, schoolId, requestId);
 
-  if (schoolId) {
-    branchId = await fetchBranchId(supabase, schoolId, requestId);
-  }
-
-  let inventoryQuery = supabase
-    .from("branch_inventory")
-    .select("variant_id, stock")
-    .in("variant_id", variantIds);
-
-  if (branchId) {
-    inventoryQuery = inventoryQuery.eq("branch_id", branchId);
-  }
-
-  // NOTE: branch_inventory does NOT have school_id column.
-  // Stock is already scoped by branch_id, so we should NOT filter by school_id here.
-
-  const { data, error } = await inventoryQuery;
-
-  if (error) {
-    console.error("[GET_PRODUCTS_INVENTORY_ERROR]", {
-      request_id: requestId,
-      school_id: schoolId ?? null,
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
+  try {
+    const { data, error } = await supabase.rpc("get_branch_inventory_stock", {
+      p_variant_ids: variantIds,
+      p_branch_id: branchId ?? null,
     });
-    throw error;
+
+    console.info("[STOCK_RPC_RESULT]", {
+      request_id: requestId,
+      count: data?.length ?? 0,
+      error: error ?? null,
+      sample: data?.slice(0, 3) ?? [],
+    });
+
+    if (error) {
+      console.error("[STOCK_RPC_ERROR]", { request_id: requestId, error });
+      return stockByVariant;
+    }
+
+    for (const row of (data ?? []) as BranchInventoryRow[]) {
+      stockByVariant.set(
+        row.variant_id,
+        (stockByVariant.get(row.variant_id) ?? 0) + Math.max(0, normalizeNumber(row.stock, 0)),
+      );
+    }
+  } catch (e) {
+    console.error("[STOCK_RPC_CRASH]", { request_id: requestId, error: e });
   }
 
-  for (const row of (data ?? []) as BranchInventoryRow[]) {
-    stockByVariant.set(
-      row.variant_id,
-      (stockByVariant.get(row.variant_id) ?? 0) + Math.max(0, normalizeNumber(row.stock, 0)),
-    );
-  }
+  console.info("[STOCK_RPC_DONE]", {
+    request_id: requestId,
+    map_size: stockByVariant.size,
+  });
 
   return stockByVariant;
 };
@@ -285,12 +292,22 @@ const mapProductsToPosResponse = (
       const inventoryStock = stockByVariant.get(variant.id);
       const fallbackStock = Math.max(0, normalizeNumber(variant.stock, 0));
 
+      console.info("[STOCK_DEBUG_VARIANT]", {
+        variant_id: variant.id,
+        inventoryStock,
+        fallbackStock,
+        using: inventoryStock !== undefined ? "branch_inventory" : "product_variants.stock",
+      });
+
       existingProduct.variants.push({
         id: variant.id,
         name: normalizeVariantName(variant.size),
         barcode: normalizeString(variant.sku),
         price: Math.max(0, resolvedPrice),
-        stock: inventoryStock === undefined ? fallbackStock : Math.max(0, inventoryStock),
+        stock:
+          inventoryStock !== undefined
+            ? Math.max(0, inventoryStock)
+            : fallbackStock,
       });
 
       seenVariantIds.add(variant.id);
@@ -344,6 +361,11 @@ serve(async (req: Request) => {
           .filter((variantId): variantId is string => typeof variantId === "string" && variantId.length > 0),
       ),
     )];
+
+    console.info("[VARIANT_IDS_COLLECTED]", {
+      request_id: requestId,
+      total_variantIds: variantIds.length,
+    });
 
     const stockByVariant = await fetchStockByVariant(
       supabase,
