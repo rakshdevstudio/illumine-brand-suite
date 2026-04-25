@@ -13,6 +13,7 @@ const UUID_REGEX =
 const PRODUCTS_SELECT = `
   id,
   name,
+  school_id,
   category,
   image_url,
   price,
@@ -38,6 +39,7 @@ type ProductVariantRow = {
 type ProductRow = {
   id: string;
   name: string | null;
+  school_id: string | null;
   category: string | null;
   image_url: string | null;
   price: number | string | null;
@@ -145,11 +147,19 @@ const fetchProducts = async (
     .order("name", { ascending: true })
     .order("size", { ascending: true, foreignTable: "product_variants" });
 
+  console.info("[FILTER_CHECK]", {
+    school_id: schoolId,
+  });
+
   if (schoolId) {
     query = query.eq("school_id", schoolId);
   }
 
   const { data, error } = await query;
+
+  console.info("[QUERY_RESULT]", {
+    count: data?.length ?? 0,
+  });
 
   if (error) {
     console.error("[GET_PRODUCTS_QUERY_ERROR]", {
