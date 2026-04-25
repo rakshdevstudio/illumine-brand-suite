@@ -44,10 +44,6 @@ type ProductRow = {
   product_variants: ProductVariantRow[] | null;
 };
 
-type ProductAssignmentRow = {
-  product_id: string;
-};
-
 type BranchInventoryRow = {
   variant_id: string;
   stock: number | null;
@@ -138,35 +134,6 @@ const normalizeVariantName = (value: unknown) => {
   return normalized.length > 0 ? normalized : "Default";
 };
 
-const fetchAssignedProductIds = async (
-  supabase: ReturnType<typeof createClient>,
-  schoolId: string,
-  requestId: string,
-) => {
-  const { data, error } = await supabase
-    .from("product_assignments")
-    .select("product_id")
-    .eq("school_id", schoolId);
-
-  if (error) {
-    console.error("[GET_PRODUCTS_ASSIGNMENTS_ERROR]", {
-      request_id: requestId,
-      school_id: schoolId,
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
-  }
-
-  return [...new Set(
-    ((data ?? []) as ProductAssignmentRow[])
-      .map((row) => row.product_id)
-      .filter((productId) => typeof productId === "string" && productId.length > 0),
-  )];
-};
-
 const fetchProducts = async (
   supabase: ReturnType<typeof createClient>,
   requestId: string,
@@ -179,11 +146,7 @@ const fetchProducts = async (
     .order("size", { ascending: true, foreignTable: "product_variants" });
 
   if (schoolId) {
-    const assignedProductIds = await fetchAssignedProductIds(supabase, schoolId, requestId);
-    if (assignedProductIds.length === 0) {
-      return [] as ProductRow[];
-    }
-    query = query.in("id", assignedProductIds);
+    query = query.eq("school_id", schoolId);
   }
 
   const { data, error } = await query;
