@@ -29,7 +29,7 @@ const ClassGenderPage = () => {
         .select("*")
         .eq("school_id", id)
         .eq("slug", classSlug!)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
