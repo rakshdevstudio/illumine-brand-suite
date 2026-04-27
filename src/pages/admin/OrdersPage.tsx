@@ -331,13 +331,16 @@ const OrdersPage = () => {
         const { data, error } = await supabase
           .from("orders")
           .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
-          .order("created_at", { ascending: false });
-        
+          // Primary sort: newest first. Secondary: id DESC as tie-breaker for
+          // orders with identical created_at timestamps (e.g. rapid POS inserts).
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+
         if (error) {
           console.error("Orders query failed:", error);
           throw error;
         }
-        
+
         console.log("Orders loaded:", data?.length, "found");
         return data || [];
       } catch (err) {
@@ -345,6 +348,11 @@ const OrdersPage = () => {
         throw err;
       }
     },
+    // Always consider data stale so new orders (from POS or website) surface
+    // immediately on next window focus or component mount — no manual refresh needed.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     retry: 1,
   });
 
@@ -388,7 +396,7 @@ const OrdersPage = () => {
     },
   });
 
-  // Filter & sort
+  // Filter & sort — always newest first regardless of which filter is active.
   const processedOrders = useMemo(() => {
     if (!orders) return [];
     let filtered = orders as any[];
@@ -411,6 +419,18 @@ const OrdersPage = () => {
     }
 
     filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
+
+    // Guarantee newest-first after filtering. The DB query already returns
+    // created_at DESC but this re-sort is a safety net against any
+    // React Query cache merge that could disturb array order.
+    filtered = [...filtered].sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (tB !== tA) return tB - tA;  // newest first
+      // Tie-break by id (UUID v4 ordering is not time-based, so use string compare
+      // as a stable final fallback to prevent shuffling on re-renders).
+      return (b.id ?? "") > (a.id ?? "") ? 1 : -1;
+    });
 
     return filtered;
   }, [orders, statusFilter, sourceFilter, searchQuery, dateFilter]);
