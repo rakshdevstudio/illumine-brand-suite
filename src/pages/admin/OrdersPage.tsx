@@ -331,10 +331,10 @@ const OrdersPage = () => {
         const { data, error } = await supabase
           .from("orders")
           .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
-          // Primary sort: newest first. Secondary: id DESC as tie-breaker for
-          // orders with identical created_at timestamps (e.g. rapid POS inserts).
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: false });
+          // Single deterministic sort: newest created_at first.
+          // Do NOT add a secondary UUID sort — UUID v4 ids have no time
+          // relationship and would silently reorder same-second orders.
+          .order("created_at", { ascending: false });
 
         if (error) {
           console.error("Orders query failed:", error);
@@ -420,16 +420,21 @@ const OrdersPage = () => {
 
     filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
 
-    // Guarantee newest-first after filtering. The DB query already returns
-    // created_at DESC but this re-sort is a safety net against any
-    // React Query cache merge that could disturb array order.
+    // Guarantee newest-first after filtering.
+    // Rules:
+    //   1. created_at DESC  — the real timestamp, same for POS and website
+    //   2. updated_at DESC  — meaningful tie-breaker (later update = more recent)
+    //   3. return 0         — for identical timestamps, let JS stable sort
+    //                         preserve the DB-returned order unchanged.
+    //                         Never use UUID string compare: UUID v4 is random
+    //                         and would pin one source type above another.
     filtered = [...filtered].sort((a, b) => {
       const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (tB !== tA) return tB - tA;  // newest first
-      // Tie-break by id (UUID v4 ordering is not time-based, so use string compare
-      // as a stable final fallback to prevent shuffling on re-renders).
-      return (b.id ?? "") > (a.id ?? "") ? 1 : -1;
+      if (tB !== tA) return tB - tA;
+      const uA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const uB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      return uB - uA; // 0 when both are also equal → stable sort keeps DB order
     });
 
     return filtered;
