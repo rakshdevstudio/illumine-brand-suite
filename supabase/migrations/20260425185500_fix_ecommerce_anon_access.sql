@@ -25,8 +25,9 @@ CREATE POLICY "public insert order_items"
 ON order_items FOR INSERT
 WITH CHECK (true);
 
--- 5. Fix RPC permission to allow ecommerce app (anon) to generate invoices
-ALTER FUNCTION public.create_invoice_from_order(uuid)
-SET SECURITY DEFINER;
-
+-- 5. Allow ecommerce app (anon) to invoke invoice creation RPC.
+-- The function is already declared as SECURITY DEFINER in migration
+-- 20260423111000_checkout_invoice_finalization_flow.sql; we only need
+-- to grant EXECUTE to the anon role.
 GRANT EXECUTE ON FUNCTION public.create_invoice_from_order(uuid) TO anon;
+

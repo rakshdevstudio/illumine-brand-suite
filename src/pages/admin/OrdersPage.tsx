@@ -14,6 +14,118 @@ import { useAuth } from "@/hooks/use-auth";
 import { logActivity } from "@/lib/activity-log";
 
 type OrderStatus = "PLACED" | "PACKED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
+type OrderSource = "online" | "offline";
+
+// ---------------------------------------------------------------------------
+// Source detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Determines whether an order was placed online (ecommerce website) or
+ * offline (POS / in-store). Uses real database metadata — NOT customer name —
+ * as the primary signal so that POS orders with typed customer names are
+ * correctly classified as Offline.
+ *
+ * Priority chain:
+ *  1. Explicit source/channel fields if they ever get populated
+ *  2. payment_mode column (most reliable existing signal):
+ *       ONLINE  → website ecommerce checkout  → Online
+ *       CASH / UPI / CARD / BANK_TRANSFER     → POS / in-store → Offline
+ *  3. order_notes array — POS app writes "Order Source: POS" into notes
+ *  4. Last resort only: customer_name heuristic for truly ambiguous legacy rows
+ *
+ * Analytics note: returns "online" | "offline" for easy grouping in dashboards.
+ */
+const getOrderSource = (order: any): OrderSource => {
+  // ── 1. Explicit channel/source fields (future-proof) ──────────────────────
+  const channelFields = [
+    order.source,
+    order.order_channel,
+    order.channel,
+    order.created_from,
+    order.created_via,
+    order.platform,
+    order.customer_type,
+  ];
+
+  const OFFLINE_CHANNEL_KW = ["pos", "offline", "walk_in", "walkin", "store", "counter"];
+  const ONLINE_CHANNEL_KW  = ["web", "ecommerce", "online", "website", "storefront"];
+
+  for (const field of channelFields) {
+    if (!field) continue;
+    const norm = String(field).toLowerCase().replace(/[^a-z_]/g, "");
+    if (OFFLINE_CHANNEL_KW.some((k) => norm.includes(k))) {
+      console.debug("[OrderSource]", order.id, "| field:", field, "→ offline");
+      return "offline";
+    }
+    if (ONLINE_CHANNEL_KW.some((k) => norm.includes(k))) {
+      console.debug("[OrderSource]", order.id, "| field:", field, "→ online");
+      return "online";
+    }
+  }
+
+  // ── 2. payment_mode (most reliable column that actually exists) ────────────
+  //   Website ecommerce checkout always sets payment_mode = 'ONLINE'.
+  //   POS always uses a physical mode: CASH, UPI, CARD, BANK_TRANSFER.
+  const pm = (order.payment_mode || "").toUpperCase();
+  if (pm === "ONLINE") {
+    console.debug("[OrderSource]", order.id, "| payment_mode:", pm, "→ online");
+    return "online";
+  }
+  if (["CASH", "UPI", "CARD", "BANK_TRANSFER"].includes(pm)) {
+    console.debug("[OrderSource]", order.id, "| payment_mode:", pm, "→ offline");
+    return "offline";
+  }
+
+  // ── 3. order_notes — POS writes "Order Source: POS" into notes ────────────
+  //   Available when the notes array is hydrated (e.g. from order-meta query
+  //   or when the main orders query joins order_notes).
+  const notes: Array<{ note?: string | null }> = order.order_notes || [];
+  for (const n of notes) {
+    const text = (n.note || "").toLowerCase();
+    if (text.includes("order source: pos") || text.includes("source: pos")) {
+      console.debug("[OrderSource]", order.id, "| note hint → offline");
+      return "offline";
+    }
+    if (text.includes("order source: online") || text.includes("order source: web")) {
+      console.debug("[OrderSource]", order.id, "| note hint → online");
+      return "online";
+    }
+  }
+
+  // ── 4. Last resort: customer name (only for truly ambiguous legacy rows) ───
+  const customerName = (order.customer_name || "").toLowerCase();
+  if (
+    customerName === "walk-in customer" ||
+    customerName === "walk in customer" ||
+    customerName === "walkin" ||
+    customerName === "walkin customer"
+  ) {
+    console.debug("[OrderSource]", order.id, "| customer name fallback → offline");
+    return "offline";
+  }
+
+  // Default: assume Online for old ecommerce records with no metadata
+  console.debug("[OrderSource]", order.id, "| pm:", pm || "null", "→ online (default)");
+  return "online";
+};
+
+const SourceBadge = ({ source }: { source: OrderSource }) => {
+  if (source === "offline") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        Offline
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      Online
+    </span>
+  );
+};
 
 const ORDER_STATUSES: OrderStatus[] = ["PLACED", "PACKED", "DISPATCHED", "DELIVERED", "CANCELLED"];
 
@@ -205,6 +317,7 @@ const OrdersPage = () => {
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [noteInput, setNoteInput] = useState("");
@@ -285,6 +398,10 @@ const OrdersPage = () => {
       filtered = filtered.filter((order) => normalizeOrderStatus(order.status) === statusFilter);
     }
 
+    if (sourceFilter !== "all") {
+      filtered = filtered.filter((order) => getOrderSource(order) === sourceFilter);
+    }
+
     if (normalizedSearch) {
       filtered = filtered.filter((order) => {
         const customerName = (order.customer_name || "").toLowerCase();
@@ -296,7 +413,7 @@ const OrdersPage = () => {
     filtered = filtered.filter((order) => matchesDateFilter(order.created_at, dateFilter));
 
     return filtered;
-  }, [orders, statusFilter, searchQuery, dateFilter]);
+  }, [orders, statusFilter, sourceFilter, searchQuery, dateFilter]);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(price);
@@ -378,7 +495,7 @@ const OrdersPage = () => {
     const selectedOrders = processedOrders;
     if (selectedOrders.length === 0) return;
 
-    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Date"];
+    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Source", "Date"];
     const lines = selectedOrders.map((order) => {
       const row = [
         order.id,
@@ -388,6 +505,7 @@ const OrdersPage = () => {
         getItemSummary(order),
         order.total_amount,
         normalizeOrderStatus(order.status),
+        getOrderSource(order),
         order.created_at,
       ];
       return row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
@@ -468,6 +586,7 @@ const OrdersPage = () => {
     const itemSummary = getItemSummary(order);
     const unifiedStatus = normalizeOrderStatus(order.status);
     const lifecycleAction = getLifecycleAction(unifiedStatus);
+    const source = getOrderSource(order);
 
     return (
       <TableRow key={order.id}>
@@ -478,6 +597,9 @@ const OrdersPage = () => {
           </div>
         </TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
+        <TableCell>
+          <SourceBadge source={source} />
+        </TableCell>
         <TableCell className="text-sm max-w-[200px] truncate" title={itemSummary}>
           {itemSummary || "—"}
         </TableCell>
@@ -559,6 +681,20 @@ const OrdersPage = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Source</span>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-36 h-9 text-xs">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="online">🟢 Online</SelectItem>
+                <SelectItem value="offline">🟡 Offline</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Date</span>
             <Select value={dateFilter} onValueChange={setDateFilter}>
               <SelectTrigger className="w-40 h-9 text-xs">
@@ -593,6 +729,7 @@ const OrdersPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Source</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Items</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Amount</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
@@ -603,17 +740,17 @@ const OrdersPage = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : ordersError ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-red-600">
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-red-600">
                   Error loading orders: {(ordersError as Error)?.message || "Unknown error"}
                 </TableCell>
               </TableRow>
             ) : processedOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No orders found</TableCell>
               </TableRow>
             ) : (
               processedOrders.map(renderOrderRow)
@@ -635,9 +772,15 @@ const OrdersPage = () => {
           </DialogHeader>
           {selected && (
             <div className="space-y-6 px-6 pb-6 overflow-y-auto max-h-[calc(88vh-88px)]">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
-                <OrderStatusBadge status={normalizeOrderStatus(selected.status)} />
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Status</p>
+                  <OrderStatusBadge status={normalizeOrderStatus(selected.status)} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</p>
+                  <SourceBadge source={getOrderSource(selected)} />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
