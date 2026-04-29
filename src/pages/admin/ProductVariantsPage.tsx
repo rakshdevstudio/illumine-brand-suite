@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Check, ChevronDown, Plus, Minus } from "lucide-react";
+import { Check, ChevronDown, Plus, Minus, Barcode, Download, Printer, Loader2, FileText } from "lucide-react";
 import { ErrorState } from "@/components/ui/error-state";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { logActivity } from "@/lib/activity-log";
@@ -31,6 +31,8 @@ import { useCatalogFilters } from "@/hooks/useCatalogFilters";
 import { ALL_FILTER_VALUE } from "@/lib/storefront";
 import { SearchInput } from "@/components/admin/variants/SearchInput";
 import { useVariantSearch } from "@/hooks/useVariantSearch";
+import BarcodeLabelModal from "@/components/admin/BarcodeLabelModal";
+import { type LabelData, downloadLabelPng, downloadLabelsPdf, printLabel } from "@/lib/barcode";
 
 const chunk = <T,>(items: T[], size = 25) => {
   const batches: T[][] = [];
@@ -281,6 +283,58 @@ const ProductVariantsPage = () => {
   const [bulkPriceOverride, setBulkPriceOverride] = useState("");
   const [form, setForm] = useState({ product_id: "", size: "", price_override: "" });
   const addVariantDialogContentRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Barcode state ────────────────────────────────────────────────────────
+  const [barcodeModalOpen, setBarcodeModalOpen] = useState(false);
+  const [barcodeModalData, setBarcodeModalData] = useState<LabelData | null>(null);
+  const [bulkPdfLoading, setBulkPdfLoading] = useState(false);
+
+  const buildLabelData = (v: any): LabelData => ({
+    barcodeValue: v.barcode_value ?? "",
+    productName: v.products?.name ?? "Unknown Product",
+    size: v.size ?? "",
+    price: Number(v.price_override ?? v.products?.price ?? 0),
+    schoolName: v.products?.schools?.name,
+    className: v.products?.classes?.name,
+    gender: v.products?.gender,
+  });
+
+  const openBarcodeModal = (v: any) => {
+    setBarcodeModalData(buildLabelData(v));
+    setBarcodeModalOpen(true);
+  };
+
+  const handleDownloadPng = (v: any) => {
+    try {
+      downloadLabelPng(buildLabelData(v));
+      toast.success("PNG downloaded");
+    } catch {
+      toast.error("Failed to download PNG");
+    }
+  };
+
+  const handlePrintSingle = (v: any) => {
+    try {
+      printLabel(buildLabelData(v));
+    } catch {
+      toast.error("Failed to print label");
+    }
+  };
+
+  const handleBulkPrintPdf = async () => {
+    const selectedVariants = (filteredVariants ?? []).filter((v: any) => selectedIds.includes(v.id));
+    if (selectedVariants.length === 0) return;
+    setBulkPdfLoading(true);
+    try {
+      const labels = selectedVariants.map((v: any) => buildLabelData(v));
+      await downloadLabelsPdf(labels, "100x50", `ILLUME-labels-${selectedVariants.length}.pdf`);
+      toast.success(`PDF generated for ${selectedVariants.length} labels`);
+    } catch {
+      toast.error("Failed to generate bulk PDF");
+    } finally {
+      setBulkPdfLoading(false);
+    }
+  };
   const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
@@ -957,17 +1011,18 @@ const ProductVariantsPage = () => {
               <TableHead className="text-xs tracking-wider uppercase">Stock</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Price</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Barcode</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {variantsLoading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : filteredVariants.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-sm text-muted-foreground">No variants found</TableCell>
+                <TableCell colSpan={11} className="text-center py-8 text-sm text-muted-foreground">No variants found</TableCell>
               </TableRow>
             ) : (
               filteredVariants.map((v: any) => {
@@ -1004,6 +1059,43 @@ const ProductVariantsPage = () => {
                       }`}>
                         {v.status === "inactive" ? "Inactive" : liveStock === 0 ? "Out of Stock" : liveStock <= 10 ? "Low Stock" : "In Stock"}
                       </span>
+                    </TableCell>
+                    {/* Barcode cell */}
+                    <TableCell>
+                      {v.barcode_value ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px] gap-1"
+                            title={`Barcode: ${v.barcode_value}`}
+                            onClick={() => openBarcodeModal(v)}
+                          >
+                            <Barcode className="h-3 w-3" />
+                            <span className="hidden sm:inline">{v.barcode_value}</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            title="Download PNG"
+                            onClick={() => handleDownloadPng(v)}
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            title="Print Label"
+                            onClick={() => handlePrintSingle(v)}
+                          >
+                            <Printer className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -1142,6 +1234,21 @@ const ProductVariantsPage = () => {
           disabled={selectedCount === 0 || Boolean(bulkAction)}
         >
           Clear Price
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs gap-1.5"
+          onClick={handleBulkPrintPdf}
+          disabled={selectedCount === 0 || bulkPdfLoading}
+        >
+          {bulkPdfLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <FileText className="h-3 w-3" />
+          )}
+          Print Labels PDF
         </Button>
       </BulkActionBar>
 
@@ -1295,6 +1402,13 @@ const ProductVariantsPage = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Barcode Label Modal */}
+      <BarcodeLabelModal
+        open={barcodeModalOpen}
+        onOpenChange={setBarcodeModalOpen}
+        labelData={barcodeModalData}
+      />
     </div>
   );
 };
