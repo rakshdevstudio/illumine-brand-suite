@@ -5,7 +5,7 @@
  * Uses pdf-lib (already installed) for PDF generation.
  */
 
-import JsBarcode from "jsbarcode";
+import * as JsBarcode from "jsbarcode";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // ── Types ─────────────────────────────────────────────────────────────────
