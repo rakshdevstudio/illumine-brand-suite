@@ -280,6 +280,153 @@ const AboutPage = () => {
         </div>
       </section>
 
+      {/* ── WHO WE ARE SECTION ──────────────────────────────────────── */}
+      <section className="bg-[#0a0a0a] py-24 lg:py-32 text-white overflow-hidden relative">
+        {/* subtle background glow/noise */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,184,104,0.06),transparent_40%)]" />
+        
+        <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-16 lg:gap-8 items-center">
+            {/* LEFT SIDE: Typography + Story */}
+            <motion.div
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.15 } }
+              }}
+              className="max-w-2xl"
+            >
+              <motion.p variants={fadeUp} className="text-[10px] uppercase tracking-[0.4em] text-amber-500/80 mb-6">
+                WELCOME TO LOTUS ILLUME
+              </motion.p>
+              
+              <motion.h2 variants={fadeUp} className="text-4xl sm:text-5xl lg:text-[56px] font-light tracking-[-0.04em] leading-[1.05] mb-8">
+                Who We Are
+              </motion.h2>
+
+              <div className="space-y-6 text-white/70 text-base sm:text-lg leading-relaxed font-light">
+                <motion.p variants={fadeUp}>
+                  Lotus Illume is a premium platform dedicated to delivering high-quality uniforms, shoes, and accessories. As a trusted partner to schools, institutions, and corporate organizations for over a decade, we provide value-driven solutions tailored to each client’s needs. Backed by expertise spanning 25 years, we have established ourselves as leaders in the uniform industry, proudly serving more than 100 institutions with a client retention rate exceeding 96%.
+                </motion.p>
+                <motion.p variants={fadeUp}>
+                  At Lotus Illume, our journey has always been about more than creating uniforms — it is about shaping identity, pride, and confidence. For over 25 years, we have worked relentlessly to ensure every product we design reflects the values and standards of the institutions we serve.
+                </motion.p>
+                <motion.p variants={fadeUp}>
+                  Our commitment to quality, reliability, and customer satisfaction remains the foundation of our success. Together with a passionate team and loyal clients, we continue to build a legacy of trust, excellence, and innovation.
+                </motion.p>
+              </div>
+
+              <motion.div variants={fadeUp} className="pt-10 border-t border-white/10 mt-10">
+                <p className="text-lg font-medium text-white tracking-tight">Prabhuraj</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-500/80 mt-1">CEO & Founder</p>
+              </motion.div>
+            </motion.div>
+
+            {/* RIGHT SIDE: Visual Collage */}
+            <div className="relative h-[600px] w-full hidden lg:block">
+              {/* Main image - Showroom */}
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute right-0 top-0 w-[85%] h-[75%] rounded-[32px] overflow-hidden border border-white/10 shadow-2xl"
+              >
+                <img src="/luxury_showroom.png" alt="Luxury Showroom" className="w-full h-full object-cover object-center" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              </motion.div>
+
+              {/* Floating image 1 - Tailoring details */}
+              <motion.div
+                initial={{ opacity: 0, x: -30, y: 20 }}
+                whileInView={{ opacity: 1, x: 0, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 1, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute left-0 bottom-10 w-[45%] h-[40%] rounded-[24px] overflow-hidden border border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)]"
+              >
+                <img src="/premium_tailoring.png" alt="Tailoring Details" className="w-full h-full object-cover object-center" />
+              </motion.div>
+
+              {/* Floating glass card */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 1, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute -right-6 bottom-32 rounded-2xl border border-white/15 bg-white/5 p-5 backdrop-blur-xl shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20 text-amber-400">
+                    <Star className="h-5 w-5 fill-current" />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/50">Premium Grade</p>
+                    <p className="text-sm font-medium text-white mt-0.5">Apparel Craftsmanship</p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* MOBILE Visual Collage */}
+            <div className="lg:hidden space-y-6 mt-12">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8 }}
+                className="rounded-[28px] overflow-hidden border border-white/10 h-[300px]"
+              >
+                <img src="/luxury_showroom.png" alt="Luxury Showroom" className="w-full h-full object-cover object-center" />
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                className="rounded-[28px] overflow-hidden border border-white/10 h-[200px]"
+              >
+                <img src="/premium_tailoring.png" alt="Tailoring Details" className="w-full h-full object-cover object-center" />
+              </motion.div>
+            </div>
+          </div>
+
+          {/* VALUES CARDS */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-24 lg:mt-32">
+            {[
+              { title: "Premium Quality", body: "Fabrics and fits engineered for excellence and durability.", icon: Sparkles },
+              { title: "Operational Precision", body: "Technology-driven workflows that eliminate human error.", icon: Layers3 },
+              { title: "Trusted by Institutions", body: "Partner to the most distinguished schools globally.", icon: Building2 },
+              { title: "Innovation Led", body: "Continuously refining the standard for the modern campus.", icon: Star },
+            ].map((card, idx) => {
+              const Icon = card.icon;
+              return (
+                <motion.div
+                  key={card.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, amount: 0.5 }}
+                  transition={{ duration: 0.6, delay: idx * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                  className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-[#161616] p-8 transition-all hover:-translate-y-1 hover:bg-[#1a1a1a] hover:border-white/20"
+                >
+                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
+                     <Icon className="w-24 h-24" />
+                  </div>
+                  <div className="relative z-10">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/10 text-white group-hover:bg-amber-500/20 group-hover:text-amber-400 group-hover:border-amber-500/30 transition-colors">
+                      <Icon className="h-5 w-5" strokeWidth={1.5} />
+                    </div>
+                    <h3 className="mt-6 text-lg font-medium text-white tracking-[-0.02em]">{card.title}</h3>
+                    <p className="mt-3 text-sm text-white/50 leading-relaxed">{card.body}</p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-7xl px-6 py-24 sm:px-8 lg:px-10">
         <SectionTitle
           eyebrow="The challenge"

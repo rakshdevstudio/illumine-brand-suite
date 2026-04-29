@@ -525,7 +525,7 @@ const StorePage = () => {
         <div className="text-center mb-8 md:mb-10">
           <p className="text-[10px] tracking-[0.45em] text-muted-foreground uppercase mb-3">Collections</p>
           <h2 className="text-2xl md:text-3xl font-extralight tracking-[0.18em] uppercase">
-            Select Your School
+            Select Your School to Shop
           </h2>
         </div>
 
