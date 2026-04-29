@@ -3,16 +3,16 @@
  * Premium barcode preview + download + print modal for the Illume admin panel.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Printer, Image as ImageIcon, FileText, Loader2 } from "lucide-react";
+import { FileText, Image as ImageIcon, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
-import * as JsBarcode from "jsbarcode";
 import {
   type LabelData,
   type LabelSize,
+  renderBarcodeToDataUrl,
   downloadLabelPng,
   downloadLabelsPdf,
   printLabel,
@@ -41,30 +41,18 @@ export default function BarcodeLabelModal({
   onOpenChange,
   labelData,
 }: BarcodeLabelModalProps) {
-  const barcodeRef = useRef<SVGSVGElement>(null);
   const [labelSize, setLabelSize] = useState<LabelSize>("100x50");
   const [isPdfLoading, setIsPdfLoading] = useState(false);
 
-  useEffect(() => {
-    if (!open || !labelData?.barcodeValue || !barcodeRef.current) return;
-    try {
-      JsBarcode(barcodeRef.current, labelData.barcodeValue, {
-        format: "CODE128",
-        width: 2,
-        height: 72,
-        displayValue: true,
-        font: "monospace",
-        fontSize: 12,
-        margin: 8,
-        background: "#ffffff",
-        lineColor: "#000000",
-      });
-    } catch (e) {
-      // invalid barcode value — safe to ignore in UI
-    }
-  }, [open, labelData]);
-
   if (!labelData) return null;
+
+  // Render barcode as a data URL image — avoids SVG/dialog timing issues
+  let barcodeSrc = "";
+  try {
+    barcodeSrc = renderBarcodeToDataUrl(labelData.barcodeValue);
+  } catch {
+    barcodeSrc = "";
+  }
 
   const handleDownloadPng = () => {
     try {
@@ -84,7 +72,8 @@ export default function BarcodeLabelModal({
         `ILLUME-label-${labelData.barcodeValue}.pdf`
       );
       toast.success("PDF label downloaded");
-    } catch {
+    } catch (err) {
+      console.error("PDF error:", err);
       toast.error("Failed to generate PDF label");
     } finally {
       setIsPdfLoading(false);
@@ -94,7 +83,7 @@ export default function BarcodeLabelModal({
   const handlePrint = () => {
     try {
       printLabel(labelData, labelSize);
-      toast.info("Print dialog opened");
+      toast.info("Sending to printer…");
     } catch {
       toast.error("Failed to open print dialog");
     }
@@ -110,18 +99,31 @@ export default function BarcodeLabelModal({
         </DialogHeader>
 
         {/* Label Preview Card */}
-        <div className="mt-2 rounded-2xl border border-border bg-white p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
+        <div className="mt-2 rounded-2xl border border-border bg-white p-5 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
           {/* Brand header */}
           <p className="text-center text-[10px] font-semibold tracking-[0.5em] uppercase text-neutral-900 mb-3">
             ILLUME
           </p>
 
-          {/* Barcode */}
-          <div className="flex justify-center">
-            <svg ref={barcodeRef} className="max-w-full" />
+          <div className="w-full h-px bg-neutral-100 mb-4" />
+
+          {/* Barcode image */}
+          <div className="flex justify-center mb-4">
+            {barcodeSrc ? (
+              <img
+                src={barcodeSrc}
+                alt={`Barcode ${labelData.barcodeValue}`}
+                className="max-w-full h-auto"
+                style={{ imageRendering: "pixelated" }}
+              />
+            ) : (
+              <div className="h-16 flex items-center justify-center text-xs text-muted-foreground">
+                Unable to render barcode
+              </div>
+            )}
           </div>
 
-          <div className="mt-4 space-y-1 text-center">
+          <div className="space-y-1 text-center">
             {/* Product name */}
             <p className="text-sm font-semibold tracking-tight text-neutral-900 truncate px-2">
               {labelData.productName}
