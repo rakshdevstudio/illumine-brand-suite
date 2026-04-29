@@ -5,7 +5,8 @@
  * Uses pdf-lib (already installed) for PDF generation.
  */
 
-import * as JsBarcode from "jsbarcode";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JsBarcode = require("jsbarcode") as (el: HTMLCanvasElement | SVGElement | HTMLImageElement, value: string, options?: Record<string, unknown>) => void;
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // ── Types ─────────────────────────────────────────────────────────────────
