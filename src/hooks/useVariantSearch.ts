@@ -20,6 +20,8 @@ export type VariantSearchRow = {
   stock: number;
   price_override: number | null;
   status: string;
+  barcode_value: string | null;
+  barcode_type: string | null;
   created_at?: string;
   products: {
     name: string | null;
@@ -119,7 +121,7 @@ export const useVariantSearch = ({ filters }: { filters: VariantSearchFilters })
 
       let request = (supabase as any)
         .from("product_variants")
-        .select("id, product_id, size, stock, price_override, status, created_at, products(name, gender, school_id, class_id, schools(name), classes(name))")
+        .select("id, product_id, size, stock, price_override, status, barcode_value, barcode_type, created_at, products(name, gender, school_id, class_id, schools(name), classes(name))")
         .order("created_at", { ascending: false });
 
       if (filters.school !== ALL_FILTER_VALUE) request = request.eq("products.school_id", filters.school);
