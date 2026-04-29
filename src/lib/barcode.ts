@@ -300,8 +300,8 @@ export async function downloadLabelsPdf(
   labelSize: LabelSize = "100x50",
   filename = "ILLUME-labels.pdf"
 ): Promise<void> {
-  const pdfBytes = await generateLabelsPdf(labels, labelSize);
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const pdfBytes: Uint8Array = await generateLabelsPdf(labels, labelSize);
+  const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -345,8 +345,8 @@ export function printLabel(data: LabelData, labelSize: LabelSize = "100x50"): vo
  * Prints multiple labels at once via PDF.
  */
 export async function printLabels(labels: LabelData[], labelSize: LabelSize = "100x50"): Promise<void> {
-  const pdfBytes = await generateLabelsPdf(labels, labelSize);
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const pdfBytes: Uint8Array = await generateLabelsPdf(labels, labelSize);
+  const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
 
   const iframe = document.createElement("iframe");
