@@ -289,7 +289,7 @@ const ProductVariantsPage = () => {
   const [barcodeModalData, setBarcodeModalData] = useState<LabelData | null>(null);
   const [bulkPdfLoading, setBulkPdfLoading] = useState(false);
 
-  const buildLabelData = (v: any): LabelData => ({
+  const buildLabelData = useCallback((v: any): LabelData => ({
     barcodeValue: v.barcode_value ?? "",
     productName: v.products?.name ?? "Unknown Product",
     size: v.size ?? "",
@@ -297,31 +297,31 @@ const ProductVariantsPage = () => {
     schoolName: v.products?.schools?.name,
     className: v.products?.classes?.name,
     gender: v.products?.gender,
-  });
+  }), []);
 
-  const openBarcodeModal = (v: any) => {
+  const openBarcodeModal = useCallback((v: any) => {
     setBarcodeModalData(buildLabelData(v));
     setBarcodeModalOpen(true);
-  };
+  }, [buildLabelData]);
 
-  const handleDownloadPng = (v: any) => {
+  const handleDownloadPng = useCallback((v: any) => {
     try {
       downloadLabelPng(buildLabelData(v));
       toast.success("PNG downloaded");
     } catch {
       toast.error("Failed to download PNG");
     }
-  };
+  }, [buildLabelData]);
 
-  const handlePrintSingle = (v: any) => {
+  const handlePrintSingle = useCallback((v: any) => {
     try {
       printLabel(buildLabelData(v));
     } catch {
       toast.error("Failed to print label");
     }
-  };
+  }, [buildLabelData]);
 
-  const handleBulkPrintPdf = async () => {
+  const handleBulkPrintPdf = useCallback(async () => {
     const selectedVariants = (filteredVariants ?? []).filter((v: any) => selectedIds.includes(v.id));
     if (selectedVariants.length === 0) return;
     setBulkPdfLoading(true);
@@ -334,7 +334,7 @@ const ProductVariantsPage = () => {
     } finally {
       setBulkPdfLoading(false);
     }
-  };
+  }, [filteredVariants, selectedIds, buildLabelData]);
   const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
@@ -950,8 +950,8 @@ const ProductVariantsPage = () => {
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
-          <Select value={schoolFilter} onValueChange={(value) => updateFilter("school", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs" name="filter-school">
+          <Select name="schoolFilter" value={schoolFilter} onValueChange={(value) => updateFilter("school", value)}>
+            <SelectTrigger className="w-48 h-9 text-xs" aria-label="School Filter">
               <SelectValue placeholder="All Schools" />
             </SelectTrigger>
             <SelectContent>
@@ -964,8 +964,8 @@ const ProductVariantsPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Class</span>
-          <Select value={classFilter} onValueChange={(value) => updateFilter("class", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs" name="filter-class">
+          <Select name="classFilter" value={classFilter} onValueChange={(value) => updateFilter("class", value)}>
+            <SelectTrigger className="w-48 h-9 text-xs" aria-label="Class Filter">
               <SelectValue placeholder="All Classes" />
             </SelectTrigger>
             <SelectContent>
@@ -978,8 +978,8 @@ const ProductVariantsPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Product</span>
-          <Select value={productFilter} onValueChange={(value) => updateFilter("product", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs" name="filter-product">
+          <Select name="productFilter" value={productFilter} onValueChange={(value) => updateFilter("product", value)}>
+            <SelectTrigger className="w-48 h-9 text-xs" aria-label="Product Filter">
               <SelectValue placeholder="All Products" />
             </SelectTrigger>
             <SelectContent>
@@ -1171,8 +1171,8 @@ const ProductVariantsPage = () => {
             Delete
           </Button>
         )}
-        <Select value={bulkStockBranchId} onValueChange={setBulkStockBranchId}>
-          <SelectTrigger className="h-8 w-40 text-xs" name="bulk-branch">
+        <Select name="bulkStockBranch" value={bulkStockBranchId} onValueChange={setBulkStockBranchId}>
+          <SelectTrigger className="h-8 w-40 text-xs" aria-label="Bulk Stock Branch">
             <SelectValue placeholder="Branch" />
           </SelectTrigger>
           <SelectContent>
@@ -1322,8 +1322,8 @@ const ProductVariantsPage = () => {
           <div className="py-4">
             <div className="mb-4">
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Branch</label>
-              <Select value={adjustBranchId} onValueChange={setAdjustBranchId}>
-                <SelectTrigger className="h-10" name="adjust-branch">
+              <Select name="adjustBranch" value={adjustBranchId} onValueChange={setAdjustBranchId}>
+                <SelectTrigger className="h-10" aria-label="Adjust Branch">
                   <SelectValue placeholder="Select branch" />
                 </SelectTrigger>
                 <SelectContent>

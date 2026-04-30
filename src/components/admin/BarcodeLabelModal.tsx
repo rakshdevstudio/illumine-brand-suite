@@ -1,9 +1,10 @@
 /**
  * BarcodeLabelModal.tsx
  * Premium barcode preview + download + print modal for the Illume admin panel.
+ * Optimized: barcode data URL is memoized and only regenerated when barcodeValue changes.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -44,15 +45,17 @@ export default function BarcodeLabelModal({
   const [labelSize, setLabelSize] = useState<LabelSize>("100x50");
   const [isPdfLoading, setIsPdfLoading] = useState(false);
 
-  if (!labelData) return null;
+  // ── Memoize barcode data URL — only regenerates when barcodeValue changes ──
+  const barcodeSrc = useMemo(() => {
+    if (!labelData?.barcodeValue) return "";
+    try {
+      return renderBarcodeToDataUrl(labelData.barcodeValue);
+    } catch {
+      return "";
+    }
+  }, [labelData?.barcodeValue]);
 
-  // Render barcode as a data URL image — avoids SVG/dialog timing issues
-  let barcodeSrc = "";
-  try {
-    barcodeSrc = renderBarcodeToDataUrl(labelData.barcodeValue);
-  } catch {
-    barcodeSrc = "";
-  }
+  if (!labelData) return null;
 
   const handleDownloadPng = () => {
     try {
@@ -107,7 +110,7 @@ export default function BarcodeLabelModal({
 
           <div className="w-full h-px bg-neutral-100 mb-4" />
 
-          {/* Barcode image */}
+          {/* Barcode image — rendered once, no reflow on modal open */}
           <div className="flex justify-center mb-4">
             {barcodeSrc ? (
               <img
@@ -158,11 +161,11 @@ export default function BarcodeLabelModal({
           </span>
         </div>
 
-        {/* Label Size Selector */}
+        {/* Label Size Selector — name on Select, aria-label on SelectTrigger */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground uppercase tracking-[0.15em] shrink-0">Label Size</span>
-          <Select value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
-            <SelectTrigger className="h-9 text-xs flex-1" name="label-size">
+          <Select name="labelSize" value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
+            <SelectTrigger className="h-9 text-xs flex-1" aria-label="Barcode Label Size">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
