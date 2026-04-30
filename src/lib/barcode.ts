@@ -5,8 +5,10 @@
  * Uses pdf-lib (already installed) for PDF generation.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const JsBarcode = require("jsbarcode") as (el: HTMLCanvasElement | SVGElement | HTMLImageElement, value: string, options?: Record<string, unknown>) => void;
+// Vite pre-bundles jsbarcode (CJS) → ESM, so the default import is the callable function.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore – @types/jsbarcode uses export= but moduleResolution:bundler allows this
+import JsBarcode from "jsbarcode";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // ── Types ─────────────────────────────────────────────────────────────────
