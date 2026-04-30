@@ -321,20 +321,6 @@ const ProductVariantsPage = () => {
     }
   }, [buildLabelData]);
 
-  const handleBulkPrintPdf = useCallback(async () => {
-    const selectedVariants = (filteredVariants ?? []).filter((v: any) => selectedIds.includes(v.id));
-    if (selectedVariants.length === 0) return;
-    setBulkPdfLoading(true);
-    try {
-      const labels = selectedVariants.map((v: any) => buildLabelData(v));
-      await downloadLabelsPdf(labels, "100x50", `ILLUME-labels-${selectedVariants.length}.pdf`);
-      toast.success(`PDF generated for ${selectedVariants.length} labels`);
-    } catch {
-      toast.error("Failed to generate bulk PDF");
-    } finally {
-      setBulkPdfLoading(false);
-    }
-  }, [filteredVariants, selectedIds, buildLabelData]);
   const { selectedIds, selectedCount, isSelected, clearSelection, toggleOne, toggleMany, pruneMissing, getHeaderState } = useBulkSelection();
 
   // Filters
@@ -498,6 +484,22 @@ const ProductVariantsPage = () => {
   const allVariantIds = useMemo(() => (filteredVariants ?? []).map((variant: any) => variant.id), [filteredVariants]);
   const visibleVariantIds = useMemo(() => filteredVariants.map((variant: any) => variant.id), [filteredVariants]);
   const headerCheckboxState = useMemo(() => getHeaderState(visibleVariantIds), [getHeaderState, visibleVariantIds]);
+
+  // Needs filteredVariants + selectedIds — must be declared after both
+  const handleBulkPrintPdf = useCallback(async () => {
+    const selectedVariants = filteredVariants.filter((v: any) => selectedIds.includes(v.id));
+    if (selectedVariants.length === 0) return;
+    setBulkPdfLoading(true);
+    try {
+      const labels = selectedVariants.map((v: any) => buildLabelData(v));
+      await downloadLabelsPdf(labels, "100x50", `ILLUME-labels-${selectedVariants.length}.pdf`);
+      toast.success(`PDF generated for ${selectedVariants.length} labels`);
+    } catch {
+      toast.error("Failed to generate bulk PDF");
+    } finally {
+      setBulkPdfLoading(false);
+    }
+  }, [filteredVariants, selectedIds, buildLabelData]);
 
   useEffect(() => {
     pruneMissing(allVariantIds);
