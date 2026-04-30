@@ -162,7 +162,7 @@ export default function BarcodeLabelModal({
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground uppercase tracking-[0.15em] shrink-0">Label Size</span>
           <Select value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
-            <SelectTrigger className="h-9 text-xs flex-1">
+            <SelectTrigger className="h-9 text-xs flex-1" name="label-size">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

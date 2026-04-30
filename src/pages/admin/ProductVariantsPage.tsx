@@ -951,7 +951,7 @@ const ProductVariantsPage = () => {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">School</span>
           <Select value={schoolFilter} onValueChange={(value) => updateFilter("school", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs">
+            <SelectTrigger className="w-48 h-9 text-xs" name="filter-school">
               <SelectValue placeholder="All Schools" />
             </SelectTrigger>
             <SelectContent>
@@ -965,7 +965,7 @@ const ProductVariantsPage = () => {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Class</span>
           <Select value={classFilter} onValueChange={(value) => updateFilter("class", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs">
+            <SelectTrigger className="w-48 h-9 text-xs" name="filter-class">
               <SelectValue placeholder="All Classes" />
             </SelectTrigger>
             <SelectContent>
@@ -979,7 +979,7 @@ const ProductVariantsPage = () => {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Product</span>
           <Select value={productFilter} onValueChange={(value) => updateFilter("product", value)}>
-            <SelectTrigger className="w-48 h-9 text-xs">
+            <SelectTrigger className="w-48 h-9 text-xs" name="filter-product">
               <SelectValue placeholder="All Products" />
             </SelectTrigger>
             <SelectContent>
@@ -1172,7 +1172,7 @@ const ProductVariantsPage = () => {
           </Button>
         )}
         <Select value={bulkStockBranchId} onValueChange={setBulkStockBranchId}>
-          <SelectTrigger className="h-8 w-40 text-xs">
+          <SelectTrigger className="h-8 w-40 text-xs" name="bulk-branch">
             <SelectValue placeholder="Branch" />
           </SelectTrigger>
           <SelectContent>
@@ -1323,7 +1323,7 @@ const ProductVariantsPage = () => {
             <div className="mb-4">
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Branch</label>
               <Select value={adjustBranchId} onValueChange={setAdjustBranchId}>
-                <SelectTrigger className="h-10">
+                <SelectTrigger className="h-10" name="adjust-branch">
                   <SelectValue placeholder="Select branch" />
                 </SelectTrigger>
                 <SelectContent>
