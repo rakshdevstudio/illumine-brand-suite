@@ -63,9 +63,9 @@ import CustomerInsightsPage from "./pages/admin/reports/CustomerInsightsPage";
 import OutstandingReportPage from "./pages/admin/reports/OutstandingReportPage";
 import AgingReportPage from "./pages/admin/reports/AgingReportPage";
 
-// Vendor Portal
-import VendorLoginPage from "./pages/vendor/VendorLoginPage";
-import VendorDashboard from "./pages/vendor/VendorDashboard";
+// Seller Portal
+import SellerLoginPage from "./pages/seller/SellerLoginPage";
+import SellerDashboard from "./pages/seller/SellerDashboard";
 
 // School Portal
 import SchoolLoginPage from "./pages/school/SchoolLoginPage";
@@ -284,13 +284,10 @@ const App = () => (
             </Route>
           </Route>
 
-          {/* Vendor Portal */}
-          <Route path="/vendor/login" element={<VendorLoginPage />} />
-          <Route path="/vendor" element={<Navigate to="/vendor/dashboard" replace />} />
-          <Route path="/vendor/dashboard" element={<VendorDashboard />} />
-          <Route path="/seller/login" element={<VendorLoginPage />} />
+          {/* Seller Portal */}
+          <Route path="/seller/login" element={<SellerLoginPage />} />
           <Route path="/seller" element={<Navigate to="/seller/dashboard" replace />} />
-          <Route path="/seller/dashboard" element={<VendorDashboard />} />
+          <Route path="/seller/dashboard" element={<SellerDashboard />} />
 
           {/* School Portal */}
           <Route path="/school/login" element={<SchoolLoginPage />} />
