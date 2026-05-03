@@ -55,6 +55,16 @@ type PayoutRow = {
   sellers?: { name?: string | null } | null;
 };
 
+type CommissionRuleRow = {
+  id: string;
+  scope: "global" | "seller" | "category";
+  seller_id: string | null;
+  category: string | null;
+  commission_rate: number;
+  is_active: boolean;
+  sellers?: { name?: string | null } | null;
+};
+
 const toCsv = (rows: SellerRow[]) => {
   const headers = ["Name", "Phone", "Email", "GSTIN", "Payment Terms", "Commission", "Status", "Created At"];
   const lines = rows.map((row) => [
@@ -86,6 +96,10 @@ const SellersPage = () => {
   const [commissionRate, setCommissionRate] = useState("15");
   const [approvalNote, setApprovalNote] = useState("");
   const [payoutReference, setPayoutReference] = useState("");
+  const [globalCommission, setGlobalCommission] = useState("15");
+  const [overrideSellerId, setOverrideSellerId] = useState("");
+  const [overrideCategory, setOverrideCategory] = useState("");
+  const [overrideRate, setOverrideRate] = useState("15");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketplace-sellers"],
@@ -120,6 +134,19 @@ const SellersPage = () => {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as PayoutRow[];
+    },
+  });
+
+  const { data: commissionRules, isLoading: commissionRulesLoading } = useQuery({
+    queryKey: ["admin-seller-commission-rules"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("seller_commission_rules")
+        .select("*, sellers(name)")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CommissionRuleRow[];
     },
   });
 
@@ -217,6 +244,62 @@ const SellersPage = () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-seller-payouts"] });
     },
     onError: (err: any) => toast.error(err.message || "Failed to mark payout paid."),
+  });
+
+  const upsertGlobalRule = useMutation({
+    mutationFn: async () => {
+      const existing = (commissionRules ?? []).find((row) => row.scope === "global");
+      if (existing) {
+        const { error } = await (supabase as any).from("seller_commission_rules").update({
+          commission_rate: Number(globalCommission || 0),
+        }).eq("id", existing.id);
+        if (error) throw error;
+        return;
+      }
+      const { error } = await (supabase as any).from("seller_commission_rules").insert({
+        scope: "global",
+        commission_rate: Number(globalCommission || 0),
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Global commission updated.");
+      await queryClient.invalidateQueries({ queryKey: ["admin-seller-commission-rules"] });
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to update global commission."),
+  });
+
+  const addOverrideRule = useMutation({
+    mutationFn: async ({ scope }: { scope: "seller" | "category" }) => {
+      const payload: Record<string, any> = {
+        scope,
+        commission_rate: Number(overrideRate || 0),
+      };
+      if (scope === "seller") payload.seller_id = overrideSellerId;
+      if (scope === "category") payload.category = overrideCategory.trim();
+      const { error } = await (supabase as any).from("seller_commission_rules").insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Commission override added.");
+      setOverrideCategory("");
+      setOverrideSellerId("");
+      setOverrideRate("15");
+      await queryClient.invalidateQueries({ queryKey: ["admin-seller-commission-rules"] });
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to add override."),
+  });
+
+  const disableRule = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).from("seller_commission_rules").update({ is_active: false }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Rule disabled.");
+      await queryClient.invalidateQueries({ queryKey: ["admin-seller-commission-rules"] });
+    },
+    onError: (err: any) => toast.error(err.message || "Failed to disable rule."),
   });
 
   const toggleSellerStatus = useMutation({
@@ -370,7 +453,8 @@ const SellersPage = () => {
         <TabsList className="rounded-full bg-white p-1">
           <TabsTrigger value="sellers" className="rounded-full">Seller Directory</TabsTrigger>
           <TabsTrigger value="approvals" className="rounded-full">Approval Queue</TabsTrigger>
-          <TabsTrigger value="payouts" className="rounded-full">Payout Control</TabsTrigger>
+          <TabsTrigger value="commission" className="rounded-full">Commission Control</TabsTrigger>
+          <TabsTrigger value="payouts" className="rounded-full">Payout Queue</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sellers" className="space-y-5">
@@ -484,6 +568,77 @@ const SellersPage = () => {
                 Next
               </Button>
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="commission" className="space-y-4">
+          <div className="grid gap-3 rounded-2xl border border-border/70 bg-white p-4 md:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Global Commission %</Label>
+              <Input type="number" min={0} max={100} value={globalCommission} onChange={(e) => setGlobalCommission(e.target.value)} />
+            </div>
+            <div className="md:col-span-3 flex items-end">
+              <Button onClick={() => upsertGlobalRule.mutate()} disabled={upsertGlobalRule.isPending}>Save Global Rate</Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 rounded-2xl border border-border/70 bg-white p-4 md:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Seller Override</Label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={overrideSellerId}
+                onChange={(e) => setOverrideSellerId(e.target.value)}
+              >
+                <option value="">Select seller</option>
+                {(data ?? []).map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Category Override</Label>
+              <Input value={overrideCategory} onChange={(e) => setOverrideCategory(e.target.value)} placeholder="e.g. Blazer" />
+            </div>
+            <div className="space-y-2">
+              <Label>Commission %</Label>
+              <Input type="number" min={0} max={100} value={overrideRate} onChange={(e) => setOverrideRate(e.target.value)} />
+            </div>
+            <div className="flex items-end gap-2">
+              <Button variant="outline" onClick={() => addOverrideRule.mutate({ scope: "seller" })} disabled={!overrideSellerId || addOverrideRule.isPending}>Add Seller Rule</Button>
+              <Button variant="outline" onClick={() => addOverrideRule.mutate({ scope: "category" })} disabled={!overrideCategory.trim() || addOverrideRule.isPending}>Add Category Rule</Button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[0_20px_70px_-52px_rgba(15,23,42,0.55)]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {commissionRulesLoading ? (
+                  <TableRow><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">Loading commission rules...</TableCell></TableRow>
+                ) : null}
+                {(commissionRules ?? []).map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell className="uppercase text-xs">{rule.scope}</TableCell>
+                    <TableCell>{rule.sellers?.name ?? "-"}</TableCell>
+                    <TableCell>{rule.category ?? "-"}</TableCell>
+                    <TableCell>{rule.commission_rate}%</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="destructive" onClick={() => disableRule.mutate(rule.id)}>Disable</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!commissionRulesLoading && !(commissionRules ?? []).length ? (
+                  <TableRow><TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">No active commission rules.</TableCell></TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
           </div>
         </TabsContent>
 

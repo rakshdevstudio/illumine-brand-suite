@@ -66,11 +66,21 @@ import AgingReportPage from "./pages/admin/reports/AgingReportPage";
 // Seller Portal
 import SellerLoginPage from "./pages/seller/SellerLoginPage";
 import SellerDashboard from "./pages/seller/SellerDashboard";
+import SellerOrdersPage from "./pages/seller/SellerOrdersPage";
+import SellerProductsPage from "./pages/seller/SellerProductsPage";
+import SellerPayoutsPage from "./pages/seller/SellerPayoutsPage";
+import SellerProfilePage from "./pages/seller/SellerProfilePage";
 
 // School Portal
 import SchoolLoginPage from "./pages/school/SchoolLoginPage";
 import SchoolDashboard from "./pages/school/SchoolDashboard";
 import SchoolOrdersPage from "./pages/school/SchoolOrdersPage";
+import SchoolStudentsPage from "./pages/school/SchoolStudentsPage";
+import SchoolClassesPage from "./pages/school/SchoolClassesPage";
+import SchoolUniformsPage from "./pages/school/SchoolUniformsPage";
+import SchoolAnnouncementsPage from "./pages/school/SchoolAnnouncementsPage";
+import SchoolReportsPage from "./pages/school/SchoolReportsPage";
+import SchoolProfilePage from "./pages/school/SchoolProfilePage";
 
 // POS
 import PosLoginPage from "./pages/pos/PosLoginPage";
@@ -288,11 +298,22 @@ const App = () => (
           <Route path="/seller/login" element={<SellerLoginPage />} />
           <Route path="/seller" element={<Navigate to="/seller/dashboard" replace />} />
           <Route path="/seller/dashboard" element={<SellerDashboard />} />
+          <Route path="/seller/orders" element={<SellerOrdersPage />} />
+          <Route path="/seller/products" element={<SellerProductsPage />} />
+          <Route path="/seller/payouts" element={<SellerPayoutsPage />} />
+          <Route path="/seller/profile" element={<SellerProfilePage />} />
 
           {/* School Portal */}
           <Route path="/school/login" element={<SchoolLoginPage />} />
+          <Route path="/school" element={<Navigate to="/school/dashboard" replace />} />
           <Route path="/school/dashboard" element={<SchoolDashboard />} />
+          <Route path="/school/students" element={<SchoolStudentsPage />} />
           <Route path="/school/orders" element={<SchoolOrdersPage />} />
+          <Route path="/school/classes" element={<SchoolClassesPage />} />
+          <Route path="/school/uniforms" element={<SchoolUniformsPage />} />
+          <Route path="/school/announcements" element={<SchoolAnnouncementsPage />} />
+          <Route path="/school/reports" element={<SchoolReportsPage />} />
+          <Route path="/school/profile" element={<SchoolProfilePage />} />
 
           {/* POS */}
           <Route path="/pos/login" element={<PosLoginPage />} />

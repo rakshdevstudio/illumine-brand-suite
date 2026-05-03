@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PortalEmptyState, PortalMetricCard, PortalShell, portalPanelClassName } from "@/components/dashboard/PortalShell";
 import { ORDER_STATUS_STYLES, formatCurrency, formatShortDate, useResolvedSchoolScope } from "@/lib/portal-dashboard";
 import { fetchSchoolPortalData, isWithinSchoolTimeFilter, type SchoolPortalOrder, type SchoolTimeFilter } from "@/lib/school-portal";
+import { supabase } from "@/integrations/supabase/client";
 
 const TIME_FILTER_OPTIONS: Array<{ value: SchoolTimeFilter; label: string; description: string }> = [
   { value: "all", label: "All Time", description: "All available school orders" },
@@ -114,6 +115,31 @@ const SchoolDashboard = () => {
     queryFn: () => fetchSchoolPortalData(schoolId!),
     staleTime: 30_000,
   });
+  const { data: students = [] } = useQuery({
+    queryKey: ["school-dashboard-students", schoolId],
+    enabled: !!schoolId && !!user && hasAccess && isSchoolUser && !scopeLoading,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("students").select("id").eq("school_id", schoolId);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 30_000,
+  });
+  const { data: announcements = [] } = useQuery({
+    queryKey: ["school-dashboard-announcements", schoolId],
+    enabled: !!schoolId && !!user && hasAccess && isSchoolUser && !scopeLoading,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("school_announcements")
+        .select("id, title, published_at")
+        .eq("school_id", schoolId)
+        .order("published_at", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 30_000,
+  });
 
   const allOrders = portalData?.orders ?? [];
   const viewOrders = useMemo(
@@ -127,12 +153,25 @@ const SchoolDashboard = () => {
     .filter((order) => order.status !== "CANCELLED")
     .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0);
 
-  const ordersToday = useMemo(
-    () => allOrders.filter((order) => isWithinSchoolTimeFilter(order.created_at, "today")).length,
+  const ordersThisMonth = useMemo(() => {
+    const now = new Date();
+    return allOrders.filter((order) => {
+      const d = new Date(order.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+  }, [allOrders]);
+  const pendingDeliveries = useMemo(
+    () => allOrders.filter((order) => ["PLACED", "PACKED", "DISPATCHED"].includes(order.status)).length,
     [allOrders],
   );
-  const ordersThisWeek = useMemo(
-    () => allOrders.filter((order) => isWithinSchoolTimeFilter(order.created_at, "week")).length,
+  const activeClasses = portalData?.classes.length ?? 0;
+  const totalStudents = students.length;
+  const compliancePct = totalStudents ? Math.round((totalStudentOrders / totalStudents) * 100) : 0;
+  const outstandingPayments = useMemo(
+    () =>
+      allOrders
+        .filter((order) => order.status !== "DELIVERED" && order.status !== "CANCELLED")
+        .reduce((sum, order) => sum + Number(order.total_amount ?? 0), 0),
     [allOrders],
   );
 
@@ -252,32 +291,46 @@ const SchoolDashboard = () => {
         />
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <PortalMetricCard
-              label="Total Orders"
-              value={dashboardLoading ? "..." : totalOrders}
-              icon={<ShoppingBag className="h-4 w-4" strokeWidth={1.5} />}
-              hint={dashboardLoading ? undefined : `${portalData?.productCount ?? 0} active products`}
+              label="Total Students"
+              value={dashboardLoading ? "..." : totalStudents}
+              icon={<Users className="h-4 w-4" strokeWidth={1.5} />}
             />
             <PortalMetricCard
-              label="Total Student Orders"
-              value={dashboardLoading ? "..." : totalStudentOrders}
+              label="Active Classes"
+              value={dashboardLoading ? "..." : activeClasses}
               icon={<GraduationCap className="h-4 w-4" strokeWidth={1.5} />}
             />
             <PortalMetricCard
-              label="Total Revenue"
+              label="Orders This Month"
+              value={dashboardLoading ? "..." : ordersThisMonth}
+              icon={<ShoppingBag className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Pending Deliveries"
+              value={dashboardLoading ? "..." : pendingDeliveries}
+              icon={<Truck className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Uniform Compliance %"
+              value={dashboardLoading ? "..." : `${compliancePct}%`}
+              icon={<BadgeCheck className="h-4 w-4" strokeWidth={1.5} />}
+            />
+            <PortalMetricCard
+              label="Revenue Generated"
               value={dashboardLoading ? "..." : formatCurrency(totalRevenue)}
               icon={<IndianRupee className="h-4 w-4" strokeWidth={1.5} />}
             />
             <PortalMetricCard
-              label="Orders Today"
-              value={dashboardLoading ? "..." : ordersToday}
-              icon={<CalendarDays className="h-4 w-4" strokeWidth={1.5} />}
+              label="Outstanding Payments"
+              value={dashboardLoading ? "..." : formatCurrency(outstandingPayments)}
+              icon={<AlertTriangle className="h-4 w-4" strokeWidth={1.5} />}
             />
             <PortalMetricCard
-              label="Orders This Week"
-              value={dashboardLoading ? "..." : ordersThisWeek}
-              icon={<Clock3 className="h-4 w-4" strokeWidth={1.5} />}
+              label="Recent Announcements"
+              value={dashboardLoading ? "..." : announcements.length}
+              icon={<CalendarDays className="h-4 w-4" strokeWidth={1.5} />}
             />
           </div>
 

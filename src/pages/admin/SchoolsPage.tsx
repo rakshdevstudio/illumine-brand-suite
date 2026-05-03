@@ -1,64 +1,136 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { logActivity } from "@/lib/activity-log";
-import { useRequireAuth } from "@/hooks/useRequireAuth";
-import { logger } from "@/lib/logger";
 
 const SchoolsPage = () => {
+  const { user, role } = useAuth();
+  const canCreateSchoolLogin = role === "super_admin" || role === "admin";
   const queryClient = useQueryClient();
-  const { user, isAdmin, isSuperAdmin } = useAuth();
-  const { session } = useRequireAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [createSchoolUserOpen, setCreateSchoolUserOpen] = useState(false);
+  const [creatingSchoolUser, setCreatingSchoolUser] = useState(false);
+  const [schoolUserForm, setSchoolUserForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
+    school_id: "",
+  });
   const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
 
-  const { data: schools, isLoading, error: fetchError } = useQuery({
+  const SCHOOL_AVATAR_FALLBACK_PREFIX = "school-assignment:";
+  const readSchoolId = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  const readSchoolIdFromAvatarFallback = (avatarUrl: string | null | undefined) => {
+    const value = readSchoolId(avatarUrl);
+    if (!value || !value.startsWith(SCHOOL_AVATAR_FALLBACK_PREFIX)) return null;
+    return readSchoolId(value.slice(SCHOOL_AVATAR_FALLBACK_PREFIX.length));
+  };
+
+  const { data: schools = [], isLoading } = useQuery({
     queryKey: ["admin-schools"],
     queryFn: async () => {
       const { data, error } = await supabase.from("schools").select("*").order("name");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
-  const generateSlug = (name: string) =>
-    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const { data: schoolUsers = [] } = useQuery({
+    queryKey: ["admin-school-users"],
+    queryFn: async () => {
+      const { data: profiles, error: profilesError } = await (supabase as any)
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (profilesError) throw profilesError;
 
-  const [saving, setSaving] = useState(false);
+      const { data: roles, error: rolesError } = await (supabase as any)
+        .from("user_roles")
+        .select("user_id, role");
+      if (rolesError) throw rolesError;
 
-  const retryFetch = async <T,>(fn: () => Promise<T>, retries = 3): Promise<T> => {
-    for (let i = 0; i < retries; i++) {
-      try {
-        return await fn();
-      } catch (err) {
-        if (i === retries - 1) throw err;
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      const roleMap = new Map<string, string>();
+      (roles ?? []).forEach((entry: any) => roleMap.set(entry.user_id, entry.role));
+
+      let userSchoolMapByUserId = new Map<string, string>();
+      const { data: userSchoolMappings } = await (supabase as any)
+        .from("user_school_map")
+        .select("user_id, school_id");
+      userSchoolMapByUserId = new Map(
+        (userSchoolMappings ?? []).map((entry: { user_id: string; school_id: string }) => [entry.user_id, entry.school_id]),
+      );
+
+      return (profiles ?? [])
+        .map((profile: any) => ({
+          id: profile.id,
+          full_name: profile.full_name,
+          email: profile.email,
+          status: profile.status,
+          role: roleMap.get(profile.id) ?? "unknown",
+          school_id:
+            profile.school_id ??
+            userSchoolMapByUserId.get(profile.id) ??
+            readSchoolIdFromAvatarFallback(profile.avatar_url) ??
+            null,
+        }))
+        .filter((entry: any) => entry.role === "school_user");
+    },
+  });
+
+  const { data: linkedProducts = [] } = useQuery({
+    queryKey: ["admin-school-linked-products"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, name, school_id, status, price, schools(name)")
+        .not("school_id", "is", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: schoolOrders = [] } = useQuery({
+    queryKey: ["admin-school-performance-orders"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("orders")
+        .select("id, school_id, total_amount, status, created_at")
+        .not("school_id", "is", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const metricsBySchool = useMemo(() => {
+    const map = new Map<string, { orders: number; revenue: number; pending: number; outstanding: number }>();
+    schoolOrders.forEach((row: any) => {
+      const schoolId = row.school_id;
+      if (!schoolId) return;
+      const m = map.get(schoolId) ?? { orders: 0, revenue: 0, pending: 0, outstanding: 0 };
+      m.orders += 1;
+      if (row.status !== "CANCELLED") m.revenue += Number(row.total_amount ?? 0);
+      if (["PLACED", "PACKED", "DISPATCHED", "pending", "confirmed", "packed", "shipped"].includes(String(row.status))) {
+        m.pending += 1;
+        m.outstanding += Number(row.total_amount ?? 0);
       }
-    }
-    throw new Error("Max retries reached");
-  };
+      map.set(schoolId, m);
+    });
+    return map;
+  }, [schoolOrders]);
+
+  const generateSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
   const handleSave = async () => {
     if (!form.name || !form.code) {
@@ -66,114 +138,75 @@ const SchoolsPage = () => {
       return;
     }
     const slug = form.slug || generateSlug(form.name);
-    setSaving(true);
-
-    try {
-      await retryFetch(async () => {
-        if (editing) {
-          const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
-          if (error) throw error;
-          await logActivity({
-            actionType: "SCHOOL_EDITED",
-            entityType: "school",
-            entityId: editing.id,
-            description: `Admin updated school \"${form.name}\"`,
-            performedBy: user?.id,
-          });
-        } else {
-          const { data, error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status }).select("id").single();
-          if (error) throw error;
-          await logActivity({
-            actionType: "SCHOOL_CREATED",
-            entityType: "school",
-            entityId: data.id,
-            description: `Admin created school \"${form.name}\"`,
-            performedBy: user?.id,
-          });
-        }
-      });
-      toast.success(editing ? "School updated" : "School created");
-      queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
-      setDialogOpen(false);
-      setEditing(null);
-      setForm({ name: "", code: "", slug: "", status: "active" });
-    } catch (err: any) {
-      logger.error("School save failed", err);
-      toast.error("Failed to save school", { description: err?.message || "Network error — please check your internet connection and try again" });
-    } finally {
-      setSaving(false);
+    if (editing) {
+      const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
+      if (error) return toast.error(error.message || "Failed to update school");
+      toast.success("School updated");
+    } else {
+      const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
+      if (error) return toast.error(error.message || "Failed to create school");
+      toast.success("School created");
     }
+    setDialogOpen(false);
+    setEditing(null);
+    setForm({ name: "", code: "", slug: "", status: "active" });
+    queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
-    await supabase.from("schools").update({ status: newStatus }).eq("id", id);
-    const school = (schools ?? []).find((s) => s.id === id);
-    await logActivity({
-      actionType: "SCHOOL_EDITED",
-      entityType: "school",
-      entityId: id,
-      description: `Admin ${newStatus === "active" ? "enabled" : "disabled"} school \"${school?.name ?? id}\"`,
-      performedBy: user?.id,
-    });
+    const { error } = await supabase.from("schools").update({ status: newStatus }).eq("id", id);
+    if (error) return toast.error(error.message || "Failed to update status");
+    toast.success(`School ${newStatus === "active" ? "activated" : "deactivated"}`);
     queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
-    toast.success(`School ${newStatus === "active" ? "enabled" : "disabled"}`);
   };
 
-  const canDelete = isAdmin || isSuperAdmin;
+  const callManageFunction = async (body: any) => {
+    const { data, error } = await supabase.functions.invoke("manage-admin-users", { body });
+    if (error) {
+      const response = (error as { context?: Response }).context;
+      let errorMessage = error.message;
+      if (response instanceof Response) {
+        if (response.status === 403) {
+          throw new Error("Only Admin or Super Admin can create school login credentials.");
+        }
+        const payload = await response.clone().json().catch(() => null);
+        if (payload?.error) errorMessage = payload.error;
+      }
+      throw new Error(errorMessage);
+    }
+    if ((data as any)?.error) throw new Error((data as any).error);
+    return data;
+  };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget || !session?.user?.id) {
-      toast.error("Authenticated admin user is required");
+  const handleCreateSchoolUser = async () => {
+    if (!schoolUserForm.full_name || !schoolUserForm.email || !schoolUserForm.password || !schoolUserForm.school_id) {
+      toast.error("Please fill all school login fields.");
       return;
     }
-
+    if (schoolUserForm.password.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    setCreatingSchoolUser(true);
     try {
-      const { count: classCount, error: classError } = await supabase
-        .from("classes")
-        .select("id", { head: true, count: "exact" })
-        .eq("school_id", deleteTarget.id);
-      if (classError) throw classError;
-
-      const { count: productCount, error: productError } = await supabase
-        .from("products")
-        .select("id", { head: true, count: "exact" })
-        .eq("school_id", deleteTarget.id);
-      if (productError) throw productError;
-
-      if ((classCount ?? 0) > 0 || (productCount ?? 0) > 0) {
-        toast.error("Cannot delete school with active classes or products");
-        return;
-      }
-
-      const { data: deletedRow, error } = await supabase
-        .from("schools")
-        .delete()
-        .eq("id", deleteTarget.id)
-        .select("id")
-        .maybeSingle();
-      if (error) throw error;
-      if (!deletedRow?.id) {
-        throw new Error("Delete was blocked by database policy. Apply latest migrations.");
-      }
-
-      await logActivity({
-        actionType: "SCHOOL_DELETED",
-        entityType: "schools",
-        entityId: deleteTarget.id,
-        description: `School ${deleteTarget.name} deleted`,
-        performedBy: session.user.id,
+      await callManageFunction({
+        action: "create",
+        full_name: schoolUserForm.full_name,
+        email: schoolUserForm.email,
+        password: schoolUserForm.password,
+        role: "school_user",
+        school_id: schoolUserForm.school_id,
       });
 
-      setDeleteTarget(null);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin-schools"] }),
-        queryClient.invalidateQueries({ queryKey: ["activity-logs"] }),
-      ]);
-      toast.success("School deleted");
-    } catch (error: any) {
-      logger.error("Failed to delete school", error);
-      toast.error(error?.message || "Failed to delete school");
+      toast.success("School login created.");
+      setCreateSchoolUserOpen(false);
+      setSchoolUserForm({ full_name: "", email: "", password: "", school_id: "" });
+      await queryClient.invalidateQueries({ queryKey: ["admin-school-users"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create school login.");
+    } finally {
+      setCreatingSchoolUser(false);
     }
   };
 
@@ -183,152 +216,214 @@ const SchoolsPage = () => {
     setDialogOpen(true);
   };
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm({ name: "", code: "", slug: "", status: "active" });
-    setDialogOpen(true);
-  };
-
   return (
-    <div>
-      <div className="flex items-center justify-between mb-8">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Schools</h1>
-        <Button onClick={openCreate} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
+        <Button onClick={() => { setEditing(null); setForm({ name: "", code: "", slug: "", status: "active" }); setDialogOpen(true); }} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
           <Plus className="h-3 w-3 mr-2" /> Add School
         </Button>
       </div>
 
-      <div className="border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs tracking-wider uppercase">School Name</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Code</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Status</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Created</TableHead>
-              <TableHead className="text-xs tracking-wider uppercase">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">Loading...</TableCell>
-              </TableRow>
-            ) : fetchError ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-destructive">
-                  Failed to load schools. Please check your internet connection and refresh.
-                  <Button variant="outline" size="sm" className="ml-2 text-xs" onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-schools"] })}>
-                    Retry
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ) : schools?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-sm text-muted-foreground">No schools</TableCell>
-              </TableRow>
-            ) : (
-              schools?.map((school) => (
-                <TableRow key={school.id}>
-                  <TableCell className="text-sm">{school.name}</TableCell>
-                  <TableCell className="text-sm font-mono text-muted-foreground">{(school as any).code || "—"}</TableCell>
-                  <TableCell>
-                    <span className={`text-xs tracking-wider uppercase px-2 py-1 border ${
-                      (school as any).status === "inactive"
-                        ? "border-destructive text-destructive"
-                        : "border-border text-foreground"
-                    }`}>
-                      {(school as any).status || "active"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(school.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="text-xs" onClick={() => openEdit(school)}>
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => handleStatusToggle(school.id, (school as any).status || "active")}
-                      >
-                        {(school as any).status === "inactive" ? "Enable" : "Disable"}
-                      </Button>
-                      {canDelete && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs text-destructive border-destructive/30 hover:text-destructive"
-                          onClick={() => setDeleteTarget(school)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <Tabs defaultValue="directory" className="space-y-5">
+        <TabsList className="rounded-full bg-white p-1">
+          <TabsTrigger value="directory" className="rounded-full">School Directory</TabsTrigger>
+          <TabsTrigger value="users" className="rounded-full">School Users</TabsTrigger>
+          <TabsTrigger value="products" className="rounded-full">Linked Products</TabsTrigger>
+          <TabsTrigger value="performance" className="rounded-full">Performance Reports</TabsTrigger>
+        </TabsList>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); setEditing(null); } }}>
+        <TabsContent value="directory">
+          <div className="border border-border rounded-2xl overflow-hidden">
+            <Table>
+              <TableHeader><TableRow><TableHead>School Name</TableHead><TableHead>Code</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {isLoading ? <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow> : null}
+                {schools.map((school: any) => (
+                  <TableRow key={school.id}>
+                    <TableCell>{school.name}</TableCell>
+                    <TableCell>{school.code || "-"}</TableCell>
+                    <TableCell>{school.status || "active"}</TableCell>
+                    <TableCell>{new Date(school.created_at).toLocaleDateString("en-IN")}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(school)}>Edit</Button>
+                        <Button variant="outline" size="sm" onClick={() => handleStatusToggle(school.id, school.status || "active")}>{school.status === "inactive" ? "Activate" : "Deactivate"}</Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="users">
+          <div className="mb-4 flex justify-end">
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                onClick={() => setCreateSchoolUserOpen(true)}
+                disabled={!canCreateSchoolLogin}
+                className="text-xs tracking-[0.2em] uppercase h-10 px-6"
+                title={canCreateSchoolLogin ? "Create school login" : "Only Admin or Super Admin can create school login"}
+              >
+                <Plus className="h-3 w-3 mr-2" /> Create School Login
+              </Button>
+              {!canCreateSchoolLogin ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Current role: <span className="font-medium">{role ?? "unknown"}</span>. Requires <span className="font-medium">admin</span> or <span className="font-medium">super_admin</span>.
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <div className="border border-border rounded-2xl overflow-hidden">
+            <Table>
+              <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>School</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {schoolUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                      No school users found yet.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+                {schoolUsers.map((row: any) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.full_name || "-"}</TableCell>
+                    <TableCell>{row.email || "-"}</TableCell>
+                    <TableCell>{schools.find((s: any) => s.id === row.school_id)?.name ?? "-"}</TableCell>
+                    <TableCell>{row.status || "active"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="products">
+          <div className="border border-border rounded-2xl overflow-hidden">
+            <Table>
+              <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>School</TableHead><TableHead>Price</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {linkedProducts.map((row: any) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell>{row.schools?.name ?? schools.find((s: any) => s.id === row.school_id)?.name ?? "-"}</TableCell>
+                    <TableCell>₹{Number(row.price ?? 0).toLocaleString("en-IN")}</TableCell>
+                    <TableCell>{row.status}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="performance">
+          <div className="border border-border rounded-2xl overflow-hidden">
+            <Table>
+              <TableHeader><TableRow><TableHead>School</TableHead><TableHead>Orders</TableHead><TableHead>Revenue</TableHead><TableHead>Pending Orders</TableHead><TableHead>Payment Health</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {schools.map((school: any) => {
+                  const metric = metricsBySchool.get(school.id) ?? { orders: 0, revenue: 0, pending: 0, outstanding: 0 };
+                  return (
+                    <TableRow key={school.id}>
+                      <TableCell>{school.name}</TableCell>
+                      <TableCell>{metric.orders}</TableCell>
+                      <TableCell>₹{metric.revenue.toLocaleString("en-IN")}</TableCell>
+                      <TableCell>{metric.pending}</TableCell>
+                      <TableCell>{metric.outstanding > 0 ? `Outstanding ₹${metric.outstanding.toLocaleString("en-IN")}` : "Healthy"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={createSchoolUserOpen} onOpenChange={setCreateSchoolUserOpen}>
         <DialogContent className="max-w-md" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="text-sm font-light tracking-wide uppercase">
-              {editing ? "Edit School" : "Add School"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+          <DialogHeader><DialogTitle className="text-sm font-light tracking-wide uppercase">Create School Login</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School Name</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" placeholder="Delhi Public School" />
+              <label className="mb-2 block text-xs tracking-[0.2em] text-muted-foreground uppercase">Full Name</label>
+              <Input
+                name="school_user_full_name"
+                value={schoolUserForm.full_name}
+                onChange={(e) => setSchoolUserForm((p) => ({ ...p, full_name: e.target.value }))}
+                className="h-10"
+                placeholder="School Coordinator"
+              />
             </div>
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School Code</label>
-              <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className="h-10" placeholder="DPS" />
+              <label className="mb-2 block text-xs tracking-[0.2em] text-muted-foreground uppercase">Email</label>
+              <Input
+                name="school_user_email"
+                type="email"
+                value={schoolUserForm.email}
+                onChange={(e) => setSchoolUserForm((p) => ({ ...p, email: e.target.value }))}
+                className="h-10"
+                placeholder="schooladmin@school.com"
+              />
             </div>
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Slug (auto-generated)</label>
-              <Input value={form.slug || generateSlug(form.name)} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="h-10" placeholder="delhi-public-school" />
+              <label className="mb-2 block text-xs tracking-[0.2em] text-muted-foreground uppercase">Password</label>
+              <Input
+                name="school_user_password"
+                type="password"
+                value={schoolUserForm.password}
+                onChange={(e) => setSchoolUserForm((p) => ({ ...p, password: e.target.value }))}
+                className="h-10"
+                placeholder="Minimum 6 characters"
+              />
             </div>
             <div>
-              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Status</label>
-              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
+              <label className="mb-2 block text-xs tracking-[0.2em] text-muted-foreground uppercase">School</label>
+              <Select value={schoolUserForm.school_id} onValueChange={(value) => setSchoolUserForm((p) => ({ ...p, school_id: value }))}>
                 <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Select status" />
+                  <SelectValue placeholder="Select school" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  {schools.map((school: any) => (
+                    <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <Button onClick={handleSave} disabled={saving} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
-            {saving ? "Saving..." : editing ? "Update School" : "Create School"}
+          <Button onClick={handleCreateSchoolUser} disabled={creatingSchoolUser} className="w-full h-10 text-xs tracking-[0.2em] uppercase">
+            {creatingSchoolUser ? "Creating..." : "Create Login"}
           </Button>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete School</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle className="text-sm font-light tracking-wide uppercase">{editing ? "Edit School" : "Add School"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School Name</label>
+              <Input name="school_name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-10" />
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School Code</label>
+              <Input name="school_code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className="h-10" />
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Slug</label>
+              <Input name="school_slug" value={form.slug || generateSlug(form.name)} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="h-10" />
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Status</label>
+              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
+                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Button onClick={handleSave} className="w-full h-10 text-xs tracking-[0.2em] uppercase">{editing ? "Update School" : "Create School"}</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

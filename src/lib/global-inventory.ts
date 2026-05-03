@@ -13,19 +13,57 @@ const normalizeRows = (rows: any[]): BranchInventorySnapshot[] =>
     stock: Number(row.stock ?? 0),
   }));
 
+const BATCH_SIZE = 40;
+
+const chunk = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
 export const fetchGlobalStockByVariants = async (variantIds: string[]) => {
   if (!variantIds.length) {
     return { stockByVariant: new Map<string, number>(), rows: [] as BranchInventorySnapshot[] };
   }
 
-  const { data, error } = await (supabase as any)
-    .from("branch_inventory")
-    .select("branch_id, variant_id, stock")
-    .in("variant_id", variantIds);
+  const uniqueVariantIds = [...new Set(variantIds)];
+  const batchedVariantIds = chunk(uniqueVariantIds, BATCH_SIZE);
+  const rows: BranchInventorySnapshot[] = [];
 
-  if (error) throw error;
+  const fetchRowsAdaptive = async (ids: string[]): Promise<BranchInventorySnapshot[]> => {
+    const { data, error } = await (supabase as any)
+      .from("branch_inventory")
+      .select("branch_id, variant_id, stock")
+      .in("variant_id", ids);
 
-  const rows = normalizeRows(data ?? []);
+    if (!error) {
+      return normalizeRows(data ?? []);
+    }
+
+    const errorText = String(error.message ?? error.details ?? error.hint ?? "").toLowerCase();
+    const shouldSplit =
+      ids.length > 1 &&
+      (errorText.includes("bad request") ||
+        errorText.includes("uri") ||
+        errorText.includes("too long") ||
+        errorText.includes("failed to parse"));
+
+    if (!shouldSplit) {
+      throw error;
+    }
+
+    const midpoint = Math.floor(ids.length / 2);
+    const left = await fetchRowsAdaptive(ids.slice(0, midpoint));
+    const right = await fetchRowsAdaptive(ids.slice(midpoint));
+    return [...left, ...right];
+  };
+
+  for (const ids of batchedVariantIds) {
+    rows.push(...(await fetchRowsAdaptive(ids)));
+  }
+
   const stockByVariant = new Map<string, number>();
 
   rows.forEach((row) => {

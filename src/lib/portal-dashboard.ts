@@ -13,7 +13,7 @@ export interface ScopedSchool {
 export interface ResolvedSchoolScope {
   schoolId: string | null;
   school: ScopedSchool | null;
-  resolution: "user" | "user_metadata" | "user_school_map" | "profile_avatar_fallback" | "none";
+  resolution: "rpc" | "user" | "user_metadata" | "auth_user_metadata_fresh" | "user_school_map" | "profile_avatar_fallback" | "school_email_fallback" | "none";
 }
 
 const SCHOOL_AVATAR_FALLBACK_PREFIX = "school-assignment:";
@@ -52,6 +52,18 @@ const resolveSchoolIdFromAuthUser = (user: User) => {
   return { schoolId: null, resolution: "none" as const };
 };
 
+const resolveSchoolIdFromFreshAuthUser = async () => {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user) return null;
+    const metadata = (data.user.user_metadata ?? {}) as Record<string, unknown>;
+    const schoolId = readSchoolId(metadata.school_id) ?? readSchoolId(metadata.schoolId);
+    return schoolId ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const resolveSchoolIdFromMappingTable = async (userId: string) => {
   try {
     const { data, error } = await (supabase as any)
@@ -76,11 +88,51 @@ const resolveSchoolIdFromMappingTable = async (userId: string) => {
   }
 };
 
+const resolveSchoolIdFromSchoolEmail = async (email: string | null | undefined) => {
+  const normalizedEmail = readSchoolId(email)?.toLowerCase();
+  if (!normalizedEmail) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("schools")
+      .select("id")
+      .ilike("email", normalizedEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      logger.warn("School email fallback lookup failed", error.message);
+      return null;
+    }
+
+    return readSchoolId(data?.id);
+  } catch (error) {
+    logger.warn("School email fallback lookup failed", error);
+    return null;
+  }
+};
+
 export const useResolvedSchoolScope = (user: User | null) =>
   useQuery({
     queryKey: ["resolved-school-scope", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      const { data: rpcSchoolId, error: rpcError } = await (supabase as any).rpc("resolve_current_school_id");
+      if (!rpcError && readSchoolId(rpcSchoolId)) {
+        const schoolId = readSchoolId(rpcSchoolId)!;
+        const { data: school, error: schoolError } = await supabase
+          .from("schools")
+          .select("id, name, slug, code")
+          .eq("id", schoolId)
+          .maybeSingle();
+        if (schoolError) throw schoolError;
+        return {
+          schoolId,
+          school: (school as ScopedSchool | null) ?? null,
+          resolution: "rpc" as const,
+        };
+      }
+
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -120,6 +172,22 @@ export const useResolvedSchoolScope = (user: User | null) =>
         if (mappedSchoolId) {
           schoolId = mappedSchoolId;
           resolution = "user_school_map";
+        }
+      }
+
+      if (!schoolId) {
+        const freshAuthSchoolId = await resolveSchoolIdFromFreshAuthUser();
+        if (freshAuthSchoolId) {
+          schoolId = freshAuthSchoolId;
+          resolution = "auth_user_metadata_fresh";
+        }
+      }
+
+      if (!schoolId) {
+        const schoolIdFromEmail = await resolveSchoolIdFromSchoolEmail(user?.email);
+        if (schoolIdFromEmail) {
+          schoolId = schoolIdFromEmail;
+          resolution = "school_email_fallback";
         }
       }
 

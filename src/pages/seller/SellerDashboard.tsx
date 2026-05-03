@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   BarChart3,
-  Bell,
   CheckCircle2,
   Clock,
   IndianRupee,
@@ -19,7 +18,7 @@ import {
   Truck,
   Wallet,
 } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -123,15 +122,42 @@ const MarketplaceBadge = ({ value }: { value: string }) => (
   </Badge>
 );
 
-const SellerDashboard = () => {
+type SellerDashboardProps = {
+  initialTab?: "overview" | "products" | "orders" | "payouts" | "profile";
+};
+
+const SellerDashboard = ({ initialTab = "overview" }: SellerDashboardProps) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user, isSeller, hasAccess, loading, signOut } = useAuth();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([createVariantDraft()]);
   const [productSearch, setProductSearch] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<"all" | SellerOrderStatus>("all");
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [bulkStockValue, setBulkStockValue] = useState("0");
   const [stockReason, setStockReason] = useState("Seller stock adjustment");
+  const [profileForm, setProfileForm] = useState({
+    businessName: "",
+    ownerName: "",
+    phone: "",
+    email: "",
+    gstin: "",
+    address: "",
+    bankName: "",
+    accountNumber: "",
+    ifsc: "",
+    upiId: "",
+    gstCertificateUrl: "",
+    cancelledChequeUrl: "",
+  });
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const { data: sellerContext, isLoading: sellerLoading } = useQuery({
     queryKey: ["seller-context", user?.id],
@@ -310,14 +336,15 @@ const SellerDashboard = () => {
 
   const filteredOrders = useMemo(() => {
     const query = orderSearch.trim().toLowerCase();
-    if (!query) return orders;
-    return orders.filter((row: any) =>
+    const source = orderStatusFilter === "all" ? orders : orders.filter((row: any) => row.fulfillment_status === orderStatusFilter);
+    if (!query) return source;
+    return source.filter((row: any) =>
       [row.orders?.customer_name, row.orders?.phone, row.products?.name, row.product_variants?.size, row.fulfillment_status]
         .join(" ")
         .toLowerCase()
         .includes(query),
     );
-  }, [orders, orderSearch]);
+  }, [orders, orderSearch, orderStatusFilter]);
 
   const filteredClasses = classes.filter((item: any) => !productForm.schoolId || item.school_id === productForm.schoolId);
 
@@ -440,6 +467,74 @@ const SellerDashboard = () => {
     onError: (error: any) => toast.error(error.message || "Failed to update stock."),
   });
 
+  const updateProfile = useMutation({
+    mutationFn: async () => {
+      if (!sellerId) throw new Error("Seller account not resolved");
+      const { error } = await (supabase as any).from("sellers").update({
+        name: profileForm.businessName.trim() || null,
+        phone: profileForm.phone.trim() || null,
+        email: profileForm.email.trim() || null,
+        gstin: profileForm.gstin.trim() || null,
+        address: profileForm.address.trim() || null,
+        metadata: {
+          ...(sellerContext?.metadata ?? {}),
+          owner_name: profileForm.ownerName.trim() || null,
+          bank_name: profileForm.bankName.trim() || null,
+          bank_account_number: profileForm.accountNumber.trim() || null,
+          bank_ifsc: profileForm.ifsc.trim() || null,
+          upi_id: profileForm.upiId.trim() || null,
+          gst_certificate_url: profileForm.gstCertificateUrl.trim() || null,
+          cancelled_cheque_url: profileForm.cancelledChequeUrl.trim() || null,
+        },
+      }).eq("id", sellerId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      toast.success("Seller profile updated.");
+      await queryClient.invalidateQueries({ queryKey: ["seller-context", user?.id] });
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to update profile."),
+  });
+
+  const bulkUpdateStock = useMutation({
+    mutationFn: async () => {
+      const next = Math.max(0, toNumber(bulkStockValue));
+      const variantIds = filteredProducts.flatMap((product: any) => (product.seller_product_variants ?? []).map((variant: any) => variant.id));
+      if (!variantIds.length) return;
+      for (const variantId of variantIds) {
+        const { error } = await (supabase as any).rpc("update_seller_variant_stock", {
+          p_seller_variant_id: variantId,
+          p_new_stock: next,
+          p_reason: stockReason.trim() || "Seller bulk stock update",
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: async () => {
+      toast.success("Bulk stock update completed.");
+      await queryClient.invalidateQueries({ queryKey: ["seller-products", sellerId] });
+    },
+    onError: (error: any) => toast.error(error.message || "Failed bulk stock update."),
+  });
+
+  useEffect(() => {
+    if (!sellerContext) return;
+    setProfileForm({
+      businessName: sellerContext?.name ?? "",
+      ownerName: sellerContext?.metadata?.owner_name ?? "",
+      phone: sellerContext?.phone ?? "",
+      email: sellerContext?.email ?? "",
+      gstin: sellerContext?.gstin ?? "",
+      address: sellerContext?.address ?? "",
+      bankName: sellerContext?.metadata?.bank_name ?? "",
+      accountNumber: sellerContext?.metadata?.bank_account_number ?? "",
+      ifsc: sellerContext?.metadata?.bank_ifsc ?? "",
+      upiId: sellerContext?.metadata?.upi_id ?? "",
+      gstCertificateUrl: sellerContext?.metadata?.gst_certificate_url ?? "",
+      cancelledChequeUrl: sellerContext?.metadata?.cancelled_cheque_url ?? "",
+    });
+  }, [sellerContext]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -494,14 +589,27 @@ const SellerDashboard = () => {
         </Card>
       ) : null}
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          const next = value as typeof activeTab;
+          setActiveTab(next);
+          const routeMap: Record<string, string> = {
+            overview: "/seller/dashboard",
+            products: "/seller/products",
+            orders: "/seller/orders",
+            payouts: "/seller/payouts",
+            profile: "/seller/profile",
+          };
+          navigate(routeMap[next] ?? "/seller/dashboard");
+        }}
+        className="space-y-6"
+      >
         <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-[24px] border border-black/5 bg-white/75 p-2 shadow-sm md:grid-cols-7">
           <TabsTrigger value="overview" className="rounded-2xl"><BarChart3 className="mr-2 h-4 w-4" />Home</TabsTrigger>
           <TabsTrigger value="products" className="rounded-2xl"><Package className="mr-2 h-4 w-4" />Products</TabsTrigger>
           <TabsTrigger value="orders" className="rounded-2xl"><Truck className="mr-2 h-4 w-4" />Orders</TabsTrigger>
           <TabsTrigger value="payouts" className="rounded-2xl"><Wallet className="mr-2 h-4 w-4" />Payouts</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-2xl"><BarChart3 className="mr-2 h-4 w-4" />Analytics</TabsTrigger>
-          <TabsTrigger value="alerts" className="rounded-2xl"><Bell className="mr-2 h-4 w-4" />Alerts</TabsTrigger>
           <TabsTrigger value="profile" className="rounded-2xl"><Wallet className="mr-2 h-4 w-4" />Profile</TabsTrigger>
         </TabsList>
 
@@ -551,6 +659,24 @@ const SellerDashboard = () => {
               </CardContent>
             </Card>
           </div>
+          <Card className={portalPanelClassName}>
+            <CardHeader><CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Recent Orders</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Customer</TableHead><TableHead>Amount</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {orders.slice(0, 6).map((row: any) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">{row.orders?.id?.slice(0, 8) ?? "-"}</TableCell>
+                      <TableCell>{row.orders?.customer_name ?? "-"}</TableCell>
+                      <TableCell>{formatCurrency(toNumber(row.gross_amount))}</TableCell>
+                      <TableCell>{formatShortDate(row.created_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="products" className="space-y-5">
@@ -639,6 +765,15 @@ const SellerDashboard = () => {
               </DialogContent>
             </Dialog>
           </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Bulk Stock Qty</Label>
+              <Input className="w-40" type="number" min={0} value={bulkStockValue} onChange={(e) => setBulkStockValue(e.target.value)} />
+            </div>
+            <Button variant="outline" onClick={() => bulkUpdateStock.mutate()} disabled={bulkUpdateStock.isPending}>
+              Apply To Filtered Variants
+            </Button>
+          </div>
 
           <Card className={portalPanelClassName}>
             <CardContent className="p-0">
@@ -700,29 +835,45 @@ const SellerDashboard = () => {
         </TabsContent>
 
         <TabsContent value="orders" className="space-y-5">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input className="rounded-full bg-white pl-9" value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Search orders" />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="relative max-w-md flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input className="rounded-full bg-white pl-9" value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Search orders" />
+            </div>
+            <Select value={orderStatusFilter} onValueChange={(value) => setOrderStatusFilter(value as "all" | SellerOrderStatus)}>
+              <SelectTrigger className="w-52 rounded-full bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="packed">Packed</SelectItem>
+                <SelectItem value="shipped">Shipped</SelectItem>
+                <SelectItem value="delivered">Delivered</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Card className={portalPanelClassName}>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order</TableHead>
+                    <TableHead>Order ID</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Invoice</TableHead>
+                    <TableHead>Items</TableHead>
+                    <TableHead>Qty</TableHead>
                     <TableHead>Amount</TableHead>
+                    <TableHead>Commission</TableHead>
+                    <TableHead>Net</TableHead>
+                    <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((row: any) => (
                     <TableRow key={row.id}>
                       <TableCell>
-                        <div className="font-medium">{formatShortDate(row.orders?.created_at)}</div>
-                        <div className="text-xs text-muted-foreground">{row.orders?.schools?.name ?? "School not linked"}</div>
+                        <div className="font-medium">{row.orders?.id?.slice(0, 8) ?? "-"}</div>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{row.orders?.customer_name ?? "-"}</div>
@@ -730,8 +881,11 @@ const SellerDashboard = () => {
                         <div className="text-xs text-muted-foreground">{[row.orders?.address, row.orders?.city, row.orders?.pincode].filter(Boolean).join(", ")}</div>
                       </TableCell>
                       <TableCell>{row.products?.name ?? "Product"} · {row.product_variants?.size ?? "Default"}</TableCell>
-                      <TableCell className="text-xs">{row.orders?.invoices?.invoice_number ?? "Pending"}</TableCell>
+                      <TableCell>1</TableCell>
                       <TableCell>{formatCurrency(toNumber(row.gross_amount))}</TableCell>
+                      <TableCell>{formatCurrency(toNumber(row.commission_amount))}</TableCell>
+                      <TableCell>{formatCurrency(toNumber(row.net_amount))}</TableCell>
+                      <TableCell>{formatShortDate(row.created_at)}</TableCell>
                       <TableCell>
                         <Select
                           value={row.fulfillment_status}
@@ -739,19 +893,39 @@ const SellerDashboard = () => {
                         >
                           <SelectTrigger className="h-9 w-44 rounded-full"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {fulfillmentStatuses.map((status) => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}
+                            {["packed", "shipped", "delivered"].map((status) => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" onClick={() => setSelectedOrder(row)}>View</Button>
                       </TableCell>
                     </TableRow>
                   ))}
                   {!ordersLoading && filteredOrders.length === 0 ? (
-                    <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No seller orders assigned yet.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">No seller orders assigned yet.</TableCell></TableRow>
                   ) : null}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
+          <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
+            <DialogContent className="max-w-xl rounded-[28px]">
+              <DialogHeader><DialogTitle>Order Details</DialogTitle></DialogHeader>
+              {selectedOrder ? (
+                <div className="space-y-2 text-sm">
+                  <p><span className="text-muted-foreground">Order ID:</span> {selectedOrder.orders?.id}</p>
+                  <p><span className="text-muted-foreground">Customer:</span> {selectedOrder.orders?.customer_name ?? "-"}</p>
+                  <p><span className="text-muted-foreground">Phone:</span> {selectedOrder.orders?.phone ?? "-"}</p>
+                  <p><span className="text-muted-foreground">Address:</span> {[selectedOrder.orders?.address, selectedOrder.orders?.city, selectedOrder.orders?.pincode].filter(Boolean).join(", ") || "-"}</p>
+                  <p><span className="text-muted-foreground">Item:</span> {selectedOrder.products?.name ?? "Product"} · {selectedOrder.product_variants?.size ?? "Default"}</p>
+                  <p><span className="text-muted-foreground">Gross:</span> {formatCurrency(toNumber(selectedOrder.gross_amount))}</p>
+                  <p><span className="text-muted-foreground">Commission:</span> {formatCurrency(toNumber(selectedOrder.commission_amount))}</p>
+                  <p><span className="text-muted-foreground">Net:</span> {formatCurrency(toNumber(selectedOrder.net_amount))}</p>
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="payouts" className="space-y-6">
@@ -784,83 +958,38 @@ const SellerDashboard = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <PortalMetricCard label="Conversion Rate" value={`${metrics.conversionRate}%`} icon={<BarChart3 className="h-4 w-4" />} hint="Estimated from delivered orders vs active assortment" />
-            <PortalMetricCard label="Return %" value={`${metrics.returnRate}%`} icon={<AlertTriangle className="h-4 w-4" />} />
-            <PortalMetricCard label="Cancellation %" value={`${metrics.cancellationRate}%`} icon={<AlertTriangle className="h-4 w-4" />} />
-          </div>
-          <Card className={portalPanelClassName}>
-            <CardHeader><CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Top Product Revenue</CardTitle></CardHeader>
-            <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics.bestSellers}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e7e2d7" />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} width={72} />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Bar dataKey="revenue" fill="#111827" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="alerts" className="space-y-4">
-          {notifications.length ? notifications.map((notification: any) => (
-            <Card key={notification.id} className={portalPanelClassName}>
-              <CardContent className="flex items-start gap-3 p-5">
-                <Bell className="mt-1 h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">{notification.title}</p>
-                  <p className="text-sm text-muted-foreground">{notification.body}</p>
-                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">{formatShortDate(notification.created_at)}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )) : (
-            <Card className={portalPanelClassName}><CardContent className="p-8 text-sm text-muted-foreground">No alerts yet. New order, approval, low stock, return, and payout updates will appear here.</CardContent></Card>
-          )}
-        </TabsContent>
-
         <TabsContent value="profile" className="space-y-6">
           <Card className={portalPanelClassName}>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Seller Profile</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business Name</Label>
-                  <p className="mt-1 font-medium">{sellerContext?.name}</p>
-                </div>
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contact Email</Label>
-                  <p className="mt-1">{sellerContext?.email || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contact Phone</Label>
-                  <p className="mt-1">{sellerContext?.phone || "-"}</p>
-                </div>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2"><Label>Business Name</Label><Input value={profileForm.businessName} onChange={(e) => setProfileForm((p) => ({ ...p, businessName: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Owner Name</Label><Input value={profileForm.ownerName} onChange={(e) => setProfileForm((p) => ({ ...p, ownerName: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Phone</Label><Input value={profileForm.phone} onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Email</Label><Input value={profileForm.email} onChange={(e) => setProfileForm((p) => ({ ...p, email: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>GSTIN</Label><Input value={profileForm.gstin} onChange={(e) => setProfileForm((p) => ({ ...p, gstin: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Address</Label><Input value={profileForm.address} onChange={(e) => setProfileForm((p) => ({ ...p, address: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Bank Name</Label><Input value={profileForm.bankName} onChange={(e) => setProfileForm((p) => ({ ...p, bankName: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Account Number</Label><Input value={profileForm.accountNumber} onChange={(e) => setProfileForm((p) => ({ ...p, accountNumber: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>IFSC</Label><Input value={profileForm.ifsc} onChange={(e) => setProfileForm((p) => ({ ...p, ifsc: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>UPI ID</Label><Input value={profileForm.upiId} onChange={(e) => setProfileForm((p) => ({ ...p, upiId: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>GST Certificate URL (optional)</Label><Input value={profileForm.gstCertificateUrl} onChange={(e) => setProfileForm((p) => ({ ...p, gstCertificateUrl: e.target.value }))} /></div>
+              <div className="space-y-2"><Label>Cancelled Cheque URL (optional)</Label><Input value={profileForm.cancelledChequeUrl} onChange={(e) => setProfileForm((p) => ({ ...p, cancelledChequeUrl: e.target.value }))} /></div>
+              <div className="md:col-span-2">
+                <Button onClick={() => updateProfile.mutate()} disabled={updateProfile.isPending}>Save Profile</Button>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">GSTIN</Label>
-                  <p className="mt-1 font-medium">{sellerContext?.gstin || "Not provided"}</p>
+            </CardContent>
+          </Card>
+          <Card className={portalPanelClassName}>
+            <CardHeader><CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Notifications</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {notifications.length ? notifications.slice(0, 5).map((notification: any) => (
+                <div key={notification.id} className="rounded-2xl border border-black/5 bg-stone-50/80 p-4">
+                  <p className="font-medium">{notification.title}</p>
+                  <p className="text-sm text-muted-foreground">{notification.body}</p>
                 </div>
-                <div>
-                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Bank Details</Label>
-                  {sellerContext?.metadata?.bank_account_number ? (
-                    <div className="mt-1 space-y-1 text-sm">
-                      <p>Account: <span className="font-medium">{sellerContext.metadata.bank_account_number}</span></p>
-                      <p>IFSC: <span className="font-medium">{sellerContext.metadata.bank_ifsc}</span></p>
-                      <p>Bank: {sellerContext.metadata.bank_name}</p>
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-muted-foreground">No bank details added. Please contact Illume admin to update.</p>
-                  )}
-                </div>
-              </div>
+              )) : <p className="text-sm text-muted-foreground">No notifications yet.</p>}
             </CardContent>
           </Card>
         </TabsContent>

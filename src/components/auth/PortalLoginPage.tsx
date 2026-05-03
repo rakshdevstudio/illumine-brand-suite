@@ -84,6 +84,7 @@ const PortalLoginPage = ({ portalLabel, allowedRoles, fallbackPath }: PortalLogi
               Email
             </label>
             <Input
+              name="email"
               type="email"
               autoComplete="email"
               value={email}
@@ -98,6 +99,7 @@ const PortalLoginPage = ({ portalLabel, allowedRoles, fallbackPath }: PortalLogi
               Password
             </label>
             <Input
+              name="password"
               type="password"
               autoComplete="current-password"
               value={password}

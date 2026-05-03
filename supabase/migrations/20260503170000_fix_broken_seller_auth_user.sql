@@ -1,13 +1,21 @@
+-- Fix: recreate seeded seller user with complete Auth v2 columns.
+-- This resolves GoTrue 500 errors on password grant when older/incomplete auth.users rows exist.
+
+-- Remove potentially broken seeded seller auth user and dependent mappings.
+DELETE FROM public.seller_users
+WHERE user_id IN (SELECT id FROM auth.users WHERE email = 'seller@illume.com');
+
+DELETE FROM public.user_roles
+WHERE user_id IN (SELECT id FROM auth.users WHERE email = 'seller@illume.com');
+
+DELETE FROM auth.users
+WHERE email = 'seller@illume.com';
+
 DO $$
 DECLARE
-  new_user_id uuid;
-  new_seller_id uuid;
+  new_user_id uuid := gen_random_uuid();
+  target_seller_id uuid;
 BEGIN
-  IF EXISTS (SELECT 1 FROM auth.users WHERE email = 'seller@illume.com') THEN
-    RAISE NOTICE 'Test seller already exists.';
-    RETURN;
-  END IF;
-
   INSERT INTO auth.users (
     id,
     instance_id,
@@ -45,7 +53,7 @@ BEGIN
     aud
   )
   VALUES (
-    gen_random_uuid(),
+    new_user_id,
     '00000000-0000-0000-0000-000000000000',
     'seller@illume.com',
     crypt('Seller123!', gen_salt('bf')),
@@ -79,23 +87,26 @@ BEGIN
     false,
     'authenticated',
     'authenticated'
-  )
-  RETURNING id INTO new_user_id;
+  );
 
   INSERT INTO public.user_roles (user_id, role)
   VALUES (new_user_id, 'vendor');
 
-  INSERT INTO public.sellers (
-    name, email, phone, status, is_active, commission_rate
-  ) VALUES (
-    'Acme Uniforms', 'seller@illume.com', '9876543210', 'active', true, 15
-  ) RETURNING id INTO new_seller_id;
+  SELECT id INTO target_seller_id
+  FROM public.sellers
+  WHERE email = 'seller@illume.com'
+  ORDER BY created_at DESC
+  LIMIT 1;
 
-  INSERT INTO public.seller_users (
-    seller_id, user_id, role, status
-  ) VALUES (
-    new_seller_id, new_user_id, 'owner', 'active'
-  );
+  IF target_seller_id IS NULL THEN
+    INSERT INTO public.sellers (
+      name, email, phone, status, is_active, commission_rate
+    ) VALUES (
+      'Acme Uniforms', 'seller@illume.com', '9876543210', 'active', true, 15
+    ) RETURNING id INTO target_seller_id;
+  END IF;
 
-  RAISE NOTICE 'Test seller created with email seller@illume.com and password Seller123!';
+  INSERT INTO public.seller_users (seller_id, user_id, role, status)
+  VALUES (target_seller_id, new_user_id, 'owner', 'active')
+  ON CONFLICT (seller_id, user_id) DO NOTHING;
 END $$;
