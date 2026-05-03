@@ -143,7 +143,7 @@ const SellerDashboard = () => {
 
       const { data: seller, error: sellerError } = await (supabase as any)
         .from("sellers")
-        .select("id, name, email, phone, status, commission_rate, is_active, onboarding_notes")
+        .select("id, name, email, phone, status, commission_rate, is_active, onboarding_notes, gstin, metadata")
         .eq("id", sellerId)
         .single();
       if (sellerError) throw sellerError;
@@ -253,6 +253,10 @@ const SellerDashboard = () => {
     const returnedOrders = orders.filter((row: any) => row.fulfillment_status === "returned").length;
     const cancelledOrders = orders.filter((row: any) => row.fulfillment_status === "cancelled").length;
     const deliveredOrders = orders.filter((row: any) => row.fulfillment_status === "delivered").length;
+    
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayOrders = orders.filter((row: any) => row.created_at.startsWith(todayStr)).length;
+    const productsLive = products.filter((p: any) => p.approval_status === "approved" && p.listing_enabled).length;
 
     return {
       grossSales,
@@ -264,6 +268,8 @@ const SellerDashboard = () => {
       pendingOrders,
       shippedOrders,
       totalOrders: orders.length,
+      todayOrders,
+      productsLive,
       returnRate: orders.length ? Math.round((returnedOrders / orders.length) * 100) : 0,
       cancellationRate: orders.length ? Math.round((cancelledOrders / orders.length) * 100) : 0,
       conversionRate: products.length ? Math.round((deliveredOrders / Math.max(products.length * 12, 1)) * 100) : 0,
@@ -489,23 +495,23 @@ const SellerDashboard = () => {
       ) : null}
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-[24px] border border-black/5 bg-white/75 p-2 shadow-sm md:grid-cols-6">
+        <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-[24px] border border-black/5 bg-white/75 p-2 shadow-sm md:grid-cols-7">
           <TabsTrigger value="overview" className="rounded-2xl"><BarChart3 className="mr-2 h-4 w-4" />Home</TabsTrigger>
           <TabsTrigger value="products" className="rounded-2xl"><Package className="mr-2 h-4 w-4" />Products</TabsTrigger>
           <TabsTrigger value="orders" className="rounded-2xl"><Truck className="mr-2 h-4 w-4" />Orders</TabsTrigger>
           <TabsTrigger value="payouts" className="rounded-2xl"><Wallet className="mr-2 h-4 w-4" />Payouts</TabsTrigger>
           <TabsTrigger value="analytics" className="rounded-2xl"><BarChart3 className="mr-2 h-4 w-4" />Analytics</TabsTrigger>
           <TabsTrigger value="alerts" className="rounded-2xl"><Bell className="mr-2 h-4 w-4" />Alerts</TabsTrigger>
+          <TabsTrigger value="profile" className="rounded-2xl"><Wallet className="mr-2 h-4 w-4" />Profile</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <PortalMetricCard label="Total Orders" value={ordersLoading ? "..." : metrics.totalOrders} icon={<ShoppingBag className="h-4 w-4" />} />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <PortalMetricCard label="Total Sales" value={ordersLoading ? "..." : formatCurrency(metrics.grossSales)} icon={<IndianRupee className="h-4 w-4" />} />
+            <PortalMetricCard label="Today Orders" value={ordersLoading ? "..." : metrics.todayOrders} icon={<ShoppingBag className="h-4 w-4" />} />
             <PortalMetricCard label="Pending Orders" value={ordersLoading ? "..." : metrics.pendingOrders} icon={<Clock className="h-4 w-4" />} />
-            <PortalMetricCard label="Shipped Orders" value={ordersLoading ? "..." : metrics.shippedOrders} icon={<Truck className="h-4 w-4" />} />
-            <PortalMetricCard label="Revenue" value={ordersLoading ? "..." : formatCurrency(metrics.grossSales)} icon={<IndianRupee className="h-4 w-4" />} />
-            <PortalMetricCard label="Pending Payouts" value={payoutsLoading ? "..." : formatCurrency(metrics.pendingPayout)} icon={<Wallet className="h-4 w-4" />} />
-            <PortalMetricCard label="Low Stock" value={productsLoading ? "..." : metrics.lowStockCount} icon={<AlertTriangle className="h-4 w-4" />} />
+            <PortalMetricCard label="Products Live" value={productsLoading ? "..." : metrics.productsLive} icon={<PackageCheck className="h-4 w-4" />} />
+            <PortalMetricCard label="Pending Payout" value={payoutsLoading ? "..." : formatCurrency(metrics.pendingPayout)} icon={<Wallet className="h-4 w-4" />} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
@@ -815,6 +821,48 @@ const SellerDashboard = () => {
           )) : (
             <Card className={portalPanelClassName}><CardContent className="p-8 text-sm text-muted-foreground">No alerts yet. New order, approval, low stock, return, and payout updates will appear here.</CardContent></Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="profile" className="space-y-6">
+          <Card className={portalPanelClassName}>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">Seller Profile</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Business Name</Label>
+                  <p className="mt-1 font-medium">{sellerContext?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contact Email</Label>
+                  <p className="mt-1">{sellerContext?.email || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contact Phone</Label>
+                  <p className="mt-1">{sellerContext?.phone || "-"}</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">GSTIN</Label>
+                  <p className="mt-1 font-medium">{sellerContext?.gstin || "Not provided"}</p>
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Bank Details</Label>
+                  {sellerContext?.metadata?.bank_account_number ? (
+                    <div className="mt-1 space-y-1 text-sm">
+                      <p>Account: <span className="font-medium">{sellerContext.metadata.bank_account_number}</span></p>
+                      <p>IFSC: <span className="font-medium">{sellerContext.metadata.bank_ifsc}</span></p>
+                      <p>Bank: {sellerContext.metadata.bank_name}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted-foreground">No bank details added. Please contact Illume admin to update.</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </PortalShell>
