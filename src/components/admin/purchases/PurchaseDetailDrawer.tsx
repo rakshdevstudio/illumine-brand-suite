@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   Drawer,
   DrawerContent,
@@ -41,7 +42,7 @@ export type DetailedPurchase = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  vendors: { name: string } | null;
+  suppliers: { name: string } | null;
   branches: { name: string } | null;
   purchase_items: {
     quantity: number;
@@ -79,7 +80,7 @@ const fetchPurchaseDetails = async (purchaseId: string): Promise<DetailedPurchas
       created_by,
       created_at,
       updated_at,
-      vendors ( name ),
+      suppliers ( name ),
       branches ( name ),
       purchase_items (
         quantity,
@@ -174,8 +175,8 @@ export function PurchaseDetailDrawer({
           {/* Section 1: Header */}
           <div className="grid grid-cols-2 gap-4 rounded-lg border p-4">
             <div>
-              <p className="text-sm text-muted-foreground">Vendor</p>
-              <p className="font-semibold">{purchase.vendors?.name ?? "N/A"}</p>
+              <p className="text-sm text-muted-foreground">Supplier Reference</p>
+              <p className="font-semibold">{purchase.suppliers?.name ?? "N/A"}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Branch</p>

@@ -1,10 +1,10 @@
 import PortalLoginPage from "@/components/auth/PortalLoginPage";
 
-const VendorLoginPage = () => (
+const SellerLoginPage = () => (
   <PortalLoginPage
-    portalLabel="Vendor Portal"
+    portalLabel="Seller Portal"
     allowedRoles={["vendor"]}
   />
 );
 
-export default VendorLoginPage;
+export default SellerLoginPage;

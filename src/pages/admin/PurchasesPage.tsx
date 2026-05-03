@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
@@ -26,10 +27,10 @@ type PurchaseRow = {
   sgst: number;
   igst: number;
   total: number;
-  vendors: { name: string } | null;
+  suppliers: { name: string } | null;
 };
 
-type VendorRef = { id: string; name: string; state_code: string | null };
+type SupplierRef = { id: string; name: string; state_code: string | null };
 
 type VariantRef = {
   id: string;
@@ -84,10 +85,10 @@ const PurchasesPage = () => {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
-  const [vendorId, setVendorId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [branchId, setBranchId] = useState("");
   const [sellerStateCode, setSellerStateCode] = useState("");
-  const [vendorStateCode, setVendorStateCode] = useState("");
+  const [supplierStateCode, setSupplierStateCode] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<PurchaseLine[]>([createEmptyLine()]);
@@ -97,19 +98,19 @@ const PurchasesPage = () => {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("purchases")
-        .select("id, purchase_number, status, purchase_date, subtotal, cgst, sgst, igst, total, vendors(name)")
+        .select("id, purchase_number, status, purchase_date, subtotal, cgst, sgst, igst, total, suppliers(name)")
         .order("purchase_date", { ascending: false });
       if (error) throw error;
       return (data ?? []) as PurchaseRow[];
     },
   });
 
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["erp-vendors-ref"],
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["erp-suppliers-ref"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from("vendors").select("id, name, state_code").eq("is_active", true).order("name");
+      const { data, error } = await (supabase as any).from("suppliers").select("id, name, state_code").eq("is_active", true).order("name");
       if (error) throw error;
-      return (data ?? []) as VendorRef[];
+      return (data ?? []) as SupplierRef[];
     },
   });
 
@@ -171,7 +172,7 @@ const PurchasesPage = () => {
   });
 
   const selectedBranch = useMemo(() => branches.find((b) => b.id === branchId) || null, [branches, branchId]);
-  const selectedVendor = useMemo(() => vendors.find((v) => v.id === vendorId) || null, [vendors, vendorId]);
+  const selectedSupplier = useMemo(() => suppliers.find((v) => v.id === supplierId) || null, [suppliers, supplierId]);
   const schoolById = useMemo(() => new Map(schools.map((school) => [school.id, school])), [schools]);
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -199,17 +200,17 @@ const PurchasesPage = () => {
   }, [selectedBranch?.state_code]);
 
   useEffect(() => {
-    if (selectedVendor?.state_code) {
-      setVendorStateCode(selectedVendor.state_code.toUpperCase());
+    if (selectedSupplier?.state_code) {
+      setSupplierStateCode(selectedSupplier.state_code.toUpperCase());
     }
-  }, [selectedVendor?.state_code]);
+  }, [selectedSupplier?.state_code]);
 
   useEffect(() => {
     setLines((current) => {
       let changed = false;
       const next = current.map((line) => {
         let lineChanged = false;
-        let schoolId = line.schoolId;
+        const schoolId = line.schoolId;
         let productId = line.productId;
         let variantId = line.variantId;
 
@@ -243,7 +244,7 @@ const PurchasesPage = () => {
     return (data ?? []).filter((row) => {
       if (status !== "all" && row.status !== status) return false;
       if (!q) return true;
-      return [row.purchase_number, row.vendors?.name ?? ""].join(" ").toLowerCase().includes(q);
+      return [row.purchase_number, row.suppliers?.name ?? ""].join(" ").toLowerCase().includes(q);
     });
   }, [data, search, status]);
 
@@ -256,12 +257,12 @@ const PurchasesPage = () => {
 
   const createPurchase = useMutation({
     mutationFn: async () => {
-      if (!vendorId) throw new Error("Vendor is required");
+      if (!supplierId) throw new Error("Supplier is required");
       const sellerState = (sellerStateCode || selectedBranch?.state_code || "").trim().toUpperCase();
-      const vendorState = (vendorStateCode || selectedVendor?.state_code || "").trim().toUpperCase();
+      const supplierState = (supplierStateCode || selectedSupplier?.state_code || "").trim().toUpperCase();
 
       if (!sellerState) throw new Error("Seller state code is required");
-      if (!vendorState) throw new Error("Vendor state code is required");
+      if (!supplierState) throw new Error("Supplier state code is required");
 
       const parsedItems = lines
         .filter((line) => line.variantId)
@@ -282,10 +283,10 @@ const PurchasesPage = () => {
       }
 
       const payload = {
-        vendor_id: vendorId,
+        supplier_id: supplierId,
         branch_id: branchId || null,
         seller_state_code: sellerState,
-        vendor_state_code: vendorState,
+        supplier_state_code: supplierState,
         purchase_date: purchaseDate,
         notes: notes || null,
         status: "received",
@@ -299,8 +300,8 @@ const PurchasesPage = () => {
     },
     onSuccess: async () => {
       toast.success("Purchase created with inventory + ledger booking.");
-      setVendorId("");
-      setVendorStateCode("");
+      setSupplierId("");
+      setSupplierStateCode("");
       setPurchaseDate(new Date().toISOString().slice(0, 10));
       setNotes("");
       setLines([createEmptyLine()]);
@@ -328,10 +329,10 @@ const PurchasesPage = () => {
   };
 
   const onExport = () => {
-    const headers = ["Purchase #", "Vendor", "Status", "Purchase Date", "Subtotal", "CGST", "SGST", "IGST", "Total"];
+    const headers = ["Purchase #", "Supplier", "Status", "Purchase Date", "Subtotal", "CGST", "SGST", "IGST", "Total"];
     const lines = rows.map((row) => [
       row.purchase_number,
-      row.vendors?.name ?? "",
+      row.suppliers?.name ?? "",
       row.status,
       row.purchase_date,
       String(row.subtotal),
@@ -377,21 +378,21 @@ const PurchasesPage = () => {
             <DialogHeader>
               <DialogTitle>Create Purchase</DialogTitle>
               <DialogDescription>
-                Provide vendor and state details so GST regime is computed correctly.
+                Provide supplier and state details so GST regime is computed correctly.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Vendor</Label>
-                  <Select value={vendorId} onValueChange={setVendorId}>
+                  <Label>Supplier Name</Label>
+                  <Select value={supplierId} onValueChange={setSupplierId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select vendor" />
+                      <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendors.map((vendor) => (
-                        <SelectItem key={vendor.id} value={vendor.id}>
-                          {vendor.name}
+                      {suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -424,8 +425,8 @@ const PurchasesPage = () => {
                   <Input value={sellerStateCode} onChange={(e) => setSellerStateCode(e.target.value.toUpperCase())} placeholder="KA" maxLength={2} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Vendor State Code</Label>
-                  <Input value={vendorStateCode} onChange={(e) => setVendorStateCode(e.target.value.toUpperCase())} placeholder="MH" maxLength={2} />
+                  <Label>Supplier State Code</Label>
+                  <Input value={supplierStateCode} onChange={(e) => setSupplierStateCode(e.target.value.toUpperCase())} placeholder="MH" maxLength={2} />
                 </div>
               </div>
 
@@ -520,7 +521,7 @@ const PurchasesPage = () => {
       )}
 
       <div className="grid gap-3 md:grid-cols-3">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by purchase # or vendor" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by purchase # or supplier" />
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger>
             <SelectValue placeholder="Status" />
@@ -541,7 +542,7 @@ const PurchasesPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead>Purchase #</TableHead>
-              <TableHead>Vendor</TableHead>
+              <TableHead>Supplier</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Subtotal</TableHead>
@@ -578,7 +579,7 @@ const PurchasesPage = () => {
                   )}
                 >
                   <TableCell>{row.purchase_number}</TableCell>
-                  <TableCell>{row.vendors?.name ?? "-"}</TableCell>
+                  <TableCell>{row.suppliers?.name ?? "-"}</TableCell>
                   <TableCell>
                     <Badge
                       className={cn("capitalize", {

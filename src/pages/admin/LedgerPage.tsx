@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Info } from "lucide-react";
@@ -305,7 +306,7 @@ const LedgerPage = () => {
                   <span className="text-base">📥</span>
                   <div className="text-xs sm:text-sm text-amber-900">
                     <p className="font-medium">Purchase Transaction</p>
-                    <p className="mt-0.5 text-amber-800">You bought goods → you owe vendor money. Inventory & Tax receivables go up, Accounts Payable increases.</p>
+                    <p className="mt-0.5 text-amber-800">You bought goods → you owe supplier money. Inventory & Tax receivables go up, Accounts Payable increases.</p>
                   </div>
                 </div>
               )}
@@ -368,7 +369,7 @@ const LedgerPage = () => {
                           <p className="font-mono text-sm sm:text-lg font-bold text-amber-950 text-right">{formatCurrency(lineSummary.amountPayable)}</p>
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent className="text-xs">Total amount to pay vendor</TooltipContent>
+                      <TooltipContent className="text-xs">Total amount to pay supplier</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
@@ -529,7 +530,7 @@ const LedgerPage = () => {
                         <TableRow key={line.id} className={isPayable ? "bg-amber-100/80" : undefined}>
                           <TableCell className={isPayable ? "font-semibold" : undefined}>
                             {line.accounts?.code || "-"} · {line.accounts?.name || "-"}
-                            {isPayable && <p className="mt-0.5 text-xs font-normal text-muted-foreground">Amount you owe vendor</p>}
+                            {isPayable && <p className="mt-0.5 text-xs font-normal text-muted-foreground">Amount you owe supplier</p>}
                           </TableCell>
                           <TableCell className="text-right font-mono">{formatCurrency(Number(line.debit || 0))}</TableCell>
                           <TableCell className={isPayable ? "text-right font-mono text-lg font-bold" : "text-right font-mono"}>{formatCurrency(Number(line.credit || 0))}</TableCell>

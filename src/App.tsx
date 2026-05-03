@@ -48,6 +48,7 @@ import CustomersPage from "./pages/admin/CustomersPage";
 import CustomerDetailPage from "./pages/admin/CustomerDetailPage";
 import StudentsPage from "./pages/admin/StudentsPage";
 import VendorsPage from "./pages/admin/VendorsPage";
+import SuppliersPage from "./pages/admin/SuppliersPage";
 import PurchasesPage from "./pages/admin/PurchasesPage";
 import LedgerPage from "./pages/admin/LedgerPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
@@ -104,6 +105,7 @@ const queryClient = new QueryClient({
 const isProtectedPath = (path: string) =>
   path.startsWith("/admin") ||
   path.startsWith("/vendor") ||
+  path.startsWith("/seller") ||
   path.startsWith("/school") ||
   path.startsWith("/pos") ||
   path.startsWith("/branch");
@@ -130,9 +132,10 @@ const AppSessionLifecycle = () => {
         const next = data?.session ?? null;
         setSession((prev) => (sessionsEqual(prev, next) ? prev : next));
       } finally {
-        if (!mounted) return;
-        hydratedRef.current = true;
-        setIsHydrated(true);
+        if (mounted) {
+          hydratedRef.current = true;
+          setIsHydrated(true);
+        }
       }
     };
 
@@ -262,7 +265,9 @@ const App = () => (
             <Route path="customers" element={<CustomersPage />} />
             <Route path="customers/:id" element={<CustomerDetailPage />} />
             <Route path="students" element={<StudentsPage />} />
-            <Route path="vendors" element={<VendorsPage />} />
+            <Route path="suppliers" element={<SuppliersPage />} />
+            <Route path="sellers" element={<VendorsPage />} />
+            <Route path="vendors" element={<Navigate to="/admin/sellers" replace />} />
             <Route path="purchases" element={<PurchasesPage />} />
             <Route path="ledger" element={<LedgerPage />} />
             <Route path="contact-enquiries" element={<ContactEnquiriesPage />} />
@@ -281,7 +286,11 @@ const App = () => (
 
           {/* Vendor Portal */}
           <Route path="/vendor/login" element={<VendorLoginPage />} />
+          <Route path="/vendor" element={<Navigate to="/vendor/dashboard" replace />} />
           <Route path="/vendor/dashboard" element={<VendorDashboard />} />
+          <Route path="/seller/login" element={<VendorLoginPage />} />
+          <Route path="/seller" element={<Navigate to="/seller/dashboard" replace />} />
+          <Route path="/seller/dashboard" element={<VendorDashboard />} />
 
           {/* School Portal */}
           <Route path="/school/login" element={<SchoolLoginPage />} />

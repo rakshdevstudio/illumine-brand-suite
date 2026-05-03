@@ -4,16 +4,17 @@ import type { User } from "@supabase/supabase-js";
 import { safeQuery } from "@/lib/safeQuery";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
-export type AppRole = "super_admin" | "admin" | "staff" | "branch_staff" | "vendor" | "school_user" | null;
+export type AppRole = "super_admin" | "admin" | "illume_team" | "staff" | "branch_staff" | "vendor" | "school_user" | null;
 
 /** Returns the default destination path for a given role after successful login. */
 export function getRoleRedirectPath(role: AppRole): string {
   switch (role) {
     case "super_admin":
     case "admin":
+    case "illume_team":
     case "staff":       return "/admin/dashboard";
     case "branch_staff": return "/admin/dashboard";
-    case "vendor":       return "/vendor/dashboard";
+    case "vendor":       return "/seller/dashboard";
     case "school_user":  return "/school/dashboard";
     default:             return "/admin/dashboard";
   }
@@ -74,10 +75,11 @@ export function useAuth() {
     };
   }, [isChecking, session]);
 
-  const isAdmin = role === "super_admin" || role === "admin";
+  const isAdmin = role === "super_admin" || role === "admin" || role === "illume_team";
   const isSuperAdmin = role === "super_admin";
   const isStaff = role === "staff" || role === "branch_staff";
   const isVendor = role === "vendor";
+  const isSeller = isVendor;
   const isSchoolUser = role === "school_user";
   const hasAccess = role !== null;
 
@@ -89,5 +91,5 @@ export function useAuth() {
 
   const loading = isChecking || roleLoading;
 
-  return { user, role, isAdmin, isSuperAdmin, isStaff, isVendor, isSchoolUser, hasAccess, loading, signOut };
+  return { user, role, isAdmin, isSuperAdmin, isStaff, isVendor, isSeller, isSchoolUser, hasAccess, loading, signOut };
 }

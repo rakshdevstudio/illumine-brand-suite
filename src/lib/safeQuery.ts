@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 
@@ -6,11 +7,12 @@ type QueryResult<T> = {
   error: any;
 };
 
-const LOGIN_ROUTES = ["/admin/login", "/vendor/login", "/school/login", "/pos/login"];
+const LOGIN_ROUTES = ["/admin/login", "/vendor/login", "/seller/login", "/school/login", "/pos/login"];
 
 const isLoginRoute = (path: string) => LOGIN_ROUTES.some((route) => path.startsWith(route));
 
 const getLoginPathForCurrentRoute = (path: string): string => {
+  if (path.startsWith("/seller")) return "/seller/login";
   if (path.startsWith("/vendor")) return "/vendor/login";
   if (path.startsWith("/school")) return "/school/login";
   if (path.startsWith("/pos")) return "/pos/login";

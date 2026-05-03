@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,7 +21,7 @@ const roleLabels: Record<string, { label: string; icon: typeof Shield }> = {
   admin: { label: "Admin", icon: Shield },
   staff: { label: "Staff", icon: User },
   branch_staff: { label: "Branch Staff", icon: Monitor },
-  vendor: { label: "Vendor", icon: Store },
+  vendor: { label: "Seller", icon: Store },
   school_user: { label: "School User", icon: GraduationCap },
 };
 
