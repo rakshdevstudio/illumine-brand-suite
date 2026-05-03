@@ -47,7 +47,7 @@ import InvoicesPage from "./pages/admin/InvoicesPage";
 import CustomersPage from "./pages/admin/CustomersPage";
 import CustomerDetailPage from "./pages/admin/CustomerDetailPage";
 import StudentsPage from "./pages/admin/StudentsPage";
-import VendorsPage from "./pages/admin/VendorsPage";
+import SellersPage from "./pages/admin/SellersPage";
 import SuppliersPage from "./pages/admin/SuppliersPage";
 import PurchasesPage from "./pages/admin/PurchasesPage";
 import LedgerPage from "./pages/admin/LedgerPage";
@@ -266,7 +266,7 @@ const App = () => (
             <Route path="customers/:id" element={<CustomerDetailPage />} />
             <Route path="students" element={<StudentsPage />} />
             <Route path="suppliers" element={<SuppliersPage />} />
-            <Route path="sellers" element={<VendorsPage />} />
+            <Route path="sellers" element={<SellersPage />} />
             <Route path="vendors" element={<Navigate to="/admin/sellers" replace />} />
             <Route path="purchases" element={<PurchasesPage />} />
             <Route path="ledger" element={<LedgerPage />} />
