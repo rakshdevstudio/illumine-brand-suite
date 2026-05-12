@@ -5,6 +5,7 @@ export const CONTACT_ENQUIRY_TYPES = [
   "Size and fit help",
   "Order support",
   "Retail partnership",
+  "Vendor Registration",
 ] as const;
 
 // Hero image generation prompt requested for the contact experience:

@@ -462,7 +462,14 @@ const ContactFormCard = ({
   onSuccess?: () => void;
 }) => {
   const { toast } = useToast();
-  const [values, setValues] = useState<ContactFormValues>(createInitialValues);
+  const [values, setValues] = useState<ContactFormValues>(() => {
+    let type = "";
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      type = params.get("type") || "";
+    }
+    return { ...createInitialValues(), type };
+  });
   const [errors, setErrors] = useState<ContactFormErrors>({});
   const [touched, setTouched] = useState<Partial<Record<keyof ContactFormValues, boolean>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);

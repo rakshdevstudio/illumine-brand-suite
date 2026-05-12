@@ -16,7 +16,6 @@ import {
   MapPinned,
   Package2,
   Palette,
-  Quote,
   Ruler,
   ShieldCheck,
   Sparkles,
@@ -129,41 +128,6 @@ const craftsmanship = [
   },
 ];
 
-const clients = [
-  "GLOBAL SCHOOL",
-  "GAFL",
-  "LOTUS",
-  "RR NAGAR",
-  "EDUFINDZ",
-  "ILLUME",
-  "BRIGHT PATH",
-  "NOVA SCHOOL",
-];
-
-const testimonials = [
-  {
-    name: "Mangasa Jayaram",
-    role: "Parent",
-    quote:
-      "I needed one more t-shirt and Illume handled it quickly and simply. The process felt clear and efficient from the first message to delivery.",
-    initials: "MJ",
-  },
-  {
-    name: "Sara Baptist",
-    role: "Parent",
-    quote:
-      "The exchange support was fast, polite, and reassuring. The quality was strong, and the service made the whole experience feel premium.",
-    initials: "SB",
-  },
-  {
-    name: "Ramya Karimanne",
-    role: "Parent",
-    quote:
-      "Excellent service. The staff were patient, cooperative, and very attentive. The uniform quality was genuinely impressive.",
-    initials: "RK",
-  },
-];
-
 const journey = [
   {
     step: "01",
@@ -249,7 +213,7 @@ const AboutPage = () => {
                 </Link>
               </Button>
               <Button asChild variant="outline" className="rounded-full border-white/20 bg-transparent px-6 text-[11px] uppercase tracking-[0.24em] text-white hover:bg-white/10 hover:text-white">
-                <Link to="/vendor/login">Vendor Registration</Link>
+                <Link to="/contact?type=Vendor Registration">Vendor Registration</Link>
               </Button>
             </div>
           </motion.div>
@@ -600,46 +564,6 @@ const AboutPage = () => {
         </div>
       </section>
 
-      <section className="bg-[#f8f4ed] py-24">
-        <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
-          <SectionTitle
-            eyebrow="Social proof"
-            title="Trusted by schools, valued by parents, respected by operators."
-            body="The brand grows through reliability. The proof is in repeat usage, strong feedback, and the confidence people feel after the first order.">
-          </SectionTitle>
-
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {clients.map((client, index) => (
-              <div
-                key={client}
-                className="rounded-[22px] border border-neutral-200 bg-white px-5 py-6 text-center text-[10px] uppercase tracking-[0.3em] text-neutral-600 shadow-[0_18px_40px_rgba(0,0,0,0.03)]"
-              >
-                <p className="text-base tracking-[0.22em] text-neutral-950">{client}</p>
-                <p className="mt-2 text-[10px] tracking-[0.22em] text-neutral-400">Partner {index + 1}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-12 grid gap-5 lg:grid-cols-3">
-            {testimonials.map((testimonial) => (
-              <div key={testimonial.name} className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_18px_50px_rgba(0,0,0,0.03)]">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-xs font-medium tracking-[0.18em] text-white">
-                    {testimonial.initials}
-                  </div>
-                  <div className="flex-1">
-                    <Quote className="h-4 w-4 text-amber-700" />
-                    <p className="mt-3 text-sm leading-7 text-neutral-700">{testimonial.quote}</p>
-                    <p className="mt-5 text-sm font-medium text-neutral-950">{testimonial.name}</p>
-                    <p className="text-xs uppercase tracking-[0.24em] text-neutral-400">{testimonial.role}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="mx-auto max-w-7xl px-6 py-24 sm:px-8 lg:px-10">
         <div className="grid gap-10 lg:grid-cols-[1fr_0.95fr] lg:items-start">
           <div className="space-y-5">
@@ -727,7 +651,7 @@ const AboutPage = () => {
               <Link to="/contact">Contact Illume</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-full border-white/15 bg-transparent px-6 text-[11px] uppercase tracking-[0.24em] text-white hover:bg-white/10 hover:text-white">
-              <Link to="/vendor/login">Vendor Registration</Link>
+              <Link to="/contact?type=Vendor Registration">Vendor Registration</Link>
             </Button>
           </div>
         </div>
