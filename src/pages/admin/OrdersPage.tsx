@@ -37,92 +37,35 @@ type OrderSource = "online" | "offline";
  * Analytics note: returns "online" | "offline" for easy grouping in dashboards.
  */
 const getOrderSource = (order: any): OrderSource => {
-  // ── 1. Explicit channel/source fields (future-proof) ──────────────────────
-  const channelFields = [
-    order.source,
-    order.order_channel,
-    order.channel,
-    order.created_from,
-    order.created_via,
-    order.platform,
-    order.customer_type,
-  ];
-
-  const OFFLINE_CHANNEL_KW = ["pos", "offline", "walk_in", "walkin", "store", "counter"];
-  const ONLINE_CHANNEL_KW  = ["web", "ecommerce", "online", "website", "storefront"];
-
-  for (const field of channelFields) {
-    if (!field) continue;
-    const norm = String(field).toLowerCase().replace(/[^a-z_]/g, "");
-    if (OFFLINE_CHANNEL_KW.some((k) => norm.includes(k))) {
-      console.debug("[OrderSource]", order.id, "| field:", field, "→ offline");
-      return "offline";
-    }
-    if (ONLINE_CHANNEL_KW.some((k) => norm.includes(k))) {
-      console.debug("[OrderSource]", order.id, "| field:", field, "→ online");
-      return "online";
-    }
-  }
-
-  // ── 2. payment_mode (most reliable column that actually exists) ────────────
-  //   Website ecommerce checkout always sets payment_mode = 'ONLINE'.
-  //   POS always uses a physical mode: CASH, UPI, CARD, BANK_TRANSFER.
-  const pm = (order.payment_mode || "").toUpperCase();
-  if (pm === "ONLINE") {
-    console.debug("[OrderSource]", order.id, "| payment_mode:", pm, "→ online");
-    return "online";
-  }
-  if (["CASH", "UPI", "CARD", "BANK_TRANSFER"].includes(pm)) {
-    console.debug("[OrderSource]", order.id, "| payment_mode:", pm, "→ offline");
+  const rawSource = String(order?.source || "").toLowerCase();
+  
+  if (rawSource === "pos" || rawSource === "offline_pos") {
     return "offline";
   }
-
-  // ── 3. order_notes — POS writes "Order Source: POS" into notes ────────────
-  //   Available when the notes array is hydrated (e.g. from order-meta query
-  //   or when the main orders query joins order_notes).
-  const notes: Array<{ note?: string | null }> = order.order_notes || [];
-  for (const n of notes) {
-    const text = (n.note || "").toLowerCase();
-    if (text.includes("order source: pos") || text.includes("source: pos")) {
-      console.debug("[OrderSource]", order.id, "| note hint → offline");
-      return "offline";
-    }
-    if (text.includes("order source: online") || text.includes("order source: web")) {
-      console.debug("[OrderSource]", order.id, "| note hint → online");
-      return "online";
-    }
-  }
-
-  // ── 4. Last resort: customer name (only for truly ambiguous legacy rows) ───
-  const customerName = (order.customer_name || "").toLowerCase();
-  if (
-    customerName === "walk-in customer" ||
-    customerName === "walk in customer" ||
-    customerName === "walkin" ||
-    customerName === "walkin customer"
-  ) {
-    console.debug("[OrderSource]", order.id, "| customer name fallback → offline");
-    return "offline";
-  }
-
-  // Default: assume Online for old ecommerce records with no metadata
-  console.debug("[OrderSource]", order.id, "| pm:", pm || "null", "→ online (default)");
+  
   return "online";
 };
 
-const SourceBadge = ({ source }: { source: OrderSource }) => {
-  if (source === "offline") {
+const SourceBadge = ({ order }: { order: any }) => {
+  const rawSource = String(order?.source || "").toLowerCase();
+  
+  let label = "Online";
+  if (rawSource === "pos") label = "POS";
+  else if (rawSource === "offline_pos") label = "Offline POS";
+  else if (rawSource === "online") label = "Online";
+
+  if (rawSource === "pos" || rawSource === "offline_pos") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        Offline
+        {label}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      Online
+      {label}
     </span>
   );
 };
@@ -623,7 +566,7 @@ const OrdersPage = () => {
         </TableCell>
         <TableCell className="text-sm">{schoolNames.join(", ") || "—"}</TableCell>
         <TableCell>
-          <SourceBadge source={source} />
+          <SourceBadge order={order} />
         </TableCell>
         <TableCell className="text-sm max-w-[200px] truncate" title={itemSummary}>
           {itemSummary || "—"}
@@ -804,7 +747,7 @@ const OrdersPage = () => {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</p>
-                  <SourceBadge source={getOrderSource(selected)} />
+                  <SourceBadge order={selected} />
                 </div>
               </div>
 

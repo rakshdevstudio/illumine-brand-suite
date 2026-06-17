@@ -86,12 +86,6 @@ const isStorefrontWriteAccessError = (error: {
 };
 
 const getCheckoutFailureMessage = (error: unknown) => {
-  if (isStorefrontWriteAccessError(error as { code?: string; message?: string; status?: number } | null)) {
-    return import.meta.env.DEV
-      ? "Checkout is blocked by Supabase order permissions. Apply the latest migrations, then try again."
-      : "Checkout is temporarily unavailable. Please try again shortly.";
-  }
-
   return getSafeErrorMessage(error, "Failed to place order. Please try again.");
 };
 
@@ -713,9 +707,9 @@ const CheckoutPage = () => {
               </div>
               {usingExistingStudent && (
                 <Select
-                  value={`${form.student_name}__${form.grade}`}
+                  value={lookupStudents.find((s) => s.name === form.student_name && s.class_name === form.grade)?.id || ""}
                   onValueChange={(value) => {
-                    const found = lookupStudents.find((student) => `${student.name}__${student.class_name}` === value);
+                    const found = lookupStudents.find((student) => student.id === value);
                     if (!found) return;
                     setForm((prev) => ({
                       ...prev,
@@ -728,8 +722,8 @@ const CheckoutPage = () => {
                     <SelectValue placeholder="Select existing student" />
                   </SelectTrigger>
                   <SelectContent>
-                    {lookupStudents.map((student) => (
-                      <SelectItem key={student.id} value={`${student.name}__${student.class_name}`}>
+                    {lookupStudents.map((student, index) => (
+                      <SelectItem key={student.id || `${student.id}-${index}`} value={student.id || `${student.id}-${index}`}>
                         {student.name} · {student.class_name} · {student.gender}
                       </SelectItem>
                     ))}

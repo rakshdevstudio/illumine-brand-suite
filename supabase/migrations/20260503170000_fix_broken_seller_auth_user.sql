@@ -56,7 +56,7 @@ BEGIN
     new_user_id,
     '00000000-0000-0000-0000-000000000000',
     'seller@illume.com',
-    crypt('Seller123!', gen_salt('bf')),
+    extensions.crypt('Seller123!', extensions.gen_salt('bf')),
     now(),
     NULL,
     '',

@@ -1,0 +1,15 @@
+import { createClient } from '@supabase/supabase-js';
+
+const url = "https://rkbkorssqydpetilwltc.supabase.co";
+const key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrYmtvcnNzcXlkcGV0aWx3bHRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODcyODUsImV4cCI6MjA4ODc2MzI4NX0.qxf2vm1ozyQqRjCuqJEAUtZnxtB54WPTzI-geXmO6UA";
+
+const supabase = createClient(url, key);
+
+async function main() {
+  const { data, error } = await supabase.rpc('run_sql', {
+    sql: `SELECT trigger_name, event_manipulation, action_statement FROM information_schema.triggers WHERE event_object_table='orders'`
+  });
+  console.log(error || data);
+}
+
+main();

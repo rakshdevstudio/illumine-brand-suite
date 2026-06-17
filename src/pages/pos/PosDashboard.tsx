@@ -532,6 +532,7 @@ const PosDashboard = () => {
         school_id: selectedSchoolId,
         total_amount: totalAmount,
         status: "PACKED",
+        source: "pos",
       };
 
       const { data: order, error: orderError } = await (supabase as any)
