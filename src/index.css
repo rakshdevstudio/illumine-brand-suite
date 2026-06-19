@@ -192,3 +192,35 @@
     animation: none;
   }
 }
+
+.barcode-label {
+  width: 60mm !important;
+  height: 40mm !important;
+  display: block;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  page-break-after: always;
+}
+
+@page {
+  size: 60mm 40mm;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    width: 60mm;
+    height: 40mm;
+    margin: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .barcode-label {
+    width: 60mm;
+    height: 40mm;
+  }
+}
+

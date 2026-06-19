@@ -284,7 +284,7 @@ const OrdersPage = () => {
           throw error;
         }
 
-        console.log("Orders loaded:", data?.length, "found");
+        // Removed console.log
         return data || [];
       } catch (err) {
         console.error("Unexpected error in orders query:", err);

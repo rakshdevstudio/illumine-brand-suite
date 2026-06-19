@@ -7,15 +7,14 @@
 import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Image as ImageIcon, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import {
   type LabelData,
-  type LabelSize,
-  renderBarcodeToDataUrl,
+  generateLabelPng,
   downloadLabelPng,
   downloadLabelsPdf,
+  downloadLabelTspl,
   printLabel,
 } from "@/lib/barcode";
 
@@ -25,44 +24,41 @@ interface BarcodeLabelModalProps {
   labelData: LabelData | null;
 }
 
-const LABEL_SIZES: { value: LabelSize; label: string }[] = [
-  { value: "100x50", label: "100mm × 50mm (Standard)" },
-  { value: "75x50", label: "75mm × 50mm (Compact)" },
-];
-
-const formatPrice = (price: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(price);
-
 export default function BarcodeLabelModal({
   open,
   onOpenChange,
   labelData,
 }: BarcodeLabelModalProps) {
-  const [labelSize, setLabelSize] = useState<LabelSize>("100x50");
   const [isPdfLoading, setIsPdfLoading] = useState(false);
 
-  // ── Memoize barcode data URL — only regenerates when barcodeValue changes ──
-  const barcodeSrc = useMemo(() => {
+  // ── Memoize exact printable label PNG ──
+  const labelSrc = useMemo(() => {
     if (!labelData?.barcodeValue) return "";
     try {
-      return renderBarcodeToDataUrl(labelData.barcodeValue);
+      // Generate the exact 60x40mm high-res label for the preview
+      return generateLabelPng(labelData);
     } catch {
       return "";
     }
-  }, [labelData?.barcodeValue]);
+  }, [labelData]);
 
   if (!labelData) return null;
 
   const handleDownloadPng = () => {
     try {
-      downloadLabelPng(labelData, labelSize);
+      downloadLabelPng(labelData);
       toast.success("PNG label downloaded");
     } catch {
       toast.error("Failed to generate PNG label");
+    }
+  };
+
+  const handleDownloadTspl = () => {
+    try {
+      downloadLabelTspl(labelData);
+      toast.success("TSPL configuration downloaded");
+    } catch {
+      toast.error("Failed to generate TSPL configuration");
     }
   };
 
@@ -71,7 +67,6 @@ export default function BarcodeLabelModal({
     try {
       await downloadLabelsPdf(
         [labelData],
-        labelSize,
         `ILLUME-label-${labelData.barcodeValue}.pdf`
       );
       toast.success("PDF label downloaded");
@@ -85,7 +80,7 @@ export default function BarcodeLabelModal({
 
   const handlePrint = () => {
     try {
-      printLabel(labelData, labelSize);
+      printLabel(labelData);
       toast.info("Sending to printer…");
     } catch {
       toast.error("Failed to open print dialog");
@@ -101,116 +96,83 @@ export default function BarcodeLabelModal({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Label Preview Card */}
-        <div className="mt-2 rounded-2xl border border-border bg-white p-5 shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
-          {/* Brand header */}
-          <p className="text-center text-[10px] font-semibold tracking-[0.5em] uppercase text-neutral-900 mb-3">
-            ILLUME
+        {/* Label Preview Container */}
+        <div className="mt-2 rounded-2xl border border-border bg-white p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06)] flex flex-col items-center justify-center">
+          <p className="text-xs text-muted-foreground uppercase tracking-[0.15em] mb-4">
+            WYSIWYG Print Preview (60mm × 40mm)
           </p>
 
-          <div className="w-full h-px bg-neutral-100 mb-4" />
-
-          {/* Barcode image — rendered once, no reflow on modal open */}
-          <div className="flex justify-center mb-4">
-            {barcodeSrc ? (
-              <img
-                src={barcodeSrc}
-                alt={`Barcode ${labelData.barcodeValue}`}
-                className="max-w-full h-auto"
-                style={{ imageRendering: "pixelated" }}
-              />
-            ) : (
-              <div className="h-16 flex items-center justify-center text-xs text-muted-foreground">
-                Unable to render barcode
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1 text-center">
-            {/* Product name */}
-            <p className="text-sm font-semibold tracking-tight text-neutral-900 truncate px-2">
-              {labelData.productName}
-            </p>
-
-            {/* Size · Price */}
-            <p className="text-sm text-neutral-600">
-              Size: <span className="font-medium">{labelData.size}</span>
-              <span className="mx-2 text-neutral-300">·</span>
-              <span className="font-semibold text-neutral-900">{formatPrice(labelData.price)}</span>
-            </p>
-
-            {/* School · Class */}
-            {(labelData.schoolName || labelData.className) && (
-              <p className="text-xs text-neutral-400 tracking-wide">
-                {[labelData.schoolName, labelData.className].filter(Boolean).join(" · ")}
-              </p>
-            )}
-
-            {/* Brand footer */}
-            <p className="text-[10px] text-neutral-300 tracking-widest uppercase pt-1">
-              Brand: ILLUME
-            </p>
-          </div>
+          {/* Actual generated label image */}
+          {labelSrc ? (
+            <img
+              src={labelSrc}
+              alt={`Barcode ${labelData.barcodeValue}`}
+              className="max-w-full shadow-md border border-neutral-200"
+              style={{
+                aspectRatio: "60/40",
+                objectFit: "contain",
+                width: "100%",
+                maxWidth: "360px", // Reasonable display width
+              }}
+            />
+          ) : (
+            <div className="h-40 w-full flex items-center justify-center text-xs text-muted-foreground border border-dashed rounded-md">
+              Unable to render label
+            </div>
+          )}
         </div>
 
         {/* Barcode value */}
-        <div className="flex items-center justify-between rounded-xl border border-border/60 bg-neutral-50 px-4 py-2.5">
+        <div className="flex items-center justify-between rounded-xl border border-border/60 bg-neutral-50 px-4 py-3">
           <span className="text-xs text-muted-foreground uppercase tracking-[0.15em]">Barcode</span>
           <span className="font-mono text-sm font-medium tracking-widest text-neutral-900">
             {labelData.barcodeValue}
           </span>
         </div>
 
-        {/* Label Size Selector — name on Select, aria-label on SelectTrigger */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground uppercase tracking-[0.15em] shrink-0">Label Size</span>
-          <Select name="labelSize" value={labelSize} onValueChange={(v) => setLabelSize(v as LabelSize)}>
-            <SelectTrigger className="h-9 text-xs flex-1" aria-label="Barcode Label Size">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LABEL_SIZES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
+        <div className="grid grid-cols-4 gap-2 pt-2">
           <Button
             variant="outline"
             size="sm"
-            className="h-10 text-xs tracking-[0.1em] uppercase gap-1.5"
+            className="h-10 text-[10px] tracking-wide uppercase gap-1"
             onClick={handleDownloadPng}
           >
-            <ImageIcon className="h-3.5 w-3.5" />
+            <ImageIcon className="h-3 w-3" />
             PNG
           </Button>
 
           <Button
             variant="outline"
             size="sm"
-            className="h-10 text-xs tracking-[0.1em] uppercase gap-1.5"
+            className="h-10 text-[10px] tracking-wide uppercase gap-1"
+            onClick={handleDownloadTspl}
+          >
+            <FileText className="h-3 w-3" />
+            TSPL
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 text-[10px] tracking-wide uppercase gap-1"
             onClick={handleDownloadPdf}
             disabled={isPdfLoading}
           >
             {isPdfLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
-              <FileText className="h-3.5 w-3.5" />
+              <FileText className="h-3 w-3" />
             )}
             PDF
           </Button>
 
           <Button
             size="sm"
-            className="h-10 text-xs tracking-[0.1em] uppercase gap-1.5"
+            className="h-10 text-[10px] tracking-wide uppercase gap-1"
             onClick={handlePrint}
           >
-            <Printer className="h-3.5 w-3.5" />
+            <Printer className="h-3 w-3" />
             Print
           </Button>
         </div>
