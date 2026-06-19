@@ -236,6 +236,67 @@ const getClassRange = (classes: SchoolWithClasses["classes"]) => {
   return `${active[0].name} – ${active[active.length - 1].name}`;
 };
 
+const OfferCard = ({ item, index, isNotLast, scrollYProgress }: { item: any, index: number, isNotLast: boolean, scrollYProgress: any }) => {
+  const parallaxY = useTransform(
+    scrollYProgress,
+    [0, 1],
+    [0, (index === 1 ? 0.03 : 0.05) * -200]
+  );
+
+  return (
+    <motion.div
+      variants={offerCardVariants}
+      custom={index}
+      initial="hidden"
+      whileInView="visible"
+      whileHover="hover"
+      viewport={{ once: true, amount: 0.4 }}
+      className="relative group"
+    >
+      <motion.div
+        style={{ y: parallaxY }}
+        className="bg-background px-8 py-10 h-full flex flex-col items-center gap-3 text-center"
+      >
+        <motion.div
+          variants={{
+            hover: {
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.0), rgba(0,0,0,0.02), rgba(0,0,0,0.05))",
+            },
+          }}
+          className="absolute inset-0"
+        />
+        <motion.div variants={offerIconVariants}>
+          <item.icon
+            className="h-6 w-6 mb-2 text-muted-foreground/60 group-hover:text-foreground transition-colors"
+            strokeWidth={1.5}
+          />
+        </motion.div>
+        <span className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground/40">
+          {item.num}
+        </span>
+        <h4 className="text-sm tracking-[0.22em] uppercase font-normal">
+          {item.title}
+        </h4>
+        <p className="text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
+          {item.body}
+        </p>
+      </motion.div>
+
+      {isNotLast && (
+        <motion.div
+          variants={offerDividerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.5 }}
+          className="absolute top-0 right-0 w-px bg-border hidden md:block"
+          style={{ originY: 0 }}
+        />
+      )}
+    </motion.div>
+  );
+};
+
 const StorePage = () => {
   const profile = useStudentProfile((s) => s.profile);
   const clearProfile = useStudentProfile((s) => s.clearProfile);
@@ -606,68 +667,15 @@ const StorePage = () => {
             What We Offer
           </motion.h3>
           <div className="grid grid-cols-1 md:grid-cols-3">
-            {OFFER_CARDS.map((item, i) => {
-              const isNotLast = i < OFFER_CARDS.length - 1;
-              const parallaxY = useTransform(
-                scrollYProgress,
-                [0, 1],
-                [0, (i === 1 ? 0.03 : 0.05) * -200]
-              );
-
-              return (
-                <motion.div
-                  key={item.num}
-                  variants={offerCardVariants}
-                  custom={i}
-                  initial="hidden"
-                  whileInView="visible"
-                  whileHover="hover"
-                  viewport={{ once: true, amount: 0.4 }}
-                  className="relative group"
-                >
-                  <motion.div
-                    style={{ y: parallaxY }}
-                    className="bg-background px-8 py-10 h-full flex flex-col items-center gap-3 text-center"
-                  >
-                    <motion.div
-                      variants={{
-                        hover: {
-                          background:
-                            "linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.0), rgba(0,0,0,0.02), rgba(0,0,0,0.05))",
-                        },
-                      }}
-                      className="absolute inset-0"
-                    />
-                    <motion.div variants={offerIconVariants}>
-                      <item.icon
-                        className="h-6 w-6 mb-2 text-muted-foreground/60 group-hover:text-foreground transition-colors"
-                        strokeWidth={1.5}
-                      />
-                    </motion.div>
-                    <span className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground/40">
-                      {item.num}
-                    </span>
-                    <h4 className="text-sm tracking-[0.22em] uppercase font-normal">
-                      {item.title}
-                    </h4>
-                    <p className="text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                      {item.body}
-                    </p>
-                  </motion.div>
-
-                  {isNotLast && (
-                    <motion.div
-                      variants={offerDividerVariants}
-                      initial="hidden"
-                      whileInView="visible"
-                      viewport={{ once: true, amount: 0.5 }}
-                      className="absolute top-0 right-0 w-px bg-border hidden md:block"
-                      style={{ originY: 0 }}
-                    />
-                  )}
-                </motion.div>
-              );
-            })}
+            {OFFER_CARDS.map((item, i) => (
+              <OfferCard 
+                key={item.num} 
+                item={item} 
+                index={i} 
+                isNotLast={i < OFFER_CARDS.length - 1} 
+                scrollYProgress={scrollYProgress} 
+              />
+            ))}
           </div>
         </div>
       </section>

@@ -16,7 +16,7 @@ const SchoolsPage = () => {
   const canCreateSchoolLogin = role === "super_admin" || role === "admin";
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [createSchoolUserOpen, setCreateSchoolUserOpen] = useState(false);
   const [creatingSchoolUser, setCreatingSchoolUser] = useState(false);
   const [schoolUserForm, setSchoolUserForm] = useState({
@@ -48,19 +48,19 @@ const SchoolsPage = () => {
   const { data: schoolUsers = [] } = useQuery({
     queryKey: ["admin-school-users"],
     queryFn: async () => {
-      const { data: profiles, error: profilesError } = await (supabase as any)
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
       if (profilesError) throw profilesError;
 
-      const { data: roles, error: rolesError } = await (supabase as any)
+      const { data: roles, error: rolesError } = await supabase
         .from("user_roles")
         .select("user_id, role");
       if (rolesError) throw rolesError;
 
       const roleMap = new Map<string, string>();
-      (roles ?? []).forEach((entry: any) => roleMap.set(entry.user_id, entry.role));
+      (roles ?? []).forEach((entry: Record<string, unknown>) => roleMap.set(String(entry.user_id), String(entry.role)));
 
       let userSchoolMapByUserId = new Map<string, string>();
       const { data: userSchoolMappings } = await (supabase as any)
@@ -71,26 +71,26 @@ const SchoolsPage = () => {
       );
 
       return (profiles ?? [])
-        .map((profile: any) => ({
-          id: profile.id,
-          full_name: profile.full_name,
-          email: profile.email,
-          status: profile.status,
-          role: roleMap.get(profile.id) ?? "unknown",
+        .map((profile: Record<string, unknown>) => ({
+          id: String(profile.id),
+          full_name: String(profile.full_name || ""),
+          email: String(profile.email || ""),
+          status: String(profile.status || "active"),
+          role: roleMap.get(String(profile.id)) ?? "unknown",
           school_id:
-            profile.school_id ??
-            userSchoolMapByUserId.get(profile.id) ??
-            readSchoolIdFromAvatarFallback(profile.avatar_url) ??
+            (profile.school_id as string | undefined) ??
+            userSchoolMapByUserId.get(String(profile.id)) ??
+            readSchoolIdFromAvatarFallback(profile.avatar_url as string | null | undefined) ??
             null,
         }))
-        .filter((entry: any) => entry.role === "school_user");
+        .filter((entry: { role: string }) => entry.role === "school_user");
     },
   });
 
   const { data: linkedProducts = [] } = useQuery({
     queryKey: ["admin-school-linked-products"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("products")
         .select("id, name, school_id, status, price, schools(name)")
         .not("school_id", "is", null)
@@ -103,7 +103,7 @@ const SchoolsPage = () => {
   const { data: schoolOrders = [] } = useQuery({
     queryKey: ["admin-school-performance-orders"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("orders")
         .select("id, school_id, total_amount, status, created_at")
         .not("school_id", "is", null)
@@ -115,8 +115,8 @@ const SchoolsPage = () => {
 
   const metricsBySchool = useMemo(() => {
     const map = new Map<string, { orders: number; revenue: number; pending: number; outstanding: number }>();
-    schoolOrders.forEach((row: any) => {
-      const schoolId = row.school_id;
+    schoolOrders.forEach((row: Record<string, unknown>) => {
+      const schoolId = row.school_id as string | undefined;
       if (!schoolId) return;
       const m = map.get(schoolId) ?? { orders: 0, revenue: 0, pending: 0, outstanding: 0 };
       m.orders += 1;
@@ -139,7 +139,7 @@ const SchoolsPage = () => {
     }
     const slug = form.slug || generateSlug(form.name);
     if (editing) {
-      const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", editing.id);
+      const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", String(editing.id));
       if (error) return toast.error(error.message || "Failed to update school");
       toast.success("School updated");
     } else {
@@ -161,7 +161,7 @@ const SchoolsPage = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
   };
 
-  const callManageFunction = async (body: any) => {
+  const callManageFunction = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("manage-admin-users", { body });
     if (error) {
       const response = (error as { context?: Response }).context;
@@ -175,7 +175,7 @@ const SchoolsPage = () => {
       }
       throw new Error(errorMessage);
     }
-    if ((data as any)?.error) throw new Error((data as any).error);
+    if (data && typeof data === 'object' && 'error' in data && data.error) throw new Error(String(data.error));
     return data;
   };
 
@@ -203,16 +203,16 @@ const SchoolsPage = () => {
       setCreateSchoolUserOpen(false);
       setSchoolUserForm({ full_name: "", email: "", password: "", school_id: "" });
       await queryClient.invalidateQueries({ queryKey: ["admin-school-users"] });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create school login.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to create school login.");
     } finally {
       setCreatingSchoolUser(false);
     }
   };
 
-  const openEdit = (school: any) => {
+  const openEdit = (school: Record<string, unknown>) => {
     setEditing(school);
-    setForm({ name: school.name, code: school.code || "", slug: school.slug, status: school.status || "active" });
+    setForm({ name: String(school.name || ""), code: String(school.code || ""), slug: String(school.slug || ""), status: String(school.status || "active") });
     setDialogOpen(true);
   };
 
@@ -239,16 +239,16 @@ const SchoolsPage = () => {
               <TableHeader><TableRow><TableHead>School Name</TableHead><TableHead>Code</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>
                 {isLoading ? <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow> : null}
-                {schools.map((school: any) => (
-                  <TableRow key={school.id}>
-                    <TableCell>{school.name}</TableCell>
-                    <TableCell>{school.code || "-"}</TableCell>
-                    <TableCell>{school.status || "active"}</TableCell>
-                    <TableCell>{new Date(school.created_at).toLocaleDateString("en-IN")}</TableCell>
+                {schools.map((school: Record<string, unknown>) => (
+                  <TableRow key={String(school.id)}>
+                    <TableCell>{String(school.name || "")}</TableCell>
+                    <TableCell>{String(school.code || "-")}</TableCell>
+                    <TableCell>{String(school.status || "active")}</TableCell>
+                    <TableCell>{new Date(String(school.created_at)).toLocaleDateString("en-IN")}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={() => openEdit(school)}>Edit</Button>
-                        <Button variant="outline" size="sm" onClick={() => handleStatusToggle(school.id, school.status || "active")}>{school.status === "inactive" ? "Activate" : "Deactivate"}</Button>
+                        <Button variant="outline" size="sm" onClick={() => handleStatusToggle(String(school.id), String(school.status || "active"))}>{school.status === "inactive" ? "Activate" : "Deactivate"}</Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -287,12 +287,12 @@ const SchoolsPage = () => {
                     </TableCell>
                   </TableRow>
                 ) : null}
-                {schoolUsers.map((row: any) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.full_name || "-"}</TableCell>
-                    <TableCell>{row.email || "-"}</TableCell>
-                    <TableCell>{schools.find((s: any) => s.id === row.school_id)?.name ?? "-"}</TableCell>
-                    <TableCell>{row.status || "active"}</TableCell>
+                {schoolUsers.map((row: Record<string, unknown>) => (
+                  <TableRow key={String(row.id)}>
+                    <TableCell>{String(row.full_name || "-")}</TableCell>
+                    <TableCell>{String(row.email || "-")}</TableCell>
+                    <TableCell>{schools.find((s: Record<string, unknown>) => s.id === row.school_id)?.name ?? "-"}</TableCell>
+                    <TableCell>{String(row.status || "active")}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -305,12 +305,12 @@ const SchoolsPage = () => {
             <Table>
               <TableHeader><TableRow><TableHead>Product</TableHead><TableHead>School</TableHead><TableHead>Price</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
               <TableBody>
-                {linkedProducts.map((row: any) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell>{row.schools?.name ?? schools.find((s: any) => s.id === row.school_id)?.name ?? "-"}</TableCell>
+                {linkedProducts.map((row: Record<string, unknown>) => (
+                  <TableRow key={String(row.id)}>
+                    <TableCell>{String(row.name || "")}</TableCell>
+                    <TableCell>{(row.schools as { name?: string })?.name ?? schools.find((s: Record<string, unknown>) => s.id === row.school_id)?.name ?? "-"}</TableCell>
                     <TableCell>₹{Number(row.price ?? 0).toLocaleString("en-IN")}</TableCell>
-                    <TableCell>{row.status}</TableCell>
+                    <TableCell>{String(row.status || "active")}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -323,11 +323,11 @@ const SchoolsPage = () => {
             <Table>
               <TableHeader><TableRow><TableHead>School</TableHead><TableHead>Orders</TableHead><TableHead>Revenue</TableHead><TableHead>Pending Orders</TableHead><TableHead>Payment Health</TableHead></TableRow></TableHeader>
               <TableBody>
-                {schools.map((school: any) => {
-                  const metric = metricsBySchool.get(school.id) ?? { orders: 0, revenue: 0, pending: 0, outstanding: 0 };
+                {schools.map((school: Record<string, unknown>) => {
+                  const metric = metricsBySchool.get(String(school.id)) ?? { orders: 0, revenue: 0, pending: 0, outstanding: 0 };
                   return (
-                    <TableRow key={school.id}>
-                      <TableCell>{school.name}</TableCell>
+                    <TableRow key={String(school.id)}>
+                      <TableCell>{String(school.name || "")}</TableCell>
                       <TableCell>{metric.orders}</TableCell>
                       <TableCell>₹{metric.revenue.toLocaleString("en-IN")}</TableCell>
                       <TableCell>{metric.pending}</TableCell>
@@ -384,8 +384,8 @@ const SchoolsPage = () => {
                   <SelectValue placeholder="Select school" />
                 </SelectTrigger>
                 <SelectContent>
-                  {schools.map((school: any) => (
-                    <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
+                  {schools.map((school: Record<string, unknown>) => (
+                    <SelectItem key={String(school.id)} value={String(school.id)}>{String(school.name || "")}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

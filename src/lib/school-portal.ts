@@ -300,7 +300,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
     if (error) {
       logger.warn("School portal could not load ordered variants", error.message);
     } else {
-      orderedVariants = data ?? [];
+      orderedVariants = (data ?? []).map(v => ({ ...v, stock: 0 }));
     }
   }
 
@@ -329,7 +329,7 @@ export const fetchSchoolPortalData = async (schoolId: string): Promise<SchoolPor
     if (error) {
       logger.warn("School portal could not load low stock variants", error.message);
     } else {
-      inventoryVariants = data ?? [];
+      inventoryVariants = (data ?? []).map(v => ({ ...v, stock: 0 }));
     }
   }
 

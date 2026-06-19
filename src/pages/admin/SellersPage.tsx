@@ -101,6 +101,11 @@ const SellersPage = () => {
   const [overrideCategory, setOverrideCategory] = useState("");
   const [overrideRate, setOverrideRate] = useState("15");
 
+  const [generatePayoutOpen, setGeneratePayoutOpen] = useState(false);
+  const [generateSellerId, setGenerateSellerId] = useState("");
+  const [generatePeriodStart, setGeneratePeriodStart] = useState("");
+  const [generatePeriodEnd, setGeneratePeriodEnd] = useState("");
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketplace-sellers"],
     queryFn: async () => {
@@ -238,12 +243,38 @@ const SellersPage = () => {
       });
       if (error) throw error;
     },
-    onSuccess: async () => {
-      toast.success("Payout marked paid.");
+    onSuccess: () => {
+      toast.success("Payout marked as paid.");
       setPayoutReference("");
-      await queryClient.invalidateQueries({ queryKey: ["admin-seller-payouts"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-seller-payouts"] });
     },
-    onError: (err: any) => toast.error(err.message || "Failed to mark payout paid."),
+  });
+
+  const generatePayout = useMutation({
+    mutationFn: async () => {
+      if (!generateSellerId) throw new Error("Please select a seller");
+      if (!generatePeriodStart) throw new Error("Please select a start date");
+      if (!generatePeriodEnd) throw new Error("Please select an end date");
+
+      const { data, error } = await (supabase as any).rpc("generate_seller_payout", {
+        p_seller_id: generateSellerId,
+        p_period_start: generatePeriodStart,
+        p_period_end: generatePeriodEnd,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Payout generated successfully");
+      setGeneratePayoutOpen(false);
+      setGenerateSellerId("");
+      setGeneratePeriodStart("");
+      setGeneratePeriodEnd("");
+      queryClient.invalidateQueries({ queryKey: ["admin-seller-payouts"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to generate payout: ${err.message || "Unknown error"}`);
+    },
   });
 
   const upsertGlobalRule = useMutation({
@@ -710,12 +741,71 @@ const SellersPage = () => {
         </TabsContent>
 
         <TabsContent value="payouts" className="space-y-4">
-          <Input
-            className="max-w-md rounded-full bg-white"
-            value={payoutReference}
-            onChange={(event) => setPayoutReference(event.target.value)}
-            placeholder="Payment reference for paid payouts"
-          />
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <Input
+              className="max-w-md rounded-full bg-white"
+              value={payoutReference}
+              onChange={(event) => setPayoutReference(event.target.value)}
+              placeholder="Payment reference for paid payouts"
+            />
+            <Dialog open={generatePayoutOpen} onOpenChange={setGeneratePayoutOpen}>
+              <DialogTrigger asChild>
+                <Button className="rounded-full shadow-[0_0_40px_-10px_rgba(15,23,42,0.6)]">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Generate Payout
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Generate Seller Payout</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="seller_id">Seller</Label>
+                    <select
+                      id="seller_id"
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={generateSellerId}
+                      onChange={(e) => setGenerateSellerId(e.target.value)}
+                    >
+                      <option value="">Select a seller...</option>
+                      {(data ?? []).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="period_start">Period Start</Label>
+                    <Input
+                      id="period_start"
+                      type="date"
+                      value={generatePeriodStart}
+                      onChange={(e) => setGeneratePeriodStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="period_end">Period End</Label>
+                    <Input
+                      id="period_end"
+                      type="date"
+                      value={generatePeriodEnd}
+                      onChange={(e) => setGeneratePeriodEnd(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    onClick={() => generatePayout.mutate()}
+                    disabled={generatePayout.isPending}
+                    className="w-full mt-2"
+                  >
+                    {generatePayout.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Generate Payout
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           <div className="overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[0_20px_70px_-52px_rgba(15,23,42,0.55)]">
             <Table>
               <TableHeader>

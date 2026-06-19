@@ -13,7 +13,7 @@ const xmlEscape = (value: string) =>
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
 const csvEscape = (value: CellValue) => `"${String(value ?? "").replace(/"/g, '""')}"`;

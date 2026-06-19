@@ -26,7 +26,7 @@ const StoreInvoicePage = () => {
       const fallback = await supabase
         .from("invoices")
         .select(
-          "id, order_id, invoice_number, customer_name, phone, address, subtotal, cgst, sgst, total, created_at, invoice_items(id, quantity, unit_price, gst_percentage, cgst_amount, sgst_amount, total, products(name), product_variants(size))",
+          "id, order_id, invoice_number, customer_name, phone, address, subtotal, cgst, sgst, total, company_name, company_gstin, company_address, company_phone, company_email, created_at, invoice_items(id, quantity, unit_price, gst_percentage, cgst_amount, sgst_amount, total, products(name), product_variants(size))",
         )
         .eq("id", invoiceId!)
         .single();

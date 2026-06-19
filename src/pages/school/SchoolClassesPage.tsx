@@ -56,7 +56,7 @@ const SchoolClassesPage = () => {
       if (s.class_id && byClass.has(s.class_id)) byClass.get(s.class_id)!.studentCount += 1;
     });
 
-    const byClassName = new Map(classes.map((c: any) => [String(c.name).toLowerCase(), c.id]));
+    const byClassName = new Map<string, string>(classes.map((c: any) => [String(c.name).toLowerCase(), String(c.id)]));
     (portalData?.orders ?? []).forEach((o: any) => {
       const classId = byClassName.get(String(o.resolvedClass || "").toLowerCase());
       if (!classId || !byClass.has(classId)) return;

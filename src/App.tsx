@@ -55,6 +55,9 @@ import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import ProductSegregationPage from "./pages/admin/ProductSegregationPage";
 import ActivityLogsPage from "./pages/admin/ActivityLogsPage";
 import ContactEnquiriesPage from "./pages/admin/ContactEnquiriesPage";
+import SettingsPage from "@/pages/admin/SettingsPage";
+import DataImportPage from "@/pages/admin/DataImportPage";
+import SystemHealthPage from "@/pages/admin/SystemHealthPage";
 import ReportsLayoutPage from "./pages/admin/reports/ReportsLayoutPage";
 import SalesReportPage from "./pages/admin/reports/SalesReportPage";
 import InventoryReportPage from "./pages/admin/reports/InventoryReportPage";
@@ -282,6 +285,9 @@ const App = () => (
             <Route path="ledger" element={<LedgerPage />} />
             <Route path="contact-enquiries" element={<ContactEnquiriesPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="import" element={<DataImportPage />} />
+            <Route path="health" element={<SystemHealthPage />} />
             <Route path="product-assignments" element={<ProductSegregationPage />} />
             <Route path="reports" element={<ReportsLayoutPage />}>
               <Route index element={<Navigate to="/admin/reports/sales" replace />} />

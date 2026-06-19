@@ -36,7 +36,7 @@ type OrderSource = "online" | "offline";
  *
  * Analytics note: returns "online" | "offline" for easy grouping in dashboards.
  */
-const getOrderSource = (order: any): OrderSource => {
+const getOrderSource = (order: Record<string, unknown>): OrderSource => {
   const rawSource = String(order?.source || "").toLowerCase();
   
   if (rawSource === "pos" || rawSource === "offline_pos") {
@@ -46,7 +46,7 @@ const getOrderSource = (order: any): OrderSource => {
   return "online";
 };
 
-const SourceBadge = ({ order }: { order: any }) => {
+const SourceBadge = ({ order }: { order: Record<string, unknown> }) => {
   const rawSource = String(order?.source || "").toLowerCase();
   
   let label = "Online";

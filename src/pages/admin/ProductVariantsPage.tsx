@@ -492,7 +492,7 @@ const ProductVariantsPage = () => {
     setBulkPdfLoading(true);
     try {
       const labels = selectedVariants.map((v: any) => buildLabelData(v));
-      await downloadLabelsPdf(labels, "100x50", `ILLUME-labels-${selectedVariants.length}.pdf`);
+      await downloadLabelsPdf(labels, `ILLUME-labels-${selectedVariants.length}.pdf`);
       toast.success(`PDF generated for ${selectedVariants.length} labels`);
     } catch {
       toast.error("Failed to generate bulk PDF");

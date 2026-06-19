@@ -2,8 +2,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-const ILLUME_STORE_ADDRESS =
-  "Income Tax Layout, 273, 5th Cross Rd, 8 Block, Govindaraja Nagar Ward, Naagarabhaavi, Bengaluru, Karnataka 560072";
+
 
 export type InvoiceItemView = {
   id: string;
@@ -28,6 +27,11 @@ export type InvoiceView = {
   cgst: number;
   sgst: number;
   total: number;
+  company_name?: string | null;
+  company_gstin?: string | null;
+  company_address?: string | null;
+  company_phone?: string | null;
+  company_email?: string | null;
   created_at: string;
   invoice_items: InvoiceItemView[];
 };
@@ -114,13 +118,27 @@ export const InvoiceDocument = ({
       drawText("ILLUME", left, y, 18, "bold");
       drawText("Tax Invoice", right, y + 4, 12, "bold", "right");
       y -= 18;
-      drawText("Illume Uniforms Pvt. Ltd.", left, y);
+      drawText(invoice.company_name || "Illume Uniforms Pvt. Ltd.", left, y);
       drawText("Invoice No: " + (invoice.invoice_number || "-"), right, y, 10, "bold", "right");
       y -= 14;
-      drawText(ILLUME_STORE_ADDRESS, left, y, 9);
-      drawText("Invoice Date: " + formatDate(invoice.created_at), right, y, 10, "bold", "right");
-      y -= 14;
-      drawText("GSTIN: 29ABCDE1234F1Z5", left, y, 9);
+      
+      const addressLines = (invoice.company_address || "Income Tax Layout, 273, 5th Cross Rd, 8 Block, Govindaraja Nagar Ward, Naagarabhaavi, Bengaluru, Karnataka 560072").split('\n');
+      for(const line of addressLines) {
+        drawText(line, left, y, 9);
+        y -= 12;
+      }
+      y -= 2; // adjust
+
+      drawText("Invoice Date: " + formatDate(invoice.created_at), right, y + 14, 10, "bold", "right");
+      drawText("GSTIN: " + (invoice.company_gstin || "29ABCDE1234F1Z5"), left, y, 9);
+      if (invoice.company_phone) {
+        y -= 12;
+        drawText("Phone: " + invoice.company_phone, left, y, 9);
+      }
+      if (invoice.company_email) {
+        y -= 12;
+        drawText("Email: " + invoice.company_email, left, y, 9);
+      }
 
       y -= 10;
       drawLine(y);
@@ -230,9 +248,11 @@ export const InvoiceDocument = ({
         <div className="grid grid-cols-2 gap-4 border-b border-black pb-4">
           <div>
             <h1 className="text-2xl font-bold tracking-wide">ILLUME</h1>
-            <p className="text-xs leading-5">Illume Uniforms Pvt. Ltd.</p>
-            <p className="text-xs leading-5">{ILLUME_STORE_ADDRESS}</p>
-            <p className="text-xs leading-5">GSTIN: 29ABCDE1234F1Z5</p>
+            <p className="text-xs leading-5">{invoice.company_name || "Illume Uniforms Pvt. Ltd."}</p>
+            <p className="text-xs leading-5 whitespace-pre-wrap">{invoice.company_address || "Income Tax Layout, 273, 5th Cross Rd, 8 Block, Govindaraja Nagar Ward, Naagarabhaavi, Bengaluru, Karnataka 560072"}</p>
+            <p className="text-xs leading-5">GSTIN: {invoice.company_gstin || "29ABCDE1234F1Z5"}</p>
+            {invoice.company_phone && <p className="text-xs leading-5">Phone: {invoice.company_phone}</p>}
+            {invoice.company_email && <p className="text-xs leading-5">Email: {invoice.company_email}</p>}
           </div>
           <div className="text-right">
             <p className="text-xs font-semibold uppercase">Tax Invoice</p>
