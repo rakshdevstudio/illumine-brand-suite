@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +34,7 @@ const fadeUp = {
 
 const stats = [
   { value: "100+", label: "schools served", icon: Building2 },
-  { value: "7 years", label: "refining the system", icon: Clock3 },
+  { value: "25 Years+", label: "refining the system", icon: Clock3 },
   { value: "4-step", label: "ordering clarity", icon: Layers3 },
   { value: "100%", label: "inventory visibility", icon: BadgeCheck },
 ];
@@ -161,6 +161,34 @@ const SectionTitle = ({ eyebrow, title, body }: { eyebrow: string; title: string
   </div>
 );
 
+const aboutSeo = {
+  title: "About Illume | Premium School Uniform Systems",
+  description:
+    "Discover Illume's 25 years of school uniform expertise, premium craftsmanship, and technology-led service for schools and parents.",
+  ogTitle: "About Illume | Premium School Uniform Systems",
+  ogDescription:
+    "Illume combines 25 years of uniform expertise with a premium, technology-led experience for schools, parents, and institutions.",
+};
+
+const setMetaContent = (selector: string, value: string) => {
+  const element = document.head.querySelector<HTMLMetaElement>(selector);
+  if (element) {
+    element.content = value;
+    return;
+  }
+
+  const isProperty = selector.includes('property="');
+  const attribute = isProperty ? "property" : "name";
+  const match = selector.match(isProperty ? /property=\"([^\"]+)\"/ : /name=\"([^\"]+)\"/);
+  const attributeValue = match?.[1];
+  if (!attributeValue) return;
+
+  const meta = document.createElement("meta");
+  meta.setAttribute(attribute, attributeValue);
+  meta.content = value;
+  document.head.appendChild(meta);
+};
+
 const AboutPage = () => {
   const prefersReducedMotion = useReducedMotion();
   const heroRef = useRef<HTMLElement | null>(null);
@@ -172,6 +200,26 @@ const AboutPage = () => {
   const heroY = useTransform(scrollYProgress, [0, 1], [0, prefersReducedMotion ? 0 : 120]);
   const heroScale = useTransform(scrollYProgress, [0, 1], [1, prefersReducedMotion ? 1 : 1.08]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0.78]);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    const previousDescription = document.head.querySelector<HTMLMetaElement>('meta[name="description"]')?.content;
+    const previousOgTitle = document.head.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content;
+    const previousOgDescription = document.head.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.content;
+
+    document.title = aboutSeo.title;
+    setMetaContent('meta[name="description"]', aboutSeo.description);
+    setMetaContent('meta[property="og:title"]', aboutSeo.ogTitle);
+    setMetaContent('meta[property="og:description"]', aboutSeo.ogDescription);
+
+    return () => {
+      document.title = previousTitle;
+
+      if (previousDescription) setMetaContent('meta[name="description"]', previousDescription);
+      if (previousOgTitle) setMetaContent('meta[property="og:title"]', previousOgTitle);
+      if (previousOgDescription) setMetaContent('meta[property="og:description"]', previousOgDescription);
+    };
+  }, []);
 
   return (
     <main className="bg-[#f4f1ea] text-neutral-950 overflow-hidden">
@@ -202,8 +250,8 @@ const AboutPage = () => {
               The school uniform experience, reimagined as a premium system.
             </h1>
             <p className="max-w-2xl text-base sm:text-lg leading-8 text-white/74">
-              Illume brings modern precision to a category that has long been fragmented. We build a calm, elegant,
-              scalable uniform journey for schools, parents, and operations teams.
+              Illume brings 25 years of uniform expertise into one calm, elegant, and scalable journey for schools,
+              parents, and operations teams.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <Button asChild className="rounded-full bg-white px-6 text-[11px] uppercase tracking-[0.24em] text-black hover:bg-white/90">
@@ -272,19 +320,50 @@ const AboutPage = () => {
 
               <div className="space-y-6 text-white/70 text-base sm:text-lg leading-relaxed font-light">
                 <motion.p variants={fadeUp}>
-                  Lotus Illume is a premium platform dedicated to delivering high-quality uniforms, shoes, and accessories. As a trusted partner to schools, institutions, and corporate organizations for over a decade, we provide value-driven solutions tailored to each client’s needs. Backed by expertise spanning 25 years, we have established ourselves as leaders in the uniform industry, proudly serving more than 100 institutions with a client retention rate exceeding 96%.
+                  Lotus Illume is a premium school uniform brand built around clarity, consistency, and service. With 25
+                  years of experience behind the business, we combine craftsmanship, inventory discipline, and digital
+                  workflows to make every school uniform journey feel orderly and reliable.
                 </motion.p>
                 <motion.p variants={fadeUp}>
-                  At Lotus Illume, our journey has always been about more than creating uniforms — it is about shaping identity, pride, and confidence. For over 25 years, we have worked relentlessly to ensure every product we design reflects the values and standards of the institutions we serve.
+                  Our role is simple: help schools present a consistent identity, help parents order with confidence, and
+                  help teams manage the process without guesswork. That is why institutions trust Illume to carry their
+                  standards with care.
                 </motion.p>
                 <motion.p variants={fadeUp}>
-                  Our commitment to quality, reliability, and customer satisfaction remains the foundation of our success. Together with a passionate team and loyal clients, we continue to build a legacy of trust, excellence, and innovation.
+                  Every product and every step of the journey is shaped to feel premium, accurate, and dependable. The
+                  result is a uniform experience that feels less like a transaction and more like a standard.
                 </motion.p>
               </div>
 
-              <motion.div variants={fadeUp} className="pt-10 border-t border-white/10 mt-10">
-                <p className="text-lg font-medium text-white tracking-tight">Prabhuraj</p>
-                <p className="text-xs uppercase tracking-[0.2em] text-amber-500/80 mt-1">CEO & Founder</p>
+              <motion.div variants={fadeUp} className="mt-10 border-t border-white/10 pt-10">
+                <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.78fr)] md:items-end">
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-[0.2em] text-amber-500/80">Founder & CEO</p>
+                      <p className="text-3xl sm:text-4xl lg:text-5xl font-light tracking-[-0.05em] text-white leading-[0.95]">
+                        Prabhu
+                      </p>
+                    </div>
+                    <p className="max-w-xl text-sm sm:text-base leading-7 text-white/65">
+                      “We build trust the same way we build uniforms: through discipline, consistency, and care.”
+                    </p>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-[10px] uppercase tracking-[0.28em] text-amber-200/90">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                      25 Years of Leadership
+                    </div>
+                  </div>
+
+                  <div className="group relative overflow-hidden rounded-[30px] border border-white/12 bg-white/5 p-2 shadow-[0_24px_70px_rgba(0,0,0,0.35)] transition-transform duration-500 hover:scale-[1.015]">
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12)_0%,transparent_18%,transparent_82%,rgba(0,0,0,0.22)_100%)] opacity-70" />
+                    <img
+                      src="/prabhuraj.webp"
+                      alt="Prabhu, Founder & CEO"
+                      loading="lazy"
+                      decoding="async"
+                      className="relative aspect-[4/5] w-full rounded-[24px] object-cover object-top"
+                    />
+                  </div>
+                </div>
               </motion.div>
             </motion.div>
 
@@ -359,10 +438,10 @@ const AboutPage = () => {
           {/* VALUES CARDS */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-24 lg:mt-32">
             {[
-              { title: "Premium Quality", body: "Fabrics and fits engineered for excellence and durability.", icon: Sparkles },
-              { title: "Operational Precision", body: "Technology-driven workflows that eliminate human error.", icon: Layers3 },
-              { title: "Trusted by Institutions", body: "Partner to the most distinguished schools globally.", icon: Building2 },
-              { title: "Innovation Led", body: "Continuously refining the standard for the modern campus.", icon: Star },
+              { title: "Premium quality", body: "Fabrics, fit, and finishing that hold up in daily school life.", icon: Sparkles },
+              { title: "Operational precision", body: "A guided workflow that reduces error and supports faster fulfilment.", icon: Layers3 },
+              { title: "Trusted by schools", body: "A partner that understands the expectations behind a school identity.", icon: Building2 },
+              { title: "Technology-led service", body: "A modern system that keeps the uniform experience clear for everyone.", icon: Star },
             ].map((card, idx) => {
               const Icon = card.icon;
               return (
@@ -394,8 +473,8 @@ const AboutPage = () => {
       <section className="mx-auto max-w-7xl px-6 py-24 sm:px-8 lg:px-10">
         <SectionTitle
           eyebrow="The challenge"
-          title="Uniform buying has too often felt operational, not human."
-          body="Families should not have to navigate unclear stock, mismatched forms, or uncertainty around what belongs to whom. The experience should feel effortless, not assembled from fragments."
+          title="Uniform buying has too often felt fragmented instead of guided."
+          body="Families should not have to navigate unclear stock, mismatched lists, or uncertainty about what belongs to each school. The experience should feel composed, not assembled from fragments."
         />
 
         <div className="mt-14 grid gap-5 lg:grid-cols-3">
@@ -429,7 +508,7 @@ const AboutPage = () => {
             <SectionTitle
               eyebrow="Illume’s answer"
               title="A refined system that turns complexity into clarity."
-              body="Illume is built to make the full journey feel premium and controlled. From catalog presentation to invoice generation, each step is designed to reduce friction and increase confidence."
+              body="Illume makes the full journey feel premium and controlled. From catalog presentation to invoice generation, each step is designed to reduce friction and build confidence."
             />
             <div className="grid gap-4 pt-4 sm:grid-cols-2">
               {solutionPoints.map((item) => {
@@ -484,8 +563,7 @@ const AboutPage = () => {
           <SectionTitle
             eyebrow="The architecture"
             title="School → Class → Gender → Product → Inventory → Orders → Invoice"
-            body="This is the core advantage. Illume does not treat the catalog as a flat list. It behaves like a thoughtful system, so the right item appears in the right context every time.
-          "
+            body="This is the core advantage. Illume does not treat the catalog as a flat list. It behaves like a thoughtful system, so the right item appears in the right context every time."
           />
 
           <div className="mt-14 grid gap-4 lg:grid-cols-7">
@@ -621,9 +699,9 @@ const AboutPage = () => {
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               ["Mission", "Make premium uniforms easy to order, easy to manage, and easy to trust."],
-              ["Standard", "Treat quality, documentation, and service as one connected experience."],
+              ["Vision", "Set the standard for how schools present and fulfil uniform programs."],
+              ["Core values", "Quality, reliability, respect, and discipline guide every interaction."],
               ["Promise", "Keep every interaction calm, accurate, and ready for scale."],
-              ["Future", "Build a system that grows with schools, campuses, and new markets."],
             ].map(([title, body]) => (
               <div key={title} className="rounded-[24px] border border-neutral-200 bg-neutral-50 p-5">
                 <p className="text-[10px] uppercase tracking-[0.3em] text-neutral-400">{title}</p>
