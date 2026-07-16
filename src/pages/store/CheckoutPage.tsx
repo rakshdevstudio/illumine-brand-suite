@@ -326,21 +326,23 @@ const CheckoutPage = () => {
         },
       });
 
+      console.log("createOrder response parsed JSON:", orderResponse);
+
       if (orderError) throw orderError;
-      if (!orderResponse?.success || !orderResponse?.order?.id) {
-        throw new Error(orderResponse?.message || "Failed to create Razorpay order");
+      if (!orderResponse?.success || !orderResponse?.order_id) {
+        throw new Error(orderResponse?.message || orderResponse?.error || "Failed to create Razorpay order");
       }
 
       const Razorpay = await loadRazorpayCheckout();
 
       await new Promise<void>((resolve, reject) => {
-        const razorpay = new Razorpay({
+        const razorpayOptions = {
           key: razorpayKeyId,
-          amount: orderResponse.order.amount,
-          currency: orderResponse.order.currency,
+          amount: orderResponse.amount,
+          currency: orderResponse.currency,
           name: "ILLUME",
           description: "Store Checkout",
-          order_id: orderResponse.order.id,
+          order_id: orderResponse.order_id,
           prefill: {
             name: checkoutPayload.customer_name,
             email: checkoutPayload.email,
@@ -357,18 +359,21 @@ const CheckoutPage = () => {
             ondismiss: () => reject(new Error("Payment was cancelled.")),
           },
           handler: async (response: RazorpaySuccessResponse) => {
+            console.log("payment success callback:", response);
             try {
               const { data: verifyResponse, error: verifyError } = await supabase.functions.invoke("verify-razorpay-payment", {
                 body: {
                   checkout: checkoutPayload,
                   items,
-                  ...response,
+                  order_id: response.razorpay_order_id,
+                  payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
                 },
               });
 
               if (verifyError) throw verifyError;
               if (!verifyResponse?.success || !verifyResponse?.orderId) {
-                throw new Error(verifyResponse?.message || "Payment verification failed");
+                throw new Error(verifyResponse?.message || verifyResponse?.error || "Payment verification failed");
               }
 
               clearCart();
@@ -378,9 +383,13 @@ const CheckoutPage = () => {
               reject(verificationError);
             }
           },
-        });
+        };
+
+        console.log("Razorpay options:", { ...razorpayOptions, handler: "[Function]" });
+        const razorpay = new Razorpay(razorpayOptions);
 
         razorpay.on("payment.failed", (event: any) => {
+          console.error("payment failed callback:", event);
           const message =
             event?.error?.description ||
             event?.error?.reason ||

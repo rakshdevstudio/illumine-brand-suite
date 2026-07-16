@@ -109,35 +109,41 @@ Deno.serve(async (req) => {
         console.log("Razorpay API response:", order);
     } catch (error) {
         console.error("Razorpay order creation failed:", error);
+        const err = error as Error;
         return new Response(JSON.stringify({
             success: false,
             stage: "create_order",
-            message: error.message,
-            details: error.stack,
+            message: err.message,
+            details: err.stack,
         }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
             status: 500,
         });
     }
 
-    return new Response(JSON.stringify({
+    const responsePayload = {
       success: true,
       order_id: order.id,
       amount: order.amount,
       currency: order.currency,
       key: RAZORPAY_KEY_ID,
-    }), {
+    };
+    
+    console.log("Returned JSON:", JSON.stringify(responsePayload));
+
+    return new Response(JSON.stringify(responsePayload), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
 
   } catch (error) {
     console.error("Error creating Razorpay order:", error);
+    const err = error as Error;
     return new Response(JSON.stringify({ 
         success: false, 
         stage: "unknown",
-        message: error.message,
-        details: error.stack 
+        message: err.message,
+        details: err.stack 
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

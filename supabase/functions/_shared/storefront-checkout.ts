@@ -159,7 +159,7 @@ export const resolveCheckoutCart = async (
   if (variantError) throw variantError;
   if (inventoryError) throw inventoryError;
 
-  const variantMap = new Map(
+  const variantMap = new Map<string, { productId: string; size: string; status: string; price: number; name: string }>(
     (variants ?? []).map((variant: any) => [
       String(variant.id),
       {

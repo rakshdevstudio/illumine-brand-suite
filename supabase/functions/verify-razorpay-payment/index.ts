@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
             // Here you would typically update your database to mark the order as paid.
             // e.g., await serviceRoleClient.from('orders').update({ status: 'paid' }).eq('id', order_id);
 
-            return new Response(JSON.stringify({ success: true }), {
+            return new Response(JSON.stringify({ success: true, orderId: order_id }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
                 status: 200,
             });
@@ -94,11 +94,12 @@ Deno.serve(async (req) => {
 
     } catch (error) {
         console.error("Error verifying Razorpay payment:", error);
+        const err = error as Error;
         return new Response(JSON.stringify({ 
             success: false, 
             stage: "verify_payment",
-            message: error.message,
-            details: error.stack 
+            message: err.message,
+            details: err.stack 
         }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
             status: 500,
