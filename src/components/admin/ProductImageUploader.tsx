@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, X, Star, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { deleteProductImage, uploadProductImage } from "@/lib/image-storage";
 
 interface ProductImage {
   id: string;
@@ -28,16 +29,7 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
     const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const fileName = `${Date.now()}.${fileExt}`;
     const storagePath = `${schoolSlug}/${productId}/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("product-images")
-      .upload(storagePath, file, { upsert: true });
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from("product-images")
-      .getPublicUrl(storagePath);
+    const { publicUrl } = await uploadProductImage(storagePath, file);
 
     const isPrimary = images.length === 0;
 
@@ -98,7 +90,7 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
   };
 
   const handleDelete = async (image: ProductImage) => {
-    await supabase.storage.from("product-images").remove([image.storage_path]);
+    await deleteProductImage(image.storage_path);
     await supabase.from("product_images").delete().eq("id", image.id);
     onImagesChange();
     toast.success("Image removed");
