@@ -491,31 +491,93 @@ const PosDashboard = () => {
   };
 
   const placeOrder = async () => {
-    setShowValidation(true);
-
-    if (!isContextReady) {
-      toast.error("Select a school, customer, and student details before placing an order.");
-      return;
+    if (paymentMethod === 'upi') {
+      await placeUpiOrder();
+    } else {
+      await placeCashOrder();
     }
+  };
 
-    if (cart.length === 0) {
-      toast.error("Add products before placing an order");
+  const placeUpiOrder = async () => {
+    setShowValidation(true);
+    if (!isContextReady || cart.length === 0) {
+      toast.error("Please complete all details and add items to the cart before payment.");
       return;
     }
 
     setPlacingOrder(true);
-
     try {
-      const variantIds = cart.map((item) => item.variantId);
-      const { stockByVariant: stockMap } = await fetchGlobalStockByVariants(variantIds);
+      const checkoutPayload = {
+        customer_name: customerName,
+        phone: resolvedPhone,
+        student_name: studentName.trim(),
+        student_class: studentClass.trim(),
+        school_id: selectedSchoolId,
+      };
 
-      const insufficientItem = cart.find((item) => (stockMap.get(item.variantId) ?? 0) < item.quantity);
+      const invokeResponse = await supabase.functions.invoke("create-razorpay-order", {
+        body: {
+          items: cart,
+          checkout: checkoutPayload,
+          notes: {
+            school_id: selectedSchoolId,
+            phone: resolvedPhone,
+          }
+        },
+      });
 
-      if (insufficientItem) {
-        toast.error(`${insufficientItem.name} no longer has enough stock`);
-        return;
+      console.log("Edge Function response", invokeResponse);
+      const { data: orderData, error: orderError } = invokeResponse;
+      console.log("Parsed JSON", orderData);
+
+      if (orderError || !orderData.success) {
+        throw new Error(orderData.message || "Failed to create Razorpay order.");
       }
 
+      const options = {
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "Illume",
+        description: "Order Payment",
+        order_id: orderData.order_id,
+        handler: async (response: any) => {
+          const { data: verifyData, error: verifyError } = await supabase.functions.invoke("verify-razorpay-payment", {
+            body: {
+              order_id: response.razorpay_order_id,
+              payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            },
+          });
+
+          if (verifyError || !verifyData.success) {
+            toast.error("Payment verification failed. Please contact support.");
+            return;
+          }
+          
+          await createOrderInSupabase('upi');
+        },
+        prefill: {
+          name: customerName,
+          contact: resolvedPhone,
+        },
+        theme: {
+          color: "#3399cc",
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+
+    } catch (error: any) {
+      logger.error("Failed to place UPI order", error);
+      toast.error(error.message || "Failed to place UPI order");
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  const createOrderInSupabase = async (payment_mode: 'cash' | 'upi') => {
       const normalizedAlternatePhone = alternatePhone.trim();
       const customerId = selectedCustomerKey && selectedCustomerKey !== WALK_IN_CUSTOMER_KEY
         ? selectedCustomerKey
@@ -524,7 +586,7 @@ const PosDashboard = () => {
         customer_name: customerName,
         phone: resolvedPhone,
         alternate_phone: customerPhone ? normalizedAlternatePhone || null : null,
-        payment_mode: paymentMethod.toUpperCase(),
+        payment_mode: payment_mode.toUpperCase(),
         student_name: studentName.trim(),
         student_class: studentClass.trim(),
         grade: studentClass.trim(),
@@ -565,7 +627,7 @@ const PosDashboard = () => {
           "Order Source: POS",
           `School: ${selectedSchool?.name ?? "Unknown School"}`,
           `Customer: ${customerName}`,
-          `Payment Method: ${paymentMethod.toUpperCase()}`,
+          `Payment Method: ${payment_mode.toUpperCase()}`,
           `Student Name: ${studentName.trim()}`,
           `Student Class: ${studentClass.trim()}`,
           `Alternate Phone: ${normalizedAlternatePhone || "—"}`,
@@ -596,6 +658,36 @@ const PosDashboard = () => {
       ]);
 
       toast.success(`Order ${order.id.slice(0, 8).toUpperCase()} placed successfully`);
+  };
+
+  const placeCashOrder = async () => {
+    setShowValidation(true);
+
+    if (!isContextReady) {
+      toast.error("Select a school, customer, and student details before placing an order.");
+      return;
+    }
+
+    if (cart.length === 0) {
+      toast.error("Add products before placing an order");
+      return;
+    }
+
+    setPlacingOrder(true);
+
+    try {
+      const variantIds = cart.map((item) => item.variantId);
+      const { stockByVariant: stockMap } = await fetchGlobalStockByVariants(variantIds);
+
+      const insufficientItem = cart.find((item) => (stockMap.get(item.variantId) ?? 0) < item.quantity);
+
+      if (insufficientItem) {
+        toast.error(`${insufficientItem.name} no longer has enough stock`);
+        return;
+      }
+
+      await createOrderInSupabase('cash');
+
     } catch (error) {
       logger.error("Failed to place POS order", error);
       toast.error("Failed to place POS order");

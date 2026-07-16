@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useStudentProfile } from "@/lib/student-profile";
-import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { deductStockAcrossBranches, fetchGlobalStockByVariants } from "@/lib/global-inventory";
+import { fetchGlobalStockByVariants } from "@/lib/global-inventory";
 import { requireSchoolId } from "@/lib/school-context";
 import { getSafeErrorMessage, logger } from "@/lib/logger";
 
@@ -46,103 +45,48 @@ const EMPTY_FORM: CheckoutForm = {
 
 type CheckoutErrors = Partial<Record<keyof CheckoutForm, string>>;
 
-const isMissingOrderColumnError = (error: { code?: string; message?: string } | null) => {
-  if (!error) return false;
-  const message = (error.message ?? "").toLowerCase();
-  return (
-    error.code === "42703" ||
-    error.code === "PGRST204" ||
-    message.includes("student_class") ||
-    message.includes("student_name") ||
-    message.includes("alternate_phone") ||
-    message.includes("grade") ||
-    message.includes("city") ||
-    message.includes("pincode") ||
-    message.includes("customer_id") ||
-    message.includes("email")
-  );
-};
-
-const isStorefrontWriteAccessError = (error: {
-  code?: string;
-  details?: string;
-  hint?: string;
-  message?: string;
-  status?: number;
-} | null) => {
-  if (!error) return false;
-
-  const combinedMessage = [error.message, error.details, error.hint].filter(Boolean).join(" ").toLowerCase();
-
-  return (
-    error.status === 401 ||
-    error.code === "42501" ||
-    combinedMessage.includes("permission denied") ||
-    combinedMessage.includes("row-level security") ||
-    combinedMessage.includes("violates row-level security") ||
-    combinedMessage.includes("jwt") ||
-    combinedMessage.includes("not authenticated")
-  );
-};
-
 const getCheckoutFailureMessage = (error: unknown) => {
   return getSafeErrorMessage(error, "Failed to place order. Please try again.");
 };
 
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-const isInvoiceCreationRaceError = (error: unknown) => {
-  const message = getSafeErrorMessage(error, "");
-  return (
-    message.includes("Invoice total must match order total") ||
-    message.includes("Order not fully inserted yet")
-  );
+type RazorpaySuccessResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
 };
 
-const getPersistedOrderItemsSnapshot = async (orderId: string) => {
-  const { data, error } = await supabase
-    .from("order_items")
-    .select("quantity, price")
-    .eq("order_id", orderId);
-
-  if (error) throw error;
-
-  const rows = data ?? [];
-  const total = rows.reduce(
-    (sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 0),
-    0,
-  );
-
-  return {
-    count: rows.length,
-    total,
-  };
-};
-
-const waitForPersistedOrderItems = async (orderId: string, expectedTotal: number, expectedCount: number) => {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const snapshot = await getPersistedOrderItemsSnapshot(orderId);
-    if (
-      snapshot.count >= expectedCount &&
-      Math.abs(snapshot.total - expectedTotal) <= 0.01
-    ) {
-      return snapshot;
-    }
-
-    await sleep(250);
+const loadRazorpayCheckout = async () => {
+  if (window.Razorpay) {
+    return window.Razorpay;
   }
 
-  const finalSnapshot = await getPersistedOrderItemsSnapshot(orderId);
-  throw new Error(
-    `Order items not fully persisted before invoice creation. order_total=${expectedTotal.toFixed(2)}, items_total=${finalSnapshot.total.toFixed(2)}, item_count=${finalSnapshot.count}`,
-  );
+  await new Promise<void>((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Failed to load Razorpay checkout")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
+    document.body.appendChild(script);
+  });
+
+  if (!window.Razorpay) {
+    throw new Error("Razorpay checkout is unavailable");
+  }
+
+  return window.Razorpay;
 };
 
 const CheckoutPage = () => {
   const { items, total, clearCart } = useCart();
   const navigate = useNavigate();
   const studentProfile = useStudentProfile((state) => state.profile);
-  const customer = useCustomerAuth((state) => state.customer);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<CheckoutErrors>({});
@@ -339,7 +283,6 @@ const CheckoutPage = () => {
 
     setLoading(true);
     try {
-      // ── Step 1: validate global stock (merged across all branches) ───────
       const variantIds = items.map((i) => i.variantId);
       const { stockByVariant } = await fetchGlobalStockByVariants(variantIds);
       const insufficientItems = items.filter((item) => (stockByVariant.get(item.variantId) ?? 0) < item.quantity);
@@ -351,236 +294,102 @@ const CheckoutPage = () => {
         return;
       }
 
-      // ── Step 2: create order ──────────────────────────────────────────────
       const effectiveSchoolId = requireSchoolId();
-
-      const missingSnapshotPrices = items.filter((item) => !Number.isFinite(Number(item.price)));
-      if (missingSnapshotPrices.length > 0) {
-        toast.error("Some cart items are missing snapshot prices. Please refresh your cart.");
-        setLoading(false);
-        return;
+      const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!razorpayKeyId) {
+        throw new Error("Razorpay is not configured. Missing VITE_RAZORPAY_KEY_ID.");
       }
 
-      const orderTotal = items.reduce((sum, item) => sum + Number(item.price ?? 0) * item.quantity, 0);
-
-      const orderPayload = {
-        fullName: form.customer_name,
-        email: form.email,
-        phone: form.phone,
-        alternatePhone: form.alternate_phone,
-        studentName: form.student_name,
-        grade: form.grade,
-        address: form.address,
-        city: form.city,
-        pincode: form.pincode,
-      };
-
-      const legacyOrderPayload = {
-        customer_name: orderPayload.fullName,
-        email: orderPayload.email,
-        phone: orderPayload.phone,
-        alternate_phone: orderPayload.alternatePhone || null,
-        payment_mode: "ONLINE",
-        student_name: orderPayload.studentName,
-        student_class: orderPayload.grade,
-        grade: orderPayload.grade,
-        address: orderPayload.address,
-        city: orderPayload.city,
-        pincode: orderPayload.pincode,
+      const checkoutPayload = {
+        customer_name: form.customer_name.trim(),
+        email: form.email.trim(),
+        phone: phoneDigits,
+        alternate_phone: alternatePhoneDigits || "",
+        student_name: form.student_name.trim(),
+        grade: form.grade.trim(),
+        address: form.address.trim(),
+        city: form.city.trim(),
+        pincode: pincodeDigits,
         school_id: effectiveSchoolId,
-        total_amount: 0,
-        status: "PLACED",
-      };
-
-      const payloadVariants = [
-        legacyOrderPayload,
-        (() => {
-          const { student_class: _studentClass, ...compatPayload } = legacyOrderPayload;
-          return compatPayload;
-        })(),
-        {
-          customer_name: orderPayload.fullName,
-          phone: orderPayload.phone,
-          address: orderPayload.address,
-          payment_mode: "ONLINE",
-          school_id: effectiveSchoolId,
-          total_amount: 0,
-          status: "PLACED",
-        },
-        {
-          customer_name: orderPayload.fullName,
-          phone: orderPayload.phone,
-          address: orderPayload.address,
-          payment_mode: "ONLINE",
-          school_id: effectiveSchoolId,
-          total_amount: 0,
-          status: "PLACED",
-        },
-      ];
-
-      const createdOrderId = crypto.randomUUID();
-      let order: any = null;
-      let orderErr: any = null;
-
-      for (const [index, payloadVariant] of payloadVariants.entries()) {
-        const attempt = await (supabase as any)
-          .from("orders")
-          .insert({
-            id: createdOrderId,
-            ...payloadVariant,
-          });
-
-        order = { id: createdOrderId, total_amount: 0 };
-        orderErr = attempt.error;
-
-        if (!orderErr) {
-          break;
-        }
-
-        if (!isMissingOrderColumnError(orderErr) || index === payloadVariants.length - 1) {
-          break;
-        }
-
-        logger.warn("Orders schema is older than the checkout payload; retrying with a compatible insert shape.");
-      }
-
-      if (orderErr) throw orderErr;
-      if (!order) throw new Error("Order was not created");
-
-      await supabase.from("order_notes").insert({
-        order_id: order.id,
-        note: `Student Name: ${orderPayload.studentName}\nGrade: ${orderPayload.grade}\nAlternate Phone: ${orderPayload.alternatePhone || "—"}`,
-      });
-
-      // ── Step 3: insert order items sequentially with running total sync ───
-      // Invoice creation is trigger-driven on order_items insert; keeping order total
-      // aligned with inserted subtotal avoids trigger-order race conditions.
-      let runningOrderTotal = 0;
-      for (const item of items) {
-        const lineTotal = Number(item.price ?? 0) * item.quantity;
-        const nextRunningTotal = runningOrderTotal + lineTotal;
-
-        const { error: preSyncErr } = await supabase
-          .from("orders")
-          .update({ total_amount: nextRunningTotal })
-          .eq("id", order.id);
-        if (preSyncErr) throw preSyncErr;
-
-        const { error: itemErr } = await supabase.from("order_items").insert({
-          order_id: order.id,
-          product_id: item.productId,
-          variant_id: item.variantId,
-          quantity: item.quantity,
-          price: Number(item.price ?? 0),
-        });
-        if (itemErr) throw itemErr;
-
-        runningOrderTotal = nextRunningTotal;
-      }
-
-      if (Math.abs(orderTotal - runningOrderTotal) > 0.001) {
-        const { error: syncOrderTotalErr } = await supabase
-          .from("orders")
-          .update({ total_amount: orderTotal })
-          .eq("id", order.id);
-
-        if (syncOrderTotalErr) {
-          logger.warn("Unable to sync final order total after item inserts; continuing checkout flow.", syncOrderTotalErr);
-        }
-      }
-
-      order.total_amount = orderTotal;
-
-      await waitForPersistedOrderItems(order.id, orderTotal, items.length);
-
-      const { data: checkoutLinkResult, error: crmLinkError } = await (supabase as any).rpc("attach_checkout_entities_to_order", {
-        p_order_id: order.id,
-        p_customer_name: orderPayload.fullName,
-        p_customer_phone: phoneDigits,
-        p_customer_email: orderPayload.email,
-        p_student_name: orderPayload.studentName,
-        p_school_id: effectiveSchoolId,
-        p_class_name: orderPayload.grade,
-        p_gender:
+        gender:
           studentProfile?.gender === "boys"
             ? "Male"
             : studentProfile?.gender === "girls"
               ? "Female"
               : "Unisex",
-        p_alternate_phone: orderPayload.alternatePhone || null,
+      };
+
+      const { data: orderResponse, error: orderError } = await supabase.functions.invoke("create-razorpay-order", {
+        body: {
+          checkout: checkoutPayload,
+          items,
+        },
       });
 
-      if (crmLinkError) throw crmLinkError;
+      if (orderError) throw orderError;
+      if (!orderResponse?.success || !orderResponse?.order?.id) {
+        throw new Error(orderResponse?.message || "Failed to create Razorpay order");
+      }
 
-      const attachedInvoiceId =
-        Array.isArray(checkoutLinkResult) && checkoutLinkResult.length > 0
-          ? checkoutLinkResult[0]?.out_invoice_id ?? null
-          : null;
+      const Razorpay = await loadRazorpayCheckout();
 
-      let invoiceId = attachedInvoiceId;
+      await new Promise<void>((resolve, reject) => {
+        const razorpay = new Razorpay({
+          key: razorpayKeyId,
+          amount: orderResponse.order.amount,
+          currency: orderResponse.order.currency,
+          name: "ILLUME",
+          description: "Store Checkout",
+          order_id: orderResponse.order.id,
+          prefill: {
+            name: checkoutPayload.customer_name,
+            email: checkoutPayload.email,
+            contact: checkoutPayload.phone,
+          },
+          notes: {
+            student_name: checkoutPayload.student_name,
+            grade: checkoutPayload.grade,
+          },
+          theme: {
+            color: "#111111",
+          },
+          modal: {
+            ondismiss: () => reject(new Error("Payment was cancelled.")),
+          },
+          handler: async (response: RazorpaySuccessResponse) => {
+            try {
+              const { data: verifyResponse, error: verifyError } = await supabase.functions.invoke("verify-razorpay-payment", {
+                body: {
+                  checkout: checkoutPayload,
+                  items,
+                  ...response,
+                },
+              });
 
-      if (!invoiceId) {
-        let lastInvoiceError: unknown = null;
+              if (verifyError) throw verifyError;
+              if (!verifyResponse?.success || !verifyResponse?.orderId) {
+                throw new Error(verifyResponse?.message || "Payment verification failed");
+              }
 
-        for (let attempt = 0; attempt < 3 && !invoiceId; attempt += 1) {
-          try {
-            await waitForPersistedOrderItems(order.id, orderTotal, items.length);
-
-            const { data: createdInvoiceId, error: invoiceError } = await (supabase as any).rpc("create_invoice_from_order", {
-              p_order_id: order.id,
-            });
-
-            if (invoiceError) throw invoiceError;
-            invoiceId = createdInvoiceId;
-          } catch (invoiceAttemptError) {
-            lastInvoiceError = invoiceAttemptError;
-
-            if (!isInvoiceCreationRaceError(invoiceAttemptError) || attempt === 2) {
-              throw invoiceAttemptError;
+              clearCart();
+              navigate(`/store/confirmation?order=${verifyResponse.orderId}`, { replace: true });
+              resolve();
+            } catch (verificationError) {
+              reject(verificationError);
             }
+          },
+        });
 
-            logger.warn("Invoice creation raced order item persistence; retrying after a short wait.", invoiceAttemptError);
-            await sleep(400);
-          }
-        }
+        razorpay.on("payment.failed", (event: any) => {
+          const message =
+            event?.error?.description ||
+            event?.error?.reason ||
+            "Payment failed. Please try again.";
+          reject(new Error(message));
+        });
 
-        if (!invoiceId && lastInvoiceError) {
-          throw lastInvoiceError;
-        }
-      }
-
-      if (!invoiceId) {
-        throw new Error("Invoice was not created for the completed order.");
-      }
-
-      // ── Step 4: deduct stock globally across branches ─
-      for (const item of items) {
-        await deductStockAcrossBranches(item.variantId, item.productId, item.quantity, order.id);
-      }
-
-      clearCart();
-
-      // Fire-and-forget order confirmation email
-      if (import.meta.env.PROD) {
-        supabase.functions
-          .invoke("send-order-confirmation", {
-            body: {
-              email: form.email,
-              name: form.customer_name,
-              orderId: order.id,
-              items: items.map((item) => ({
-                name: item.name,
-                size: item.size,
-                quantity: item.quantity,
-                price: item.price,
-              })),
-              total: order.total_amount,
-            },
-          })
-          .catch(() => undefined);
-      }
-
-      navigate(`/store/confirmation?order=${order.id}`, { replace: true });
+        razorpay.open();
+      });
     } catch (err) {
       logger.error("Failed to place order", err);
       toast.error(getCheckoutFailureMessage(err));

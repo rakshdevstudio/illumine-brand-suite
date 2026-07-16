@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       "import.meta.env.R2_PUBLIC_URL": JSON.stringify(env.R2_PUBLIC_URL ?? ""),
+      "import.meta.env.VITE_RAZORPAY_KEY_ID": JSON.stringify(env.VITE_RAZORPAY_KEY_ID ?? ""),
     },
     server: {
       host: "::",
