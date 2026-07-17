@@ -194,14 +194,13 @@ console.log("Invoice created:", invoiceId);
             // 6. Insert payment record
             console.log("Recording payment");
             const { error: paymentError } = await serviceRoleClient
-                .from('payments')
-                .insert({
-                    reference_type: 'invoice',
-                    reference_id: invoiceData.id,
-                    amount: invoiceData.total,
-                    payment_mode: 'bank', // Enum: 'cash', 'bank', 'upi'
-                    idempotency_key: idempotencyKey,
-                    notes: `Razorpay Order ID: ${order_id}, Payment ID: ${payment_id}`
+                .rpc('record_payment', {
+                    p_reference_type: 'invoice',
+                    p_reference_id: invoiceData.id,
+                    p_amount: invoiceData.total,
+                    p_mode: 'bank',
+                    p_idempotency_key: idempotencyKey,
+                    p_notes: `Razorpay Order ID: ${order_id}, Payment ID: ${payment_id}`
                 });
                 
             if (paymentError) {
