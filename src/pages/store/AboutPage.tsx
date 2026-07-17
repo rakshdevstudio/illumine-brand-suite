@@ -296,7 +296,7 @@ const AboutPage = () => {
       <section className="bg-[#0a0a0a] py-24 lg:py-32 text-white overflow-hidden relative">
         {/* subtle background glow/noise */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,184,104,0.06),transparent_40%)]" />
-        
+
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 relative z-10">
           <div className="grid lg:grid-cols-2 gap-16 lg:gap-8 items-center">
             {/* LEFT SIDE: Typography + Story */}
@@ -313,7 +313,7 @@ const AboutPage = () => {
               <motion.p variants={fadeUp} className="text-[10px] uppercase tracking-[0.4em] text-amber-500/80 mb-6">
                 WELCOME TO LOTUS ILLUME
               </motion.p>
-              
+
               <motion.h2 variants={fadeUp} className="text-4xl sm:text-5xl lg:text-[56px] font-light tracking-[-0.04em] leading-[1.05] mb-8">
                 Who We Are
               </motion.h2>
@@ -341,7 +341,7 @@ const AboutPage = () => {
                     <div className="space-y-2">
                       <p className="text-xs uppercase tracking-[0.2em] text-amber-500/80">Founder & CEO</p>
                       <p className="text-3xl sm:text-4xl lg:text-5xl font-light tracking-[-0.05em] text-white leading-[0.95]">
-                        Prabhu
+                        Prabhuraj
                       </p>
                     </div>
                     <p className="max-w-xl text-sm sm:text-base leading-7 text-white/65">
@@ -454,7 +454,7 @@ const AboutPage = () => {
                   className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-[#161616] p-8 transition-all hover:-translate-y-1 hover:bg-[#1a1a1a] hover:border-white/20"
                 >
                   <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
-                     <Icon className="w-24 h-24" />
+                    <Icon className="w-24 h-24" />
                   </div>
                   <div className="relative z-10">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 border border-white/10 text-white group-hover:bg-amber-500/20 group-hover:text-amber-400 group-hover:border-amber-500/30 transition-colors">
