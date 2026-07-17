@@ -63,7 +63,8 @@ Deno.serve(async (req) => {
         // Calling getUser() with the anon key would throw an error and break the guest checkout.
         console.log("Guest checkout verification permitted. Anon key received.");
 
-        const { order_id, payment_id, razorpay_signature }: VerifyPayload = await req.json();
+        const payload: VerifyPayload = await req.json();
+        const { order_id, payment_id, razorpay_signature, checkout, items } = payload;
         console.log("Request payload received for verification:", { order_id, payment_id });
 
         if (!order_id || !payment_id || !razorpay_signature) {
@@ -94,8 +95,7 @@ Deno.serve(async (req) => {
         if (generated_signature === razorpay_signature) {
             console.log("Signature verification successful");
             
-            const { checkout, items } = await req.clone().json(); // Extract the full payload again to be safe if not destructured
-
+            // Body is already parsed into payload above
             // 1. Idempotency Check
             const idempotencyKey = `razorpay_${payment_id}`;
             const { data: existingPayment, error: existingPaymentError } = await serviceRoleClient
