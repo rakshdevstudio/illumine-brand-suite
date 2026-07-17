@@ -1,10 +1,8 @@
-import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Upload, X, Star, Loader2 } from "lucide-react";
+import { X, Star } from "lucide-react";
 import { toast } from "sonner";
-import { logger } from "@/lib/logger";
-import { deleteProductImage, uploadProductImage } from "@/lib/image-storage";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { deleteImage } from "@/lib/image-pipeline";
 
 interface ProductImage {
   id: string;
@@ -22,15 +20,7 @@ interface ProductImageUploaderProps {
 }
 
 const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }: ProductImageUploaderProps) => {
-  const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-
-  const uploadFile = async (file: File) => {
-    const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const fileName = `${Date.now()}.${fileExt}`;
-    const storagePath = `${schoolSlug}/${productId}/${fileName}`;
-    const { publicUrl } = await uploadProductImage(storagePath, file);
-
+  const handleUploadComplete = async (publicUrl: string, storagePath: string) => {
     const isPrimary = images.length === 0;
 
     const { error: insertError } = await supabase
@@ -43,38 +33,13 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
         sort_order: images.length,
       });
 
-    if (insertError) throw insertError;
-  };
-
-  const handleFiles = async (files: FileList | File[]) => {
-    const validFiles = Array.from(files).filter((f) =>
-      f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024
-    );
-    if (validFiles.length === 0) {
-      toast.error("Please upload valid image files (max 10MB)");
-      return;
+    if (insertError) {
+      toast.error("Failed to save image record");
+      throw insertError;
     }
-
-    setUploading(true);
-    try {
-      for (const file of validFiles) {
-        await uploadFile(file);
-      }
-      toast.success(`${validFiles.length} image(s) uploaded`);
-      onImagesChange();
-    } catch (err) {
-      logger.error("Failed to upload image", err);
-      toast.error("Failed to upload image");
-    } finally {
-      setUploading(false);
-    }
+    
+    onImagesChange();
   };
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    handleFiles(e.dataTransfer.files);
-  }, [images]);
 
   const handleSetPrimary = async (imageId: string) => {
     await supabase
@@ -90,10 +55,14 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
   };
 
   const handleDelete = async (image: ProductImage) => {
-    await deleteProductImage(image.storage_path);
-    await supabase.from("product_images").delete().eq("id", image.id);
-    onImagesChange();
-    toast.success("Image removed");
+    try {
+      await deleteImage(image.storage_path);
+      await supabase.from("product_images").delete().eq("id", image.id);
+      onImagesChange();
+      toast.success("Image removed");
+    } catch (err) {
+      toast.error("Failed to delete image");
+    }
   };
 
   return (
@@ -104,7 +73,7 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
 
       {/* Existing images */}
       {images.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap mb-4">
           {images
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((img) => (
@@ -142,40 +111,15 @@ const ProductImageUploader = ({ productId, schoolSlug, images, onImagesChange }:
         </div>
       )}
 
-      {/* Drop zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-sm p-6 text-center transition-colors cursor-pointer ${
-          dragOver ? "border-foreground bg-accent" : "border-border"
-        }`}
-        onClick={() => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.multiple = true;
-          input.accept = "image/*";
-          input.onchange = (e) => {
-            const files = (e.target as HTMLInputElement).files;
-            if (files) handleFiles(files);
-          };
-          input.click();
-        }}
-      >
-        {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Uploading...</span>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <Upload className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-            <span className="text-xs text-muted-foreground">
-              Drop images here or click to upload
-            </span>
-          </div>
-        )}
-      </div>
+      {/* Uploader component */}
+      <ImageUploader
+        category="products"
+        folder={`${schoolSlug}/${productId}`}
+        maxFiles={10}
+        multiple={true}
+        onUploadComplete={handleUploadComplete}
+        label="Drop product images here"
+      />
     </div>
   );
 };

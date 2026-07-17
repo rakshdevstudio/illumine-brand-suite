@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { X } from "lucide-react";
 
 const SchoolProfilePage = () => {
   const { user, isSchoolUser, hasAccess, loading, signOut } = useAuth();
@@ -68,7 +70,36 @@ const SchoolProfilePage = () => {
         <CardHeader><CardTitle className="text-sm uppercase tracking-[0.22em] text-muted-foreground">Profile / Settings</CardTitle></CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1"><Label>School Name</Label><Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></div>
-          <div className="space-y-1"><Label>Logo URL</Label><Input value={form.logoUrl} onChange={(e) => setForm((p) => ({ ...p, logoUrl: e.target.value }))} /></div>
+          <div className="space-y-1">
+            <Label>Logo</Label>
+            {form.logoUrl ? (
+              <div className="relative group w-32 h-32 border border-border overflow-hidden bg-secondary rounded-lg">
+                <img
+                  src={form.logoUrl}
+                  alt="School Logo"
+                  className="w-full h-full object-contain p-2"
+                />
+                <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, logoUrl: "" }))}
+                    className="p-2 text-background hover:text-destructive bg-foreground/20 rounded-full backdrop-blur-sm"
+                    title="Remove logo"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <ImageUploader
+                category="schools"
+                folder={schoolId || "unassigned"}
+                maxFiles={1}
+                onUploadComplete={(url) => setForm((p) => ({ ...p, logoUrl: url }))}
+                label="Upload school logo"
+              />
+            )}
+          </div>
           <div className="space-y-1 md:col-span-2"><Label>Address</Label><Input value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} /></div>
           <div className="space-y-1"><Label>Coordinator Name</Label><Input value={form.coordinatorName} onChange={(e) => setForm((p) => ({ ...p, coordinatorName: e.target.value }))} /></div>
           <div className="space-y-1"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} /></div>

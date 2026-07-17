@@ -262,6 +262,10 @@ const sendR2Request = async ({
     if (contentType) {
       headers.set("content-type", contentType);
     }
+    
+    if (method === "PUT") {
+      headers.set("cache-control", "public, max-age=31536000, immutable");
+    }
 
     logStage(method === "PUT" ? "UPLOAD_TO_R2" : "DELETE_FROM_R2", "Signing and sending R2 request", {
       requestUrl,

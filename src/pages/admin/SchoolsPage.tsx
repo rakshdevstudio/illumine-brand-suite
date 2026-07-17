@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { ImageUploader } from "@/components/shared/ImageUploader";
 
 const SchoolsPage = () => {
   const { user, role } = useAuth();
@@ -25,7 +26,7 @@ const SchoolsPage = () => {
     password: "",
     school_id: "",
   });
-  const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active" });
+  const [form, setForm] = useState({ name: "", code: "", slug: "", status: "active", logo_url: "" });
 
   const SCHOOL_AVATAR_FALLBACK_PREFIX = "school-assignment:";
   const readSchoolId = (value: unknown) =>
@@ -137,20 +138,38 @@ const SchoolsPage = () => {
       toast.error("Name and code are required");
       return;
     }
-    const slug = form.slug || generateSlug(form.name);
-    if (editing) {
-      const { error } = await supabase.from("schools").update({ name: form.name, code: form.code, slug, status: form.status }).eq("id", String(editing.id));
-      if (error) return toast.error(error.message || "Failed to update school");
-      toast.success("School updated");
-    } else {
-      const { error } = await supabase.from("schools").insert({ name: form.name, code: form.code, slug, status: form.status });
-      if (error) return toast.error(error.message || "Failed to create school");
-      toast.success("School created");
+    try {
+      if (editing) {
+        const { error } = await supabase
+          .from("schools")
+          .update({
+            name: form.name.trim(),
+            code: form.code.trim().toUpperCase(),
+            slug: (form.slug || generateSlug(form.name)).trim(),
+            status: form.status,
+            logo_url: form.logo_url || null,
+          })
+          .eq("id", String(editing.id));
+        if (error) throw error;
+        toast.success("School updated");
+      } else {
+        const { error } = await supabase.from("schools").insert({
+          name: form.name.trim(),
+          code: form.code.trim().toUpperCase(),
+          slug: (form.slug || generateSlug(form.name)).trim(),
+          status: form.status,
+          logo_url: form.logo_url || null,
+        });
+        if (error) throw error;
+        toast.success("School created");
+      }
+      setDialogOpen(false);
+      setEditing(null);
+      setForm({ name: "", code: "", slug: "", status: "active", logo_url: "" });
+      queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save school");
     }
-    setDialogOpen(false);
-    setEditing(null);
-    setForm({ name: "", code: "", slug: "", status: "active" });
-    queryClient.invalidateQueries({ queryKey: ["admin-schools"] });
   };
 
   const handleStatusToggle = async (id: string, currentStatus: string) => {
@@ -212,7 +231,13 @@ const SchoolsPage = () => {
 
   const openEdit = (school: Record<string, unknown>) => {
     setEditing(school);
-    setForm({ name: String(school.name || ""), code: String(school.code || ""), slug: String(school.slug || ""), status: String(school.status || "active") });
+    setForm({ 
+      name: String(school.name || ""), 
+      code: String(school.code || ""), 
+      slug: String(school.slug || ""), 
+      status: String(school.status || "active"), 
+      logo_url: String(school.logo_url || "") 
+    });
     setDialogOpen(true);
   };
 
@@ -220,7 +245,7 @@ const SchoolsPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-light tracking-[0.1em] uppercase">Schools</h1>
-        <Button onClick={() => { setEditing(null); setForm({ name: "", code: "", slug: "", status: "active" }); setDialogOpen(true); }} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
+        <Button onClick={() => { setEditing(null); setForm({ name: "", code: "", slug: "", status: "active", logo_url: "" }); setDialogOpen(true); }} className="text-xs tracking-[0.2em] uppercase h-10 px-6">
           <Plus className="h-3 w-3 mr-2" /> Add School
         </Button>
       </div>
@@ -412,6 +437,36 @@ const SchoolsPage = () => {
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Slug</label>
               <Input name="school_slug" value={form.slug || generateSlug(form.name)} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="h-10" />
+            </div>
+            <div>
+              <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">School Logo</label>
+              {form.logo_url ? (
+                <div className="relative group w-24 h-24 border border-border overflow-hidden bg-secondary rounded-lg">
+                  <img
+                    src={form.logo_url}
+                    alt="School Logo"
+                    className="w-full h-full object-contain p-2"
+                  />
+                  <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, logo_url: "" })}
+                      className="p-1 text-background hover:text-destructive bg-foreground/20 rounded-full backdrop-blur-sm"
+                      title="Remove logo"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <ImageUploader
+                  category="schools"
+                  folder={form.slug || generateSlug(form.name) || "new"}
+                  maxFiles={1}
+                  onUploadComplete={(url) => setForm({ ...form, logo_url: url })}
+                  label="Upload school logo"
+                />
+              )}
             </div>
             <div>
               <label className="text-xs tracking-[0.2em] text-muted-foreground uppercase block mb-2">Status</label>
