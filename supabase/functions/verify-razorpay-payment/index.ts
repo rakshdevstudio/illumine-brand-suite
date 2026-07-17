@@ -1,3 +1,4 @@
+console.log("VERIFY FUNCTION VERSION 17-JUL-2026 07:15");
 import "https://deno.land/std@0.192.0/dotenv/load.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { createSupabaseClient, serviceRoleClient } from "../_shared/supabase-client.ts";
@@ -40,6 +41,7 @@ const arrayBufferToHex = (buffer: ArrayBuffer) => {
 };
 
 Deno.serve(async (req) => {
+    console.log("VERIFY FUNCTION VERSION 17-JUL-2026 07:15");
     console.log("verify-razorpay-payment function received a request");
 
     if (req.method === "OPTIONS") {
@@ -160,12 +162,22 @@ Deno.serve(async (req) => {
             const supabaseOrderId = orderData.order_id;
             console.log("Order created successfully:", supabaseOrderId);
 
-            // 4. Update order status to CONFIRMED to trigger invoice if needed
-            // The RPC returns 'pending', so we update to 'CONFIRMED' to signify successful payment
-            await serviceRoleClient
-                .from('orders')
-                .update({ status: 'CONFIRMED' })
-                .eq('id', supabaseOrderId);
+            // 4. Create invoice explicitly
+
+const { data: invoiceId, error: invoiceCreateError } =
+  await serviceRoleClient.rpc(
+    'create_invoice_from_order',
+    {
+      p_order_id: supabaseOrderId
+    }
+  );
+
+if (invoiceCreateError) {
+  console.error("Invoice creation failed:", invoiceCreateError);
+  throw invoiceCreateError;
+}
+
+console.log("Invoice created:", invoiceId);
 
             // 5. Fetch generated invoice (should be created by trigger)
             const { data: invoiceData, error: invoiceError } = await serviceRoleClient

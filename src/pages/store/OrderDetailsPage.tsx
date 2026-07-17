@@ -189,13 +189,11 @@ const OrderDetailsPage = () => {
     queryKey: ["store-order-invoice-detail", orderId],
     enabled: !!orderId,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("invoices")
-        .select("id")
-        .eq("order_id", orderId!)
-        .maybeSingle();
-
-      return data?.id ?? null;
+      const { data, error } = await supabase.rpc("get_invoice_id_by_order", {
+        p_order_id: orderId!,
+      });
+      if (error) throw error;
+      return data ?? null;
     },
   });
 

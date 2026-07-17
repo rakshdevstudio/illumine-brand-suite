@@ -1047,6 +1047,7 @@ export type Database = {
       createInvoiceFromOrder: { Args: { order_id: string }; Returns: string }
       create_invoice_from_order: { Args: { p_order_id: string }; Returns: string }
       find_checkout_customer_by_phone: { Args: { p_phone: string }; Returns: Json }
+      get_invoice_id_by_order: { Args: { p_order_id: string }; Returns: string }
       getinvoicewithitems: { Args: { p_invoice_id: string }; Returns: Json }
       get_user_role: { Args: { _user_id: string }; Returns: string }
       has_role: {

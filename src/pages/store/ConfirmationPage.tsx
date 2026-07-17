@@ -38,13 +38,11 @@ const ConfirmationPage = () => {
     queryKey: ["store-order-invoice", orderId],
     enabled: !!orderId && isValidUUID(orderId) && !!orderExists,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("invoices")
-        .select("id")
-        .eq("order_id", orderId!)
-        .maybeSingle();
-
-      return data?.id ?? null;
+      const { data, error } = await supabase.rpc("get_invoice_id_by_order", {
+        p_order_id: orderId!,
+      });
+      if (error) throw error;
+      return data ?? null;
     },
     refetchInterval: (query) => {
       if (query.state.data) return false;

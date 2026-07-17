@@ -15,40 +15,13 @@ const StoreInvoicePage = () => {
         p_invoice_id: invoiceId!,
       });
 
-      if (!error) {
-        return (data ?? null) as InvoiceView | null;
-      }
-
-      if (error.code !== "404" && !String(error.message || "").includes("404")) {
+      if (error) {
+        if (error.code === "404" || String(error.message || "").includes("404")) {
+          return null;
+        }
         throw error;
       }
-
-      const fallback = await supabase
-        .from("invoices")
-        .select(
-          "id, order_id, invoice_number, customer_name, phone, address, subtotal, cgst, sgst, total, company_name, company_gstin, company_address, company_phone, company_email, created_at, invoice_items(id, quantity, unit_price, gst_percentage, cgst_amount, sgst_amount, total, products(name), product_variants(size))",
-        )
-        .eq("id", invoiceId!)
-        .single();
-
-      if (fallback.error) throw fallback.error;
-      const row: any = fallback.data;
-      if (!row) return null;
-
-      return {
-        ...row,
-        invoice_items: (row.invoice_items ?? []).map((item: any) => ({
-          id: item.id,
-          product_name: item.products?.name || "Product",
-          variant_size: item.product_variants?.size || "-",
-          quantity: Number(item.quantity || 0),
-          unit_price: Number(item.unit_price || 0),
-          gst_percentage: Number(item.gst_percentage || 0),
-          cgst_amount: Number(item.cgst_amount || 0),
-          sgst_amount: Number(item.sgst_amount || 0),
-          total: Number(item.total || 0),
-        })),
-      } as InvoiceView;
+      return (data ?? null) as InvoiceView | null;
     },
   });
 
