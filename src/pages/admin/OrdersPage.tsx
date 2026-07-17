@@ -271,9 +271,9 @@ const OrdersPage = () => {
     queryKey: ["admin-all-orders"],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("orders")
-          .select("*, invoices(id, invoice_number), order_items(*, products(name, school_id, schools(name)), product_variants(size))")
+          .select("*, invoices!invoices_order_id_fkey(id, invoice_number, status, total, paid_amount, balance_amount), order_items(*, products(name, school_id, schools(name)), product_variants(size))")
           // Single deterministic sort: newest created_at first.
           // Do NOT add a secondary UUID sort — UUID v4 ids have no time
           // relationship and would silently reorder same-second orders.
@@ -465,7 +465,8 @@ const OrdersPage = () => {
 
     const header = ["Order ID", "Invoice No", "Customer", "Phone", "School", "Items", "Total", "Status", "Source", "Date"];
     const lines = selectedOrders.map((order) => {
-      const invoiceNo = order.invoices?.[0]?.invoice_number || "-";
+      const inv = Array.isArray(order.invoices) ? order.invoices[0] : order.invoices;
+      const invoiceNo = inv?.invoice_number || "-";
       const row = [
         order.id,
         invoiceNo,
@@ -562,9 +563,9 @@ const OrdersPage = () => {
       <TableRow key={order.id}>
         <TableCell className="text-xs font-mono">{order.id.slice(0, 8).toUpperCase()}</TableCell>
         <TableCell className="text-sm">
-          {order.invoices?.[0] ? (
-            <a href={`/admin/invoices/${order.invoices[0].id}`} className="font-mono text-primary hover:underline">
-              {order.invoices[0].invoice_number}
+          {(Array.isArray(order.invoices) ? order.invoices[0] : order.invoices) ? (
+            <a href={`/admin/invoices/${(Array.isArray(order.invoices) ? order.invoices[0] : order.invoices).id}`} className="font-mono text-primary hover:underline">
+              {(Array.isArray(order.invoices) ? order.invoices[0] : order.invoices).invoice_number}
             </a>
           ) : (
             "—"
@@ -761,14 +762,38 @@ const OrdersPage = () => {
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</p>
                   <SourceBadge order={selected} />
                 </div>
-                {selected.invoices?.[0] && (
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Invoice</p>
-                    <a href={`/admin/invoices/${selected.invoices[0].id}`} className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-muted font-mono">
-                      {selected.invoices[0].invoice_number}
-                    </a>
-                  </div>
-                )}
+                {(Array.isArray(selected.invoices) ? selected.invoices[0] : selected.invoices) && (() => {
+                  const inv: any = Array.isArray(selected.invoices) ? selected.invoices[0] : selected.invoices;
+                  const payStatus = inv.balance_amount <= 0 ? 'paid' : inv.paid_amount > 0 ? 'partial' : 'unpaid';
+                  return (
+                    <>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Invoice</p>
+                        <a href={`/admin/invoices/${inv.id}`} className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-muted font-mono">
+                          {inv.invoice_number}
+                        </a>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Inv Status</p>
+                        <Badge className="bg-gray-100 text-gray-900 capitalize border-transparent">{inv.status}</Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Pay Status</p>
+                        <Badge className={`capitalize border-transparent ${
+                          payStatus === 'paid' ? 'bg-green-100 text-green-900' :
+                          payStatus === 'partial' ? 'bg-yellow-100 text-yellow-900' :
+                          'bg-red-100 text-red-900'
+                        }`}>
+                          {payStatus}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Inv Total</p>
+                        <span className="text-sm font-medium">{formatPrice(inv.total)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">

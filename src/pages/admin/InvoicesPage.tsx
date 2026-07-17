@@ -126,7 +126,7 @@ const InvoicesPage = () => {
   const [paymentNotes, setPaymentNotes] = useState("");
 
   const { data: invoices = [], isLoading, error: invoicesError } = useQuery({
-    queryKey: ["admin-outstanding-invoices"],
+    queryKey: ["admin-outstanding-invoices", "v2"],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("v_invoice_outstanding")

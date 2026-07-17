@@ -442,10 +442,22 @@ const InvoicePage = () => {
         )}
       </div>
 
-      <div className="print:hidden grid gap-3 md:grid-cols-4">
+      <div className="print:hidden grid gap-3 md:grid-cols-4 lg:grid-cols-7">
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Order ID</p>
+          <p className="text-sm font-medium mt-1">
+            {invoice.order_id ? (
+              <Link to={`/admin/orders/${invoice.order_id}`} className="font-mono text-primary hover:underline">
+                {invoice.order_id.slice(0, 8).toUpperCase()}
+              </Link>
+            ) : (
+              "—"
+            )}
+          </p>
+        </div>
         <div className="rounded-md border border-border p-3">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</p>
-          <p className="text-sm font-medium mt-1">{displayFinance.status}</p>
+          <p className="text-sm font-medium mt-1 capitalize">{displayFinance.status}</p>
         </div>
         <div className="rounded-md border border-border p-3">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Total</p>
@@ -458,6 +470,16 @@ const InvoicePage = () => {
         <div className="rounded-md border border-border p-3">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Outstanding</p>
           <p className="text-sm font-medium mt-1 text-amber-600">₹{displayFinance.outstanding.toFixed(2)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Pay Mode</p>
+          <p className="text-sm font-medium mt-1 capitalize">{paymentHistory[0]?.payment_mode || "—"}</p>
+        </div>
+        <div className="rounded-md border border-border p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Pay Date</p>
+          <p className="text-sm font-medium mt-1">
+            {paymentHistory[0] ? new Date(paymentHistory[0].payment_date || paymentHistory[0].created_at).toLocaleDateString() : "—"}
+          </p>
         </div>
       </div>
 
