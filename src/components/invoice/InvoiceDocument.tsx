@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { Link } from "react-router-dom";
 
 
 
@@ -258,6 +259,16 @@ export const InvoiceDocument = ({
             <p className="text-xs font-semibold uppercase">Tax Invoice</p>
             <p className="mt-3 text-sm">
               <span className="font-semibold">Invoice No:</span> {invoice.invoice_number || "-"}
+            </p>
+            <p className="text-sm">
+              <span className="font-semibold">Order ID:</span>{" "}
+              {invoice.order_id ? (
+                <Link to={`/admin/orders/${invoice.order_id}`} className="font-mono text-primary hover:underline">
+                  {invoice.order_id.slice(0, 8).toUpperCase()}
+                </Link>
+              ) : (
+                "-"
+              )}
             </p>
             <p className="text-sm">
               <span className="font-semibold">Invoice Date:</span> {formatDate(invoice.created_at)}

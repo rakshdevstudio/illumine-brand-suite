@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +67,7 @@ const exportRowsToCsv = (rows: OutstandingInvoiceRow[], filename: string) => {
   const csv = [
     [
       "Invoice No",
+      "Order ID",
       "Customer Name",
       "Phone",
       "Invoice Date",
@@ -81,6 +82,7 @@ const exportRowsToCsv = (rows: OutstandingInvoiceRow[], filename: string) => {
     ],
     ...rows.map((row) => [
       row.invoice_number,
+      row.order_id,
       row.customer_name,
       row.phone ?? "-",
       row.invoice_date,
@@ -348,6 +350,7 @@ const InvoicesPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead>Invoice No</TableHead>
+              <TableHead>Order ID</TableHead>
               <TableHead>Customer Name</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Total</TableHead>
@@ -375,6 +378,15 @@ const InvoicesPage = () => {
               filtered.map((invoice) => (
                 <TableRow key={invoice.invoice_id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                  <TableCell>
+                    {invoice.order_id ? (
+                      <Link to={`/admin/orders/${invoice.order_id}`} className="text-xs font-mono text-primary hover:underline">
+                        {invoice.order_id.slice(0, 8).toUpperCase()}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
                   <TableCell>{invoice.customer_name}</TableCell>
                   <TableCell>{toDateDisplay(invoice.invoice_date)}</TableCell>
                   <TableCell>{formatCurrency(invoice.total)}</TableCell>

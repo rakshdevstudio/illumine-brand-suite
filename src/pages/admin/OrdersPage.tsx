@@ -273,7 +273,7 @@ const OrdersPage = () => {
       try {
         const { data, error } = await supabase
           .from("orders")
-          .select("*, order_items(*, products(name, school_id, schools(name)), product_variants(size))")
+          .select("*, invoices(id, invoice_number), order_items(*, products(name, school_id, schools(name)), product_variants(size))")
           // Single deterministic sort: newest created_at first.
           // Do NOT add a secondary UUID sort — UUID v4 ids have no time
           // relationship and would silently reorder same-second orders.
@@ -463,10 +463,12 @@ const OrdersPage = () => {
     const selectedOrders = processedOrders;
     if (selectedOrders.length === 0) return;
 
-    const header = ["Order ID", "Customer", "Phone", "School", "Items", "Total", "Status", "Source", "Date"];
+    const header = ["Order ID", "Invoice No", "Customer", "Phone", "School", "Items", "Total", "Status", "Source", "Date"];
     const lines = selectedOrders.map((order) => {
+      const invoiceNo = order.invoices?.[0]?.invoice_number || "-";
       const row = [
         order.id,
+        invoiceNo,
         order.customer_name,
         order.phone,
         getOrderSchools(order).join(" | "),
@@ -559,6 +561,15 @@ const OrdersPage = () => {
     return (
       <TableRow key={order.id}>
         <TableCell className="text-xs font-mono">{order.id.slice(0, 8).toUpperCase()}</TableCell>
+        <TableCell className="text-sm">
+          {order.invoices?.[0] ? (
+            <a href={`/admin/invoices/${order.invoices[0].id}`} className="font-mono text-primary hover:underline">
+              {order.invoices[0].invoice_number}
+            </a>
+          ) : (
+            "—"
+          )}
+        </TableCell>
         <TableCell className="text-sm">
           <div className="flex items-center gap-2">
             <span>{order.customer_name}</span>
@@ -695,6 +706,7 @@ const OrdersPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs tracking-wider uppercase">Order ID</TableHead>
+              <TableHead className="text-xs tracking-wider uppercase">Invoice No</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Customer</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">School</TableHead>
               <TableHead className="text-xs tracking-wider uppercase">Source</TableHead>
@@ -749,6 +761,14 @@ const OrdersPage = () => {
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Source</p>
                   <SourceBadge order={selected} />
                 </div>
+                {selected.invoices?.[0] && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Invoice</p>
+                    <a href={`/admin/invoices/${selected.invoices[0].id}`} className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-muted font-mono">
+                      {selected.invoices[0].invoice_number}
+                    </a>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
