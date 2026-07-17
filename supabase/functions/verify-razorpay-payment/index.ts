@@ -35,17 +35,10 @@ Deno.serve(async (req) => {
         }
         console.log("Authorization header found");
 
-        const supabase = createSupabaseClient(authHeader);
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-        if (userError) {
-            console.error("User authentication failed:", userError.message);
-            return new Response(JSON.stringify({ error: "Authentication failed", details: userError.message }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                status: 401,
-            });
-        }
-        console.log("JWT verified, user identified:", user.id);
+        // We do NOT enforce supabase.auth.getUser() here because the store uses a guest checkout flow.
+        // The frontend correctly sends the SUPABASE_ANON_KEY when the user is unauthenticated.
+        // Calling getUser() with the anon key would throw an error and break the guest checkout.
+        console.log("Guest checkout verification permitted. Anon key received.");
 
         const { order_id, payment_id, razorpay_signature }: VerifyPayload = await req.json();
         console.log("Request payload received for verification:", { order_id, payment_id });
