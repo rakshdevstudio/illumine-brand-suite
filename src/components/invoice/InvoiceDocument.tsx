@@ -61,6 +61,167 @@ const toPdfText = (value: string) =>
     .normalize("NFKD")
     .replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
 
+export const generateInvoicePdf = async (invoice: InvoiceView) => {
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let page = pdfDoc.addPage([595.28, 841.89]);
+    let y = 800;
+    const left = 36;
+    const right = 559;
+
+    const drawText = (
+      text: string,
+      x: number,
+      py: number,
+      size = 10,
+      weight: "regular" | "bold" = "regular",
+      align: "left" | "right" = "left",
+    ) => {
+      const content = toPdfText(text);
+      const font = weight === "bold" ? bold : regular;
+      const width = font.widthOfTextAtSize(content, size);
+      const tx = align === "right" ? x - width : x;
+      page.drawText(content, {
+        x: tx,
+        y: py,
+        size,
+        font,
+        color: rgb(0, 0, 0),
+      });
+    };
+
+    const drawLine = (py: number, thickness = 1) => {
+      page.drawLine({
+        start: { x: left, y: py },
+        end: { x: right, y: py },
+        thickness,
+        color: rgb(0, 0, 0),
+      });
+    };
+
+    const newPage = () => {
+      page = pdfDoc.addPage([595.28, 841.89]);
+      y = 800;
+    };
+
+    drawText("ILLUME", left, y, 18, "bold");
+    drawText("Tax Invoice", right, y + 4, 12, "bold", "right");
+    y -= 18;
+    drawText(invoice.company_name || "Illume Uniforms Pvt. Ltd.", left, y);
+    drawText("Invoice No: " + (invoice.invoice_number || "-"), right, y, 10, "bold", "right");
+    y -= 14;
+    
+    const addressLines = (invoice.company_address || "Income Tax Layout, 273, 5th Cross Rd, 8 Block, Govindaraja Nagar Ward, Naagarabhaavi, Bengaluru, Karnataka 560072").split('\n');
+    for(const line of addressLines) {
+      drawText(line, left, y, 9);
+      y -= 12;
+    }
+    y -= 2; // adjust
+
+    drawText("Invoice Date: " + formatDate(invoice.created_at), right, y + 14, 10, "bold", "right");
+    drawText("GSTIN: " + (invoice.company_gstin || "29ABCDE1234F1Z5"), left, y, 9);
+    if (invoice.company_phone) {
+      y -= 12;
+      drawText("Phone: " + invoice.company_phone, left, y, 9);
+    }
+    if (invoice.company_email) {
+      y -= 12;
+      drawText("Email: " + invoice.company_email, left, y, 9);
+    }
+
+    y -= 10;
+    drawLine(y);
+    y -= 16;
+
+    drawText("Bill To", left, y, 10, "bold");
+    y -= 14;
+    drawText("Customer Name: " + (invoice.customer_name || "-"), left, y);
+    y -= 13;
+    drawText("Phone: " + (invoice.phone || "-"), left, y);
+    y -= 13;
+    drawText("Address: " + (invoice.address || "-"), left, y);
+
+    y -= 14;
+    drawLine(y);
+    y -= 16;
+
+    const cols = {
+      idx: left,
+      product: left + 24,
+      size: left + 202,
+      qty: left + 250,
+      price: left + 292,
+      gst: left + 356,
+      cgst: left + 410,
+      sgst: left + 468,
+      total: right,
+    };
+
+    drawText("#", cols.idx, y, 9, "bold");
+    drawText("Product", cols.product, y, 9, "bold");
+    drawText("Size", cols.size, y, 9, "bold");
+    drawText("Qty", cols.qty + 24, y, 9, "bold", "right");
+    drawText("Price", cols.price + 58, y, 9, "bold", "right");
+    drawText("GST %", cols.gst + 40, y, 9, "bold", "right");
+    drawText("CGST", cols.cgst + 45, y, 9, "bold", "right");
+    drawText("SGST", cols.sgst + 45, y, 9, "bold", "right");
+    drawText("Total", cols.total, y, 9, "bold", "right");
+    y -= 8;
+    drawLine(y);
+    y -= 12;
+
+    for (let i = 0; i < invoice.invoice_items.length; i += 1) {
+      const item = invoice.invoice_items[i];
+
+      if (y < 120) {
+        newPage();
+        drawText("Invoice # " + (invoice.invoice_number || "-"), left, y, 10, "bold");
+        y -= 16;
+      }
+
+      drawText(String(i + 1), cols.idx, y, 9);
+      drawText(item.product_name || "Product", cols.product, y, 9);
+      drawText(item.variant_size || "-", cols.size, y, 9);
+      drawText(String(item.quantity || 0), cols.qty + 24, y, 9, "regular", "right");
+      drawText(formatNumber(item.unit_price), cols.price + 58, y, 9, "regular", "right");
+      drawText(formatNumber(item.gst_percentage), cols.gst + 40, y, 9, "regular", "right");
+      drawText(formatNumber(item.cgst_amount), cols.cgst + 45, y, 9, "regular", "right");
+      drawText(formatNumber(item.sgst_amount), cols.sgst + 45, y, 9, "regular", "right");
+      drawText(formatNumber(item.total), cols.total, y, 9, "regular", "right");
+      y -= 14;
+    }
+
+    y -= 4;
+    drawLine(y);
+    y -= 16;
+
+    const summaryX = right;
+    drawText("Subtotal: " + formatCurrency(invoice.subtotal), summaryX, y, 10, "regular", "right");
+    y -= 14;
+    drawText("CGST: " + formatCurrency(invoice.cgst), summaryX, y, 10, "regular", "right");
+    y -= 14;
+    drawText("SGST: " + formatCurrency(invoice.sgst), summaryX, y, 10, "regular", "right");
+    y -= 18;
+    drawText("Grand Total: " + formatCurrency(invoice.total), summaryX, y, 12, "bold", "right");
+
+    const bytes = await pdfDoc.save();
+    const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeNo = String(invoice.invoice_number || "invoice").replace(/[^a-zA-Z0-9-_]/g, "_");
+    a.download = `${safeNo}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("PDF generation failed:", error);
+    toast.error("Failed to generate PDF.");
+  }
+};
+
 export const InvoiceDocument = ({
   invoice,
   showActions = true,
@@ -71,163 +232,7 @@ export const InvoiceDocument = ({
   const handlePrint = () => window.print();
 
   const handleDownloadPdf = async () => {
-    try {
-      const pdfDoc = await PDFDocument.create();
-      const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-      let page = pdfDoc.addPage([595.28, 841.89]);
-      let y = 800;
-      const left = 36;
-      const right = 559;
-
-      const drawText = (
-        text: string,
-        x: number,
-        py: number,
-        size = 10,
-        weight: "regular" | "bold" = "regular",
-        align: "left" | "right" = "left",
-      ) => {
-        const content = toPdfText(text);
-        const font = weight === "bold" ? bold : regular;
-        const width = font.widthOfTextAtSize(content, size);
-        const tx = align === "right" ? x - width : x;
-        page.drawText(content, {
-          x: tx,
-          y: py,
-          size,
-          font,
-          color: rgb(0, 0, 0),
-        });
-      };
-
-      const drawLine = (py: number, thickness = 1) => {
-        page.drawLine({
-          start: { x: left, y: py },
-          end: { x: right, y: py },
-          thickness,
-          color: rgb(0, 0, 0),
-        });
-      };
-
-      const newPage = () => {
-        page = pdfDoc.addPage([595.28, 841.89]);
-        y = 800;
-      };
-
-      drawText("ILLUME", left, y, 18, "bold");
-      drawText("Tax Invoice", right, y + 4, 12, "bold", "right");
-      y -= 18;
-      drawText(invoice.company_name || "Illume Uniforms Pvt. Ltd.", left, y);
-      drawText("Invoice No: " + (invoice.invoice_number || "-"), right, y, 10, "bold", "right");
-      y -= 14;
-      
-      const addressLines = (invoice.company_address || "Income Tax Layout, 273, 5th Cross Rd, 8 Block, Govindaraja Nagar Ward, Naagarabhaavi, Bengaluru, Karnataka 560072").split('\n');
-      for(const line of addressLines) {
-        drawText(line, left, y, 9);
-        y -= 12;
-      }
-      y -= 2; // adjust
-
-      drawText("Invoice Date: " + formatDate(invoice.created_at), right, y + 14, 10, "bold", "right");
-      drawText("GSTIN: " + (invoice.company_gstin || "29ABCDE1234F1Z5"), left, y, 9);
-      if (invoice.company_phone) {
-        y -= 12;
-        drawText("Phone: " + invoice.company_phone, left, y, 9);
-      }
-      if (invoice.company_email) {
-        y -= 12;
-        drawText("Email: " + invoice.company_email, left, y, 9);
-      }
-
-      y -= 10;
-      drawLine(y);
-      y -= 16;
-
-      drawText("Bill To", left, y, 10, "bold");
-      y -= 14;
-      drawText("Customer Name: " + (invoice.customer_name || "-"), left, y);
-      y -= 13;
-      drawText("Phone: " + (invoice.phone || "-"), left, y);
-      y -= 13;
-      drawText("Address: " + (invoice.address || "-"), left, y);
-
-      y -= 14;
-      drawLine(y);
-      y -= 16;
-
-      const cols = {
-        idx: left,
-        product: left + 24,
-        size: left + 202,
-        qty: left + 250,
-        price: left + 292,
-        gst: left + 356,
-        cgst: left + 410,
-        sgst: left + 468,
-        total: right,
-      };
-
-      drawText("#", cols.idx, y, 9, "bold");
-      drawText("Product", cols.product, y, 9, "bold");
-      drawText("Size", cols.size, y, 9, "bold");
-      drawText("Qty", cols.qty + 24, y, 9, "bold", "right");
-      drawText("Price", cols.price + 58, y, 9, "bold", "right");
-      drawText("GST %", cols.gst + 40, y, 9, "bold", "right");
-      drawText("CGST", cols.cgst + 45, y, 9, "bold", "right");
-      drawText("SGST", cols.sgst + 45, y, 9, "bold", "right");
-      drawText("Total", cols.total, y, 9, "bold", "right");
-      y -= 8;
-      drawLine(y);
-      y -= 12;
-
-      for (let i = 0; i < invoice.invoice_items.length; i += 1) {
-        const item = invoice.invoice_items[i];
-
-        if (y < 120) {
-          newPage();
-          drawText("Invoice # " + (invoice.invoice_number || "-"), left, y, 10, "bold");
-          y -= 16;
-        }
-
-        drawText(String(i + 1), cols.idx, y, 9);
-        drawText(item.product_name || "Product", cols.product, y, 9);
-        drawText(item.variant_size || "-", cols.size, y, 9);
-        drawText(String(item.quantity || 0), cols.qty + 24, y, 9, "regular", "right");
-        drawText(formatNumber(item.unit_price), cols.price + 58, y, 9, "regular", "right");
-        drawText(formatNumber(item.gst_percentage), cols.gst + 40, y, 9, "regular", "right");
-        drawText(formatNumber(item.cgst_amount), cols.cgst + 45, y, 9, "regular", "right");
-        drawText(formatNumber(item.sgst_amount), cols.sgst + 45, y, 9, "regular", "right");
-        drawText(formatNumber(item.total), cols.total, y, 9, "regular", "right");
-        y -= 14;
-      }
-
-      y -= 4;
-      drawLine(y);
-      y -= 16;
-
-      const summaryX = right;
-      drawText("Subtotal: " + formatCurrency(invoice.subtotal), summaryX, y, 10, "regular", "right");
-      y -= 14;
-      drawText("CGST: " + formatCurrency(invoice.cgst), summaryX, y, 10, "regular", "right");
-      y -= 14;
-      drawText("SGST: " + formatCurrency(invoice.sgst), summaryX, y, 10, "regular", "right");
-      y -= 18;
-      drawText("Grand Total: " + formatCurrency(invoice.total), summaryX, y, 12, "bold", "right");
-
-      const bytes = await pdfDoc.save();
-      const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const safeNo = String(invoice.invoice_number || "invoice").replace(/[^a-zA-Z0-9-_]/g, "_");
-      a.download = `${safeNo}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error("Failed to generate PDF.");
-    }
+    await generateInvoicePdf(invoice);
   };
 
   return (

@@ -2,7 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { requireSchoolId, useSchoolContext } from "@/lib/school-context";
+import { useSchoolContext } from "@/lib/school-context";
 
 type OrderItem = {
   quantity: number;
@@ -145,9 +145,11 @@ const TrackOrderPage = () => {
 
     const trimmedOrderId = orderId.trim();
     const trimmedPhone = phone.trim();
+    // Normalize phone number to 10 digits to match database storage format
+    const normalizedPhone = trimmedPhone.replace(/\\D/g, "").slice(-10);
 
-    if (!trimmedOrderId || !trimmedPhone) {
-      setError("Please enter both Order ID and Phone Number.");
+    if (!trimmedOrderId || !normalizedPhone || normalizedPhone.length < 10) {
+      setError("Please enter a valid Order ID and 10-digit Phone Number.");
       setOrder(null);
       return;
     }
@@ -156,7 +158,8 @@ const TrackOrderPage = () => {
     setError(null);
     setOrder(null);
 
-    const schoolId = requireSchoolId();
+    // We do not filter by school_id because a customer should be able to track their order
+    // across any school as long as they have the exact Order ID and Phone Number.
     const SELECT_FIELDS = "id, customer_name, phone, address, city, pincode, total_amount, status, created_at, order_items(quantity, price, product_variants(size, products(name)), products(name)), order_timeline(event_type, description, created_at)";
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedOrderId);
 
@@ -168,9 +171,8 @@ const TrackOrderPage = () => {
         .from("orders")
         .select(SELECT_FIELDS)
         .eq("id", trimmedOrderId)
-        .eq("phone", trimmedPhone)
-        .eq("school_id", schoolId)
-        .single();
+        .eq("phone", normalizedPhone)
+        .maybeSingle();
       if (!fetchError && data) matched = data as unknown as TrackedOrder;
     } else {
       // Short ID (e.g. ACA2FC89) — fetch by phone then match by UUID prefix client-side
@@ -178,8 +180,7 @@ const TrackOrderPage = () => {
       const { data, error: fetchError } = await supabase
         .from("orders")
         .select(SELECT_FIELDS)
-        .eq("phone", trimmedPhone)
-        .eq("school_id", schoolId);
+        .eq("phone", normalizedPhone);
       if (!fetchError && data) {
         const shortLower = trimmedOrderId.toLowerCase();
         matched = (data as unknown as TrackedOrder[]).find(

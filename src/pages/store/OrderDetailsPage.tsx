@@ -3,8 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Package } from "lucide-react";
+import { Package, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { generateInvoicePdf, type InvoiceView } from "@/components/invoice/InvoiceDocument";
 
 type OrderItem = {
   id: string;
@@ -197,6 +198,35 @@ const OrderDetailsPage = () => {
     },
   });
 
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const onDownloadInvoice = async () => {
+    if (!invoiceId) {
+      toast.info("Invoice is not available for this order.");
+      return;
+    }
+    try {
+      setIsDownloading(true);
+      toast.loading("Generating PDF...", { id: "pdf-download-detail" });
+      const { data, error } = await supabase.rpc("getinvoicewithitems", {
+        p_invoice_id: invoiceId,
+      });
+
+      if (error) throw error;
+      
+      const invoiceData = data as unknown as InvoiceView;
+      if (!invoiceData) throw new Error("Invoice not found");
+      
+      await generateInvoicePdf(invoiceData);
+      toast.success("Invoice downloaded successfully", { id: "pdf-download-detail" });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to download invoice PDF", { id: "pdf-download-detail" });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-24 text-center">
@@ -386,8 +416,12 @@ const OrderDetailsPage = () => {
           type="button"
           variant="outline"
           className="text-xs tracking-[0.2em] uppercase h-12 px-8"
-          onClick={() => toast.info("PDF download will be available soon.")}
+          onClick={onDownloadInvoice}
+          disabled={isDownloading}
         >
+          {isDownloading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : null}
           Download Invoice
         </Button>
         <Link to="/store">

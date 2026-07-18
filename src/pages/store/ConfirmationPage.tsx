@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Check, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useState } from "react";
+import { generateInvoicePdf, type InvoiceView } from "@/components/invoice/InvoiceDocument";
 
 const isValidUUID = (uuid: string) => {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(uuid);
@@ -50,8 +52,33 @@ const ConfirmationPage = () => {
     },
   });
 
-  const onDownloadPlaceholder = () => {
-    toast.info("PDF download will be available soon.");
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const onDownloadInvoice = async () => {
+    if (!invoiceId) {
+      toast.info("Invoice is still generating. Please try again in a moment.");
+      return;
+    }
+    try {
+      setIsDownloading(true);
+      toast.loading("Generating PDF...", { id: "pdf-download" });
+      const { data, error } = await supabase.rpc("getinvoicewithitems", {
+        p_invoice_id: invoiceId,
+      });
+
+      if (error) throw error;
+      
+      const invoiceData = data as unknown as InvoiceView;
+      if (!invoiceData) throw new Error("Invoice not found");
+      
+      await generateInvoicePdf(invoiceData);
+      toast.success("Invoice downloaded successfully", { id: "pdf-download" });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to download invoice PDF", { id: "pdf-download" });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   if (!orderId || !isValidUUID(orderId)) {
@@ -142,8 +169,12 @@ const ConfirmationPage = () => {
           type="button"
           variant="outline"
           className="text-xs tracking-[0.2em] uppercase h-12 px-8"
-          onClick={onDownloadPlaceholder}
+          onClick={onDownloadInvoice}
+          disabled={isDownloading}
         >
+          {isDownloading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : null}
           Download Invoice
         </Button>
         {orderId && (
