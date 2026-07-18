@@ -209,7 +209,37 @@ console.log("Invoice created:", invoiceId);
             }
             console.log("Payment recorded successfully");
 
-            // 7. Queue confirmation email
+            // 7. Attach CRM entities (Customer, Student) to the order
+            try {
+                console.log("Attaching CRM entities to order:", supabaseOrderId);
+                const { error: attachError } = await serviceRoleClient.rpc("attach_checkout_entities_to_order", {
+                    p_order_id: supabaseOrderId,
+                    p_customer_name: checkout.customer_name,
+                    p_customer_phone: checkout.phone,
+                    p_customer_email: checkout.email || "",
+                    p_student_name: checkout.student_name || "",
+                    p_school_id: checkout.school_id,
+                    p_class_name: checkout.grade || "",
+                    p_gender: checkout.gender || "Unisex",
+                    p_alternate_phone: checkout.alternate_phone || null,
+                });
+
+                if (attachError) {
+                    throw attachError;
+                }
+                console.log("Successfully attached CRM entities to order");
+            } catch (attachErr) {
+                console.error("CRM attachment failed for order:", supabaseOrderId, {
+                    order_id: supabaseOrderId,
+                    phone: checkout.phone,
+                    customer_name: checkout.customer_name,
+                    student_name: checkout.student_name,
+                    error: attachErr
+                });
+                // We do NOT rethrow here, so the payment continues to succeed.
+            }
+
+            // 8. Queue confirmation email
             if (checkout.email) {
                 console.log("Queueing email confirmation for:", checkout.email);
                 // Fire and forget - don't await this
