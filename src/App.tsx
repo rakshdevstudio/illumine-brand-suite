@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import NotFound from "./pages/NotFound";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,6 +12,7 @@ import { isAuthError, redirectToLogin } from "@/lib/safeQuery";
 // Store
 import StoreLayout from "./components/store/StoreLayout";
 import StorePage from "./pages/store/StorePage";
+import MaintenancePage from "./pages/store/MaintenancePage";
 import AboutPage from "./pages/store/AboutPage";
 import SchoolPage from "./pages/store/SchoolPage";
 import ClassGenderPage from "./pages/store/ClassGenderPage";
@@ -209,6 +210,17 @@ const StoreIndexRedirect = () => {
   return <Navigate to={`/store/school/${school.slug}`} replace />;
 };
 
+const GlobalMaintenanceGuard = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === "true";
+  
+  if (isMaintenanceMode && !isProtectedPath(location.pathname)) {
+    return <MaintenancePage />;
+  }
+
+  return <>{children}</>;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AppSessionLifecycle />
@@ -216,9 +228,10 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <ScrollToTop />
-        <GoToTopButton />
-        <Routes>
+        <GlobalMaintenanceGuard>
+          <ScrollToTop />
+          <GoToTopButton />
+          <Routes>
           {/* Public homepage (marketing) */}
           <Route path="/" element={<StoreLayout />}>
             <Route index element={<StorePage />} />
@@ -326,7 +339,8 @@ const App = () => (
           <Route path="/pos" element={<PosDashboard />} />
 
           <Route path="*" element={<NotFound />} />
-        </Routes>
+          </Routes>
+        </GlobalMaintenanceGuard>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
